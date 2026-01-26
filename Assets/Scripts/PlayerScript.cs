@@ -88,6 +88,11 @@ public class PlayerScript : NetworkBehaviour
         {
             lobbyScript.UpdatePlayerRow(this);
         }
+        // 【新增】本地玩家持久化新名
+        if (isLocalPlayer && PlayerSettings.Instance != null)
+        {
+            PlayerSettings.Instance.PlayerName = newName;
+        }
     }
 
     //玩家颜色同步变量
@@ -235,7 +240,7 @@ public class PlayerScript : NetworkBehaviour
         if (!IsInGameScene) 
         {
             // 在大厅按 C 改名
-            if (Input.GetKeyDown(KeyCode.C)) ChangePlayerNameAndColor();
+            // if (Input.GetKeyDown(KeyCode.C)) ChangePlayerNameAndColor();
             return; // 禁止移动和射击
         }
         
@@ -410,6 +415,19 @@ public class PlayerScript : NetworkBehaviour
         {
             chatUI.AppendMessage(senderName, message, color);
         }
+    }
+
+    [Command]
+    public void CmdChangePlayerName(string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+
+        newName = newName.Trim();
+        if (newName.Length > 16) newName = newName.Substring(0, 16);
+        if (newName.Length == 0) newName = "Player";
+
+        playerName = newName;  // 因為是 SyncVar，會自動同步 + 觸發 hook
+        UnityEngine.Debug.Log($"[Server] Player {connectionToClient.connectionId} changed name to: {newName}");
     }
 
 }

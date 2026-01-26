@@ -1457,6 +1457,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   networkHUD: {fileID: 1804424516}
   inputFieldPlayerName: {fileID: 980750157}
+  joinButton: {fileID: 236755512}
 --- !u!114 &1804424516 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 2960252011402670911, guid: fe25518f69d8bc04d93dc8d9585beebf, type: 3}

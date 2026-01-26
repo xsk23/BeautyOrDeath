@@ -35,6 +35,8 @@ public class LobbyScript : NetworkBehaviour
         GameObject newRow = Instantiate(playerRowPrefab, playerListContent);
         PlayerRowUI rowScript = newRow.GetComponent<PlayerRowUI>();
 
+        // 绑定玩家数据
+        rowScript.BindToPlayer(player);
         // 2. 绑定按钮逻辑
         // 先移除旧的监听器，好习惯
         rowScript.actionButton.onClick.RemoveAllListeners();
