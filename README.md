@@ -1,2 +1,2 @@
 # BeautyOrDeath
-软设仓库
+2526软设仓库
