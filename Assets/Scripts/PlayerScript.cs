@@ -18,20 +18,20 @@ public class PlayerScript : NetworkBehaviour
     // public int isInLobby=0;//是否在大厅标志位  
     // public int isHostPlayer=0;//是否是主机玩家标志位
     public TextMeshPro nameText;//名字文本
-    public GameObject floatingInfo;//悬浮信息
+    // public GameObject floatingInfo;//悬浮信息
     private  Material playerMaterialClone;//玩家材质克隆体
 
-    public GameObject[] weaponArray;//武器数组 
+    // public GameObject[] weaponArray;//武器数组 
 
-    [SyncVar(hook = nameof(OnWeaponChanged))]
-    private int currentWeaponSynced;//当前武器索引:1和2
+    // [SyncVar(hook = nameof(OnWeaponChanged))]
+    // private int currentWeaponSynced;//当前武器索引:1和2
 
-    private Weapon activeWeapon;//当前武器引用
-    private int currentWeaponIndex;//当前武器下标
-    private float cooldownTime;//冷却计时器
+    // private Weapon activeWeapon;//当前武器引用
+    // private int currentWeaponIndex;//当前武器下标
+    // private float cooldownTime;//冷却计时器
 
 
-    private SceneScript sceneScript;//场景脚本引用
+    // private SceneScript sceneScript;//场景脚本引用
 
 
     [SyncVar(hook = nameof(OnPlayerNameChanged))]
@@ -41,36 +41,41 @@ public class PlayerScript : NetworkBehaviour
     [SyncVar(hook = nameof(OnPlayerColorChanged))]
     private Color playerColor;//玩家颜色
 
+    [SyncVar(hook = nameof(OnRoleChanged))]
+    public PlayerRole role; // 角色类型
+
+    // private PlayerBase playerBase; // 引用角色组件
+
 
     //武器同步变量
-    private void OnWeaponChanged(int oldWeapon, int newWeapon)
-    {
-        // 只有在游戏场景且找到了 sceneScript 才能更新UI，否则只更新逻辑
-        bool canUpdateUI = sceneScript != null;
-        if(0<oldWeapon && oldWeapon<weaponArray.Length&&weaponArray[oldWeapon]!=null)
-        {
-            weaponArray[oldWeapon].SetActive(false);
-        }
-        if(0<newWeapon && newWeapon<weaponArray.Length&&weaponArray[newWeapon]!=null)
-        {
-            weaponArray[newWeapon].SetActive(true);
-            activeWeapon = weaponArray[newWeapon].GetComponent<Weapon>();//获取当前武器引用
-            // 【修复】这里之前漏了 canUpdateUI 检查，会导致客户端在大厅报错
-            if (canUpdateUI && sceneScript.canvasBulletText != null) 
-            {
-                sceneScript.canvasBulletText.text = activeWeapon.bulletCount.ToString();
-            }
+    // private void OnWeaponChanged(int oldWeapon, int newWeapon)
+    // {
+    //     // 只有在游戏场景且找到了 sceneScript 才能更新UI，否则只更新逻辑
+    //     bool canUpdateUI = sceneScript != null;
+    //     if(0<oldWeapon && oldWeapon<weaponArray.Length&&weaponArray[oldWeapon]!=null)
+    //     {
+    //         weaponArray[oldWeapon].SetActive(false);
+    //     }
+    //     if(0<newWeapon && newWeapon<weaponArray.Length&&weaponArray[newWeapon]!=null)
+    //     {
+    //         weaponArray[newWeapon].SetActive(true);
+    //         activeWeapon = weaponArray[newWeapon].GetComponent<Weapon>();//获取当前武器引用
+    //         // 【修复】这里之前漏了 canUpdateUI 检查，会导致客户端在大厅报错
+    //         if (canUpdateUI && sceneScript.canvasBulletText != null) 
+    //         {
+    //             sceneScript.canvasBulletText.text = activeWeapon.bulletCount.ToString();
+    //         }
             
-        }
-        else
-        {
-            activeWeapon = null;
-            if (canUpdateUI && sceneScript.canvasBulletText != null) 
-            {
-                sceneScript.canvasBulletText.text = "No Weapon";
-            }
-        }
-    }
+    //     }
+    //     else
+    //     {
+    //         activeWeapon = null;
+    //         if (canUpdateUI && sceneScript.canvasBulletText != null) 
+    //         {
+    //             sceneScript.canvasBulletText.text = "No Weapon";
+    //         }
+    //     }
+    // }
 
     //玩家名字同步变量
     private void OnPlayerNameChanged(string oldName, string newName)
@@ -93,8 +98,8 @@ public class PlayerScript : NetworkBehaviour
         {
             PlayerSettings.Instance.PlayerName = newName;
         }
-    }
 
+    }
     //玩家颜色同步变量
     private void OnPlayerColorChanged(Color oldColor, Color newColor)
     {
@@ -106,13 +111,18 @@ public class PlayerScript : NetworkBehaviour
             GetComponent<Renderer>().material = playerMaterialClone;
         }
     }
-
+    // 角色变化钩子
+    private void OnRoleChanged(PlayerRole oldRole, PlayerRole newRole)
+    {
+        // 可在此更新UI、模型等
+        UnityEngine.Debug.Log($"Player {playerName} role changed to {newRole}");
+    }
 
     override public void OnStartLocalPlayer()
     {
         // 1. 尝试查找游戏场景脚本
-        sceneScript = FindObjectOfType<SceneScript>();
-        if (sceneScript != null) sceneScript.playerScript = this;
+        // sceneScript = FindObjectOfType<SceneScript>();
+        // if (sceneScript != null) sceneScript.playerScript = this;
 
         // 2. 如果在大厅，尝试查找大厅脚本 (OnStartClient可能没找到)
         if (!IsInGameScene && lobbyScript == null)
@@ -121,18 +131,18 @@ public class PlayerScript : NetworkBehaviour
         }
 
         // 摄像机设置 (如果在游戏场景)
-        if (IsInGameScene)
-        {
-            Camera.main.transform.SetParent(transform);
-            Camera.main.transform.localPosition = Vector3.zero;
-        }
+        // if (IsInGameScene)
+        // {
+        //     Camera.main.transform.SetParent(transform);
+        //     Camera.main.transform.localPosition = Vector3.zero;
+        // }
 
         // UI 设置
-        if(floatingInfo != null)
-        {
-            floatingInfo.transform.localPosition = new Vector3(0, -0.3f, 0.6f);
-            floatingInfo.transform.localScale = new Vector3(-0.1f, 0.1f, 0.1f);
-        }
+        // if(floatingInfo != null)
+        // {
+        //     floatingInfo.transform.localPosition = new Vector3(0, -0.3f, 0.6f);
+        //     floatingInfo.transform.localScale = new Vector3(-0.1f, 0.1f, 0.1f);
+        // }
         
         // ──────────────── 關鍵修改 ────────────────
         // 從 PlayerSettings 讀取名字，而不是隨機產生
@@ -151,7 +161,12 @@ public class PlayerScript : NetworkBehaviour
 
         // 送給伺服器
         CmdSetupPlayer(finalName, finalColor);
-        // ChangePlayerNameAndColor();
+
+        // 可选：连线成功后清空（避免下次重连还带旧名字）
+        if (PlayerSettings.Instance != null)
+        {
+            PlayerSettings.Instance.Clear();
+        }
     }
 
     //方法1:服务器生成子弹对象并同步给所有客户端
@@ -176,23 +191,23 @@ public class PlayerScript : NetworkBehaviour
     //方法2:服务器生成子弹对象并同步给所有客户端
     //给子弹prefab添加NetworkIdentity组件和NetworkRigidbody组件
     //在NetworkManager的Registered Spawnable Prefabs中添加子弹prefab
-    [Command]//客户端给服务器发送命令
-    private void CmdShoot()//开火命令
-    {
-        // UnityEngine.Debug.Log("shot1");
-        // 增加判空防止报错断线
-        // if (activeWeapon == null || activeWeapon.bulletPrefab == null) return;
-        // UnityEngine.Debug.Log("shot2");
-        var bullet = Instantiate(
-            activeWeapon.bulletPrefab,
-            activeWeapon.firePoint.position,
-            activeWeapon.firePoint.rotation
-        );
-        var rb = bullet.GetComponent<Rigidbody>();
-        rb.velocity = activeWeapon.firePoint.forward * activeWeapon.bulletSpeed;
-        Destroy(bullet, activeWeapon.bulletLifetime);       
-        NetworkServer.Spawn(bullet);//在服务器生成子弹并同步给所有客户端
-    }  
+    // [Command]//客户端给服务器发送命令
+    // private void CmdShoot()//开火命令
+    // {
+    //     // UnityEngine.Debug.Log("shot1");
+    //     // 增加判空防止报错断线
+    //     // if (activeWeapon == null || activeWeapon.bulletPrefab == null) return;
+    //     // UnityEngine.Debug.Log("shot2");
+    //     var bullet = Instantiate(
+    //         activeWeapon.bulletPrefab,
+    //         activeWeapon.firePoint.position,
+    //         activeWeapon.firePoint.rotation
+    //     );
+    //     var rb = bullet.GetComponent<Rigidbody>();
+    //     rb.velocity = activeWeapon.firePoint.forward * activeWeapon.bulletSpeed;
+    //     Destroy(bullet, activeWeapon.bulletLifetime);       
+    //     NetworkServer.Spawn(bullet);//在服务器生成子弹并同步给所有客户端
+    // }  
 
 
     [Command]//客户端给服务器发送命令
@@ -202,96 +217,96 @@ public class PlayerScript : NetworkBehaviour
         playerColor = color;
         // 【关键修复】这里导致了你断开连接！
         // 因为大厅里 sceneScript 是 null，直接访问会抛出异常，Mirror 就会踢掉这个客户端
-        if (sceneScript != null) 
-        {
-            sceneScript.statusText = $"{playerName} has joined the game!";
-        }
+        // if (sceneScript != null) 
+        // {
+        //     sceneScript.statusText = $"{playerName} has joined the game!";
+        // }
     }
 
 
-    [Command]//客户端给服务器发送命令
-    public void CmdSendPlayerMessage()//发送玩家消息命令
-    {
-        if (sceneScript != null)
-        {
-            sceneScript.statusText = $"{playerName} says hello! {UnityEngine.Random.Range(1,100)}";
-        }
-    }
+    // [Command]//客户端给服务器发送命令
+    // public void CmdSendPlayerMessage()//发送玩家消息命令
+    // {
+    //     if (sceneScript != null)
+    //     {
+    //         sceneScript.statusText = $"{playerName} says hello! {UnityEngine.Random.Range(1,100)}";
+    //     }
+    // }
 
-    [Command]   
-    public void CmdChangeWeapon(int weaponIndex)//更改武器命令
-    {
-        if(0<weaponIndex && weaponIndex<weaponArray.Length)
-        {
-            currentWeaponSynced = weaponIndex;
-            // 【核心修复】服务器必须手动调用一次 Hook，否则服务器不知道当前拿的是什么枪
-            // 第一个参数 oldValue 传 0 即可，不影响逻辑
-            OnWeaponChanged(0, weaponIndex); 
-        }
-    }
-    private void Update()
-    {
+    // [Command]   
+    // public void CmdChangeWeapon(int weaponIndex)//更改武器命令
+    // {
+    //     if(0<weaponIndex && weaponIndex<weaponArray.Length)
+    //     {
+    //         currentWeaponSynced = weaponIndex;
+    //         // 【核心修复】服务器必须手动调用一次 Hook，否则服务器不知道当前拿的是什么枪
+    //         // 第一个参数 oldValue 传 0 即可，不影响逻辑
+    //         OnWeaponChanged(0, weaponIndex); 
+    //     }
+    // }
+    // private void Update()
+    // {
 
-        // 如果不是本地玩家，直接返回
-        if (!isLocalPlayer) return;
+        // // 如果不是本地玩家，直接返回
+        // if (!isLocalPlayer) return;
 
-        // --- 核心逻辑区分 ---
-        // 如果在大厅 (Lobby)
-        if (!IsInGameScene) 
-        {
-            // 在大厅按 C 改名
-            // if (Input.GetKeyDown(KeyCode.C)) ChangePlayerNameAndColor();
-            return; // 禁止移动和射击
-        }
+        // // --- 核心逻辑区分 ---
+        // // 如果在大厅 (Lobby)
+        // if (!IsInGameScene) 
+        // {
+        //     // 在大厅按 C 改名
+        //     // if (Input.GetKeyDown(KeyCode.C)) ChangePlayerNameAndColor();
+        //     return; // 禁止移动和射击
+        // }
         
-        // 如果在游戏 (Game)
-        HandleMovement();
-        HandleShooting();
-    }
+        // // 如果在游戏 (Game)
+        // HandleMovement();
+        // HandleShooting();
+    // }
     // 封装移动逻辑
-    void HandleMovement()
-    {
-        var moveX = Input.GetAxis("Horizontal") * Time.deltaTime * 110.0f;
-        var moveZ = Input.GetAxis("Vertical") * Time.deltaTime * 4.0f;
-        transform.Rotate(0, moveX, 0);
-        transform.Translate(0, 0, moveZ);
-    }
+    // void HandleMovement()
+    // {
+    //     var moveX = Input.GetAxis("Horizontal") * Time.deltaTime * 110.0f;
+    //     var moveZ = Input.GetAxis("Vertical") * Time.deltaTime * 4.0f;
+    //     transform.Rotate(0, moveX, 0);
+    //     transform.Translate(0, 0, moveZ);
+    // }
 
-    // 封装射击逻辑
-    void HandleShooting()
-    {
-        if (Input.GetButtonDown("Fire2"))
-        {
-            int newWeaponIndex = currentWeaponSynced + 1;
-            if (newWeaponIndex >= weaponArray.Length) newWeaponIndex = 1;
-            CmdChangeWeapon(newWeaponIndex);
-        }
+    // // 封装射击逻辑
+    // void HandleShooting()
+    // {
+    //     if (Input.GetButtonDown("Fire2"))
+    //     {
+    //         int newWeaponIndex = currentWeaponSynced + 1;
+    //         if (newWeaponIndex >= weaponArray.Length) newWeaponIndex = 1;
+    //         CmdChangeWeapon(newWeaponIndex);
+    //     }
 
-        if (Input.GetButtonDown("Fire1"))
-        {
-            // UnityEngine.Debug.Log("尝试开火");
-            if(activeWeapon != null && activeWeapon.bulletCount > 0 && Time.time >= cooldownTime)
-            {
-                cooldownTime = Time.time + activeWeapon.cooldownTime;
-                activeWeapon.bulletCount--;
-                if(sceneScript) sceneScript.canvasBulletText.text = activeWeapon.bulletCount.ToString();
-                // UnityEngine.Debug.Log("开火条件满足");
-                CmdShoot();
-            }
-        }
-    }
-    private void Awake()
-    {
-        sceneScript = FindObjectOfType<SceneScript>();
-        //初始化武器状态
-        foreach(var weapon in weaponArray)
-        {
-            if(weapon!=null)                       
-            {
-                weapon.SetActive(false);
-            }
-        }
-    }
+    //     if (Input.GetButtonDown("Fire1"))
+    //     {
+    //         // UnityEngine.Debug.Log("尝试开火");
+    //         if(activeWeapon != null && activeWeapon.bulletCount > 0 && Time.time >= cooldownTime)
+    //         {
+    //             cooldownTime = Time.time + activeWeapon.cooldownTime;
+    //             activeWeapon.bulletCount--;
+    //             if(sceneScript) sceneScript.canvasBulletText.text = activeWeapon.bulletCount.ToString();
+    //             // UnityEngine.Debug.Log("开火条件满足");
+    //             CmdShoot();
+    //         }
+    //     }
+    // }
+    // private void Awake()
+    // {
+        // sceneScript = FindObjectOfType<SceneScript>();
+        // //初始化武器状态
+        // foreach(var weapon in weaponArray)
+        // {
+        //     if(weapon!=null)                       
+        //     {
+        //         weapon.SetActive(false);
+        //     }
+        // }
+    // }
 
     private void ChangePlayerNameAndColor()//更改玩家名字和颜色
     {
@@ -338,13 +353,42 @@ public class PlayerScript : NetworkBehaviour
         if (total > 0 && total == ready)
         {
             UnityEngine.Debug.Log("All players are ready, starting the game...");
+            GameManager.Instance.StartGame();  // 调用 StartGame() 来分配角色和切换状态
             NetworkManager.singleton.ServerChangeScene("MyScene");
         }
         else
         {
             //英文debug
             UnityEngine.Debug.LogWarning("Not all players are ready!");
+        }
     }
+
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        // 如果当前是游戏场景，去 GameManager 领取角色
+        // if (IsInGameScene)
+        // {
+        //     int connId = connectionToClient.connectionId;
+
+        //     // 1. 【新增】恢复名字
+        //     // 注意：必须在打印日志之前恢复，这样日志才会显示正确的名字
+        //     if (GameManager.Instance.pendingNames.TryGetValue(connId, out string savedName))
+        //     {
+        //         playerName = savedName; // 修改 SyncVar，不仅服务器改了，还会自动同步给所有客户端
+        //     }
+
+        //     // 2. 恢复/应用角色 (原有逻辑)
+        //     if (GameManager.Instance.pendingRoles.TryGetValue(connId, out PlayerRole savedRole))
+        //     {
+        //         ServerApplyRole(savedRole); // 这里面打印的日志，现在会显示正确的名字了
+        //     }
+        //     else
+        //     {
+        //         // 如果没找到，给个默认处理
+        //         ServerApplyRole(PlayerRole.Hunter); 
+        //     }
+        // }
     }
     // 1. 当这个玩家对象在客户端被创建时（无论是自己还是别人）
     public override void OnStartClient()
@@ -359,6 +403,11 @@ public class PlayerScript : NetworkBehaviour
             // 告诉大厅：我来了，给我加一行
             lobbyScript.AddPlayerRow(this);
         }
+        // 如果在游戏场景，获取已添加的角色组件
+        // if (IsInGameScene)
+        // {
+        //     playerBase = GetComponent<PlayerBase>();
+        // }
     }
     // 2. 当这个玩家对象在客户端被销毁时（断线或离开）
     public override void OnStopClient()
@@ -429,5 +478,24 @@ public class PlayerScript : NetworkBehaviour
         playerName = newName;  // 因為是 SyncVar，會自動同步 + 觸發 hook
         UnityEngine.Debug.Log($"[Server] Player {connectionToClient.connectionId} changed name to: {newName}");
     }
+    // // 【修改】这个方法不再负责随机，而是负责“应用”指定的角色
+    // [Server]
+    // public void ServerApplyRole(PlayerRole assignedRole)
+    // {
+    //     if (role != PlayerRole.None) return; // 防止重复赋值
 
+    //     role = assignedRole; // 修改 SyncVar，会自动同步给客户端
+
+    //     // 挂载组件逻辑
+    //     if (role == PlayerRole.Witch)
+    //     {
+    //         playerBase = gameObject.AddComponent<WitchPlayer>();
+    //     }
+    //     else if (role == PlayerRole.Hunter)
+    //     {
+    //         playerBase = gameObject.AddComponent<HunterPlayer>();
+    //     }
+
+    //     UnityEngine.Debug.Log($"[Server] Applied role {role} to player {playerName} (connId: {connectionToClient.connectionId})");
+    // }
 }

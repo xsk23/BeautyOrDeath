@@ -20,14 +20,14 @@ public class SceneScript : NetworkBehaviour
         canvasStatusText.text = newText;
     }
     //按钮发送信息
-    public void ButtonSendMessage()
-    {
-        Debug.Log("尝试发送消息");
-        if(playerScript!=null && playerScript.isLocalPlayer)
-        {
-            playerScript.CmdSendPlayerMessage();
-        }
-    }
+    // public void ButtonSendMessage()
+    // {
+    //     Debug.Log("尝试发送消息");
+    //     if(playerScript!=null && playerScript.isLocalPlayer)
+    //     {
+    //         playerScript.CmdSendPlayerMessage();
+    //     }
+    // }
     // 按钮退出房间
     public void ButtonQuitGame()
     {

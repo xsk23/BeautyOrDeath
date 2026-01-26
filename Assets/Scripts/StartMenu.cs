@@ -12,6 +12,10 @@ public class StartMenu : MonoBehaviour
     public TMP_InputField inputFieldPlayerName;   // ← 拖進來
     [Header("UI References")]
     public Button joinButton;          // ← 在 Inspector 拖入 Join 按鈕
+    [Header("Network Selection")]
+    public TMP_Dropdown networkDropdown; // ← 把你的 Dropdown 拖到这里
+    // 硬编码的服务器 IP
+    private const string REMOTE_SERVER_IP = "101.42.183.176";
     private void Start()
     {
         manager = FindObjectOfType<NetworkManager>();
@@ -71,10 +75,24 @@ public class StartMenu : MonoBehaviour
         {
             Debug.LogWarning("PlayerSettings singleton not found!");
         }
-        // 2. 設定連線位址
-        if (networkHUD != null && !string.IsNullOrEmpty(networkHUD.inputFieldIP.text))
+        // // 2. 設定連線位址
+        // if (networkHUD != null && !string.IsNullOrEmpty(networkHUD.inputFieldIP.text))
+        // {
+        //     manager.networkAddress = networkHUD.inputFieldIP.text;
+        // }
+        // --- 2. 设置 IP 地址 ---
+        // 0: Localhost, 1: Server (根据你在 Inspector 里 Dropdown 选项的顺序)
+        if (networkDropdown.value == 0) 
         {
-            manager.networkAddress = networkHUD.inputFieldIP.text;
+            // 选项 0: Localhost
+            manager.networkAddress = "localhost"; 
+            Debug.Log($"[Connect] Mode: Localhost ({manager.networkAddress})");
+        }
+        else 
+        {
+            // 选项 1: Server
+            manager.networkAddress = REMOTE_SERVER_IP;
+            Debug.Log($"[Connect] Mode: Remote Server ({manager.networkAddress})");
         }
 
         Debug.Log($"嘗試連線到 {manager.networkAddress}，名字：{name}");

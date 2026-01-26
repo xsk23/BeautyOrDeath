@@ -120,6 +120,7 @@ GameObject:
   - component: {fileID: 3688871003029401916}
   - component: {fileID: 3474739210238778551}
   - component: {fileID: 7380550633031807442}
+  - component: {fileID: 7043496421248812656}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -284,12 +285,41 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isReady: 0
   nameText: {fileID: 1554480515126112278}
   floatingInfo: {fileID: 5625634381831284002}
   weaponArray:
   - {fileID: 0}
   - {fileID: 8074657428632159682}
   - {fileID: 2685145785009683330}
+  playerName: Unknown
+  role: 0
+--- !u!143 &7043496421248812656
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2245718309650186862}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &2685145785009683330
 GameObject:
   m_ObjectHideFlags: 0
