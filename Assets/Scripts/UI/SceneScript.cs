@@ -12,36 +12,82 @@ public class SceneScript : MonoBehaviour
     public TextMeshProUGUI NameText;//显示名字的文本
     public Slider HealthSlider;//血量滑动条
     public Slider ManaSlider;//法力值滑动条
+    [Header("Pause Menu")]
+    public GameObject pauseMenuPanel; // 【新增】拖入你的暂停菜单Panel
+    private bool isPaused = false; // 记录当前是否暂停
 
+
+    private void Start()
+    {
+        // 游戏开始时隐藏暂停菜单
+        if (pauseMenuPanel != null)
+        {
+            pauseMenuPanel.SetActive(false);
+        }
+    }
+
+    // 【新增】切换暂停菜单状态 (供 GamePlayer 调用)
+    public void TogglePauseMenu()
+    {
+        if (pauseMenuPanel == null) return;
+
+        isPaused = !isPaused;
+        UpdateMenuState();
+    }
+
+    // 【新增】按钮点击：回到游戏
+    public void ButtonResumeGame()
+    {
+        isPaused = false;
+        UpdateMenuState();
+    }
+
+    // 更新菜单显示和鼠标状态的核心逻辑
+    private void UpdateMenuState()
+    {
+        if (pauseMenuPanel != null)
+        {
+            pauseMenuPanel.SetActive(isPaused);
+        }
+
+        if (isPaused)
+        {
+            // 暂停状态：解锁鼠标，显示指针
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        else
+        {
+            // 游戏状态：锁定鼠标，隐藏指针
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
+    }
+
+    // 按钮点击：退出游戏 (原有逻辑微调)
     public void ButtonQuitGame()
     {
+        // 确保鼠标解锁，否则回到大厅可能看不到鼠标
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
         Debug.Log("尝试退出游戏");
-        // 不需要判断 playerScript，直接操作 NetworkManager
         
-        // 情况A: 我是 Host (既是服务器又是客户端)
         if (NetworkServer.active && NetworkClient.isConnected)
         {
-            // Host 退出，服务器关闭，所有人都会掉线，这是正常现象
+            // Host
             NetworkManager.singleton.StopHost();
         }
-        // 情况B: 我只是 Client (普通玩家)
         else if (NetworkClient.isConnected)
         {
-            // Client 退出，只断开我自己，服务器和其他人不受影响
+            // Client
             NetworkManager.singleton.StopClient();
         }
-        // 情况C: 我只是 Server (专用服务器模式，一般UI点不到这里)
         else if (NetworkServer.active)
         {
+            // Server only
             NetworkManager.singleton.StopServer();
         }
-
-        // 注意：不需要手动 SceneManager.LoadScene("StartMenu");
-        // 只要你在 NetworkManager 面板里设置了 "Offline Scene" 为 StartMenu
-        // Mirror 会在断开连接后自动跳转回菜单。
     }
 
 }

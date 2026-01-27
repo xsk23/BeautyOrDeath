@@ -48,10 +48,15 @@ public abstract class GamePlayer : NetworkBehaviour
     // 场景脚本引用
     private SceneScript sceneScript;
     // 鼠标锁定状态
-    private bool isCursorLocked = true;
+    // private bool isCursorLocked = true;
     // 在类字段区域新增或修改
     private bool isFirstPerson = true;           // 默认第一人称
 
+
+    [Header("Chat State")]
+    public bool isChatting = false; // 用于禁止移动
+    // 新增一个变量缓存 ChatUI
+    private GameChatUI gameChatUI;
 
     // 【抽象方法】强制子类必须实现 Attack
     protected abstract void Attack();
@@ -90,6 +95,8 @@ public abstract class GamePlayer : NetworkBehaviour
     {
         // 设置场景 UI 显示角色和名字
         sceneScript = FindObjectOfType<SceneScript>();
+        // 【新增】获取 ChatUI 引用
+        gameChatUI = FindObjectOfType<GameChatUI>();
         if (sceneScript != null)
         {
             // 用子类的类名作为角色名（最简单方式）
@@ -104,6 +111,7 @@ public abstract class GamePlayer : NetworkBehaviour
         xRotation = 0f;
         UpdateCameraView(); // 初始化相机位置
 
+        // 【修改】初始锁定鼠标
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
@@ -119,12 +127,30 @@ public abstract class GamePlayer : NetworkBehaviour
         // 只有本地玩家能控制移动
         if (isLocalPlayer)
         {
-            // 按 Esc 切换鼠标锁定状态
+            // 【新增】如果引用为空，尝试再次查找（防空指针）
+            if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
+            if (gameChatUI == null) gameChatUI = FindObjectOfType<GameChatUI>();
+
+            // 【修改】按下 Esc 呼叫 UI，而不是自己改鼠标状态
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                isCursorLocked = !isCursorLocked;
-                Cursor.lockState = isCursorLocked ? CursorLockMode.Locked : CursorLockMode.None;
-                Cursor.visible = !isCursorLocked;   // 解锁时显示鼠标指针
+                // 优先级 1: 如果聊天正在进行，按 Esc 只是关闭聊天
+                if (isChatting) 
+                {
+                    if (gameChatUI != null) gameChatUI.SetChatState(false);
+                }
+                // 优先级 2: 如果没在聊天，按 Esc 打开暂停菜单
+                else 
+                {
+                    if (sceneScript != null) sceneScript.TogglePauseMenu();
+                }
+                // 只要按了 Esc，本帧剩下的逻辑（移动等）就不跑了
+                return; 
+            }
+            // 1. 如果正在聊天，阻止移动
+            if (isChatting) 
+            {
+                return; 
             }
             // 按 T 切换第一人称 / 第三人称
             if (Input.GetKeyDown(KeyCode.T))
@@ -132,10 +158,17 @@ public abstract class GamePlayer : NetworkBehaviour
                 isFirstPerson = !isFirstPerson;
                 UpdateCameraView();
             }
+
+            // 只有当鼠标被锁定时，才允许旋转视角和移动
+            // 防止在菜单界面鼠标移动导致人物乱转
+            if (Cursor.lockState == CursorLockMode.Locked)
+            {
+                HandleMovement();
+                HandleInput();
+            }
             if (Input.GetKeyDown(KeyCode.K)) CmdTakeDamage(10f); // 测试用
             if (Input.GetKeyDown(KeyCode.J)) CmdUseMana(15f);    // 测试用
-            HandleMovement();
-            HandleInput();         
+      
         }
         if (isServer)
         {
@@ -240,6 +273,61 @@ public abstract class GamePlayer : NetworkBehaviour
         if (isLocalPlayer && sceneScript != null)
         {
             sceneScript.ManaSlider.value = newValue;
+        }
+    }
+    // ---------------------------------------------------
+    // 聊天网络逻辑
+    // ---------------------------------------------------
+    [Command]
+    public void CmdSendGameMessage(string message, ChatChannel channel)
+    {
+        // 简单防刷校验
+        if (string.IsNullOrWhiteSpace(message)) return;
+        if (message.Length > 100) message = message.Substring(0, 100);
+
+        // 调用 Rpc 分发给所有客户端
+        RpcReceiveGameMessage(playerName, message, channel, playerRole);
+    }
+
+    [ClientRpc]
+    private void RpcReceiveGameMessage(string senderName, string msg, ChatChannel channel, PlayerRole senderRole)
+    {
+        // 1. 获取本地玩家
+        GamePlayer localPlayer = null;
+        foreach (var p in AllPlayers)
+        {
+            if (p.isLocalPlayer) { localPlayer = p; break; }
+        }
+        if (localPlayer == null) return;
+
+        // 2. 判断是否应该显示该消息
+        bool shouldShow = false;
+
+        if (channel == ChatChannel.All)
+        {
+            shouldShow = true; // 全局消息谁都看
+        }
+        else if (channel == ChatChannel.Team)
+        {
+            // 只有队友或者是发送者自己才看得到
+            if (localPlayer.playerRole == senderRole || localPlayer.playerName == senderName)
+            {
+                shouldShow = true;
+            }
+        }
+
+        // 3. 显示消息
+        if (shouldShow)
+        {
+            GameChatUI chatUI = FindObjectOfType<GameChatUI>();
+            if (chatUI != null)
+            {
+                // 根据角色决定名字颜色
+                Color roleColor = (senderRole == PlayerRole.Witch) ? Color.magenta : 
+                                  (senderRole == PlayerRole.Hunter) ? Color.cyan : Color.white;
+                
+                chatUI.AppendMessage(senderName, msg, channel, roleColor);
+            }
         }
     }
 }
