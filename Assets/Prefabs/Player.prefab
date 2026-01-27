@@ -287,11 +287,6 @@ MonoBehaviour:
   syncInterval: 0
   isReady: 0
   nameText: {fileID: 1554480515126112278}
-  floatingInfo: {fileID: 5625634381831284002}
-  weaponArray:
-  - {fileID: 0}
-  - {fileID: 8074657428632159682}
-  - {fileID: 2685145785009683330}
   playerName: Unknown
   role: 0
 --- !u!143 &7043496421248812656
@@ -649,8 +644,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+    rgba: 4278190080
+  m_fontColor: {r: 0, g: 0, b: 0, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:

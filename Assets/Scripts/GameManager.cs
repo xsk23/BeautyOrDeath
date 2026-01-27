@@ -76,6 +76,7 @@ public class GameManager : SingletonAutoMono<GameManager>
         if (playerScript != null)
         {
             playerScript.playerName = pName;
+            playerScript.playerRole = role; // 重要：设置角色类型
         }
 
         // 6. 【关键修改】处理 "Replace" 还是 "Add"

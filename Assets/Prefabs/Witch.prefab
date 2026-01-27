@@ -121,6 +121,8 @@ GameObject:
   - component: {fileID: 3474739210238778551}
   - component: {fileID: 7043496421248812656}
   - component: {fileID: 8371733064798862289}
+  - component: {fileID: -9197534069836501081}
+  - component: {fileID: -2896074156759599609}
   m_Layer: 0
   m_Name: Witch
   m_TagString: Untagged
@@ -313,10 +315,44 @@ MonoBehaviour:
   syncInterval: 0
   controller: {fileID: 7043496421248812656}
   nameText: {fileID: 1554480515126112278}
+  highlightEffectPrefab: {fileID: 2245718309650186862, guid: c2e39d8d575835e429855779b8096e6b, type: 3}
   playerName: 
   currentHealth: 100
+  maxHealth: 100
+  manaRegenRate: 5
+  currentMana: 100
+  maxMana: 100
+  playerRole: 0
   moveSpeed: 6
   gravity: -9.81
+  mouseSensitivity: 2
+  crosshairUI: {fileID: 0}
+--- !u!114 &-9197534069836501081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2245718309650186862}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: db296b91de1d68b4ca659f8cd0b2bbe8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetRenderer: {fileID: 1016518035256917677}
+  outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
+--- !u!114 &-2896074156759599609
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2245718309650186862}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7eca71c51bf0ba4468fa0c2ae85e4052, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &2685145785009683330
 GameObject:
   m_ObjectHideFlags: 0
@@ -646,8 +682,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+    rgba: 4278190080
+  m_fontColor: {r: 0, g: 0, b: 0, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
