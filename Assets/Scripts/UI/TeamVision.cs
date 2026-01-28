@@ -58,8 +58,15 @@ public class TeamVision : NetworkBehaviour
                 // 队友显示名字 (绿色)
                 if (targetPlayer.nameText != null)
                 {
-                    targetPlayer.nameText.gameObject.SetActive(true);
-                    targetPlayer.nameText.color = Color.green;
+                    if(targetPlayer.playerRole == PlayerRole.Witch && targetPlayer.isMorphed)
+                    {
+                        targetPlayer.nameText.gameObject.SetActive(false); 
+                    }
+                    else
+                    {
+                        targetPlayer.nameText.gameObject.SetActive(true);
+                        targetPlayer.nameText.color = Color.green;                        
+                    }
                 }
             }
             else
@@ -71,8 +78,8 @@ public class TeamVision : NetworkBehaviour
                 if (targetPlayer.nameText != null)
                 {
                     // 这里选择一直显示名字但标红，或者你可以 .SetActive(false) 隐藏
-                    targetPlayer.nameText.gameObject.SetActive(true); 
-                    targetPlayer.nameText.color = Color.red;
+                    targetPlayer.nameText.gameObject.SetActive(false); 
+                    // targetPlayer.nameText.color = Color.red;
                 }
             }
         }

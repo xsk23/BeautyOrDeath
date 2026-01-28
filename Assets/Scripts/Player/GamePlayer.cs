@@ -33,6 +33,9 @@ public abstract class GamePlayer : NetworkBehaviour
     public float currentMana = 100f;
     public float maxMana = 100f;
 
+    [SyncVar(hook = nameof(OnMorphChanged))] 
+    public bool isMorphed = false; // 当前是否处于变身状态 
+
     [SyncVar] 
     public PlayerRole playerRole = PlayerRole.None;
 
@@ -53,7 +56,7 @@ public abstract class GamePlayer : NetworkBehaviour
     public GameObject crosshairUI;
     private Vector3 velocity;
     // 场景脚本引用
-    private SceneScript sceneScript;
+    public SceneScript sceneScript;
     // 【修改】这里定义一次，子类直接使用，不要在子类重复定义
     [HideInInspector] // 可选：不在Inspector显示，防止乱改
     public string goalText; 
@@ -137,6 +140,7 @@ public abstract class GamePlayer : NetworkBehaviour
             {
                 sceneScript.GoalText.text = goalText;
             }
+            crosshairUI = sceneScript.Crosshair;
         }
         xRotation = 0f;
         UpdateCameraView(); // 初始化相机位置
@@ -152,7 +156,7 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     
 
-    void Update()
+    public virtual void Update()
     {
         // 只有本地玩家能控制移动
         if (isLocalPlayer)
@@ -231,111 +235,90 @@ public abstract class GamePlayer : NetworkBehaviour
         }
     }
 
-
-    // 【核心修改】HandleMovement 方法
     protected virtual void HandleMovement()
     {
-        // ================================================================
-        // 1. 状态检测
-        // ================================================================
-        bool isInputLocked = false;
-        if (isChatting) isInputLocked = true;
-        if (sceneScript != null && Cursor.lockState != CursorLockMode.Locked) 
-        {
-            isInputLocked = true;
-        }
-
-        // 自定义地面检测
-        bool isGroundedCustom = Physics.Raycast(transform.position, Vector3.down, groundCheckDistance);
-        Debug.DrawRay(transform.position, Vector3.down * groundCheckDistance, isGroundedCustom ? Color.green : Color.red);
-
-        // ================================================================
-        // 2. 获取输入方向
-        // ================================================================
-        float x = 0f;
-        float z = 0f;
-
-        if (!isInputLocked)
-        {
-            x = Input.GetAxis("Horizontal");
-            z = Input.GetAxis("Vertical");
-        }
-
-        // 计算目标移动方向（本地坐标转世界坐标）
-        Vector3 inputDir = transform.right * x + transform.forward * z;
+        // 1. 更加精准的状态检测
+        // 射线起点稍微高一点（从膝盖位置发射），长度稍微长一点
+        float rayLength = (controller.height * 0.5f) + 0.3f; 
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f; 
+        bool isHit = Physics.Raycast(rayOrigin, Vector3.down, rayLength, groundLayer);
         
-        // 归一化输入，防止斜向移动速度变快
+        // 结合 Controller 的状态，防止在斜坡上判定丢失
+        bool actuallyOnGround = isHit || controller.isGrounded;
+
+        // 2. 输入锁定
+        bool isInputLocked = isChatting || (sceneScript != null && Cursor.lockState != CursorLockMode.Locked);
+
+        // 3. 获取输入方向
+        float x = 0f; float z = 0f;
+        if (!isInputLocked) { x = Input.GetAxis("Horizontal"); z = Input.GetAxis("Vertical"); }
+        Vector3 inputDir = (transform.right * x + transform.forward * z);
         if (inputDir.magnitude > 1f) inputDir.Normalize();
 
-        // ================================================================
-        // 3. 计算速度 (核心惯性逻辑)
-        // ================================================================
+        // 4. 计算目标水平速度
+        Vector3 targetVelocity = inputDir * moveSpeed;
+
+        // 5. 【核心修改】找回惯性的速度计算
+        // 这里的参数决定了惯性的强弱：
+        // groundAccel: 地面启动速度 (越大启动越快)
+        // groundDecel: 地面摩擦力 (越大停得越快，设置小一点就有溜冰感)
+        float groundAccel = 8f; 
+        float groundDecel = 12f; 
         
-        if (isGroundedCustom)
+        // 选择当前的加速度
+        float currentAccel;
+        if (actuallyOnGround)
         {
-            // --- 地面逻辑 ---
-            
-            // 地面上：速度直接跟随输入 (无惯性/反应快)
-            velocity.x = inputDir.x * moveSpeed;
-            velocity.z = inputDir.z * moveSpeed;
-
-            // 施加一个向下的力，确保贴地
-            if (velocity.y < 0) velocity.y = -2f;
-
-            // 跳跃
-            if (!isInputLocked && Input.GetButtonDown("Jump"))
-            {
-                velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
-                // 这里不需要改 X/Z，跳起的瞬间会保留上面的 velocity.x/z，这就是惯性来源
-            }
+            // 如果有输入，用加速度；没输入（想停下来），用摩擦力
+            currentAccel = (inputDir.magnitude > 0) ? groundAccel : groundDecel;
         }
         else
         {
-            // --- 空中逻辑 ---
-            
-            // 空中：不要直接覆盖 velocity.x/z，而是基于惯性进行微调
-            // 目标水平速度
-            Vector3 targetHorizontalVelocity = inputDir * moveSpeed;
-            
-            // 当前水平速度
-            Vector3 currentHorizontalVelocity = new Vector3(velocity.x, 0, velocity.z);
+            // 空中加速度（airControl），通常很小，产生巨大的惯性
+            currentAccel = airControl; 
+        }
 
-            // 使用 MoveTowards 平滑过渡：
-            // 如果松开按键(target=0)，速度不会瞬间变0，而是受 airControl 限制慢慢变0
-            // 这就产生了惯性
-            Vector3 newHorizontalVelocity = Vector3.MoveTowards(
-                currentHorizontalVelocity, 
-                targetHorizontalVelocity, 
-                airControl * Time.deltaTime // 变化率
-            );
+        // 平滑改变速度 (不再乘以 10f，让变化过程肉眼可见)
+        velocity.x = Mathf.MoveTowards(velocity.x, targetVelocity.x, currentAccel * Time.deltaTime * moveSpeed);
+        velocity.z = Mathf.MoveTowards(velocity.z, targetVelocity.z, currentAccel * Time.deltaTime * moveSpeed);
 
-            velocity.x = newHorizontalVelocity.x;
-            velocity.z = newHorizontalVelocity.z;
-
-            // 应用重力
+        // 6. 重力处理 (修复出生漂浮)
+        if (actuallyOnGround && velocity.y < 0)
+        {
+            // 已经在地面时，保持一个小小的下压力
+            velocity.y = -2f; 
+        }
+        else
+        {
+            // 只要不在地面，重力就会一直累加，确保哪怕出生在 0.1米高度也会掉下去
             velocity.y += gravity * Time.deltaTime;
         }
 
-        // ================================================================
-        // 4. 执行移动 (合并了一次调用)
-        // ================================================================
+        // 7. 跳跃逻辑
+        if (actuallyOnGround && !isInputLocked && Input.GetButtonDown("Jump"))
+        {
+            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            actuallyOnGround = false; // 瞬间起跳，脱离地面判定
+        }
+
+        // 8. 执行最终移动
         controller.Move(velocity * Time.deltaTime);
 
-        // ================================================================
-        // 5. 视角旋转
-        // ================================================================
+        // 9. 旋转视角 (保持不变)
         if (!isInputLocked)
         {
             float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * 100f * Time.deltaTime;
             float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * 100f * Time.deltaTime;
-
             xRotation -= mouseY;
             xRotation = Mathf.Clamp(xRotation, -80f, 80f);
             Camera.main.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
             transform.Rotate(Vector3.up * mouseX);
         }
+
+        // 调试射线：绿色代表判定为地面，红色代表空中
+        Debug.DrawRay(rayOrigin, Vector3.down * rayLength, actuallyOnGround ? Color.green : Color.red);
     }
-    protected virtual void HandleInput()
+    public virtual void HandleInput()
     {
         if (Input.GetMouseButtonDown(0)) CmdAttack();
     }
@@ -419,6 +402,14 @@ public abstract class GamePlayer : NetworkBehaviour
             sceneScript.ManaSlider.value = newValue;
         }
     }
+
+    // 增加钩子，当状态改变时通知视觉系统
+    void OnMorphChanged(bool oldVal, bool newVal)
+    {
+        // 强制调用 TeamVision 的刷新逻辑（如果有必要）
+        // 或者仅仅依靠 TeamVision 的协程检测
+    }
+
     // ---------------------------------------------------
     // 聊天网络逻辑
     // ---------------------------------------------------

@@ -17,12 +17,19 @@ public class SceneScript : MonoBehaviour
     private bool isPaused = false; // 记录当前是否暂停
     public TextMeshProUGUI GameTime;//显示游戏时间的文本
     public TextMeshProUGUI GoalText;//显示目标的文本
+    public GameObject Crosshair;//准心
+    [Header("Witch UI")]
+    public Image revertProgressBar; // 拖入刚才创建的 Image
     private void Start()
     {
         // 游戏开始时隐藏暂停菜单
         if (pauseMenuPanel != null)
         {
             pauseMenuPanel.SetActive(false);
+        }
+        if(revertProgressBar != null)
+        {
+            revertProgressBar.gameObject.SetActive(false);
         }
     }
 
@@ -32,7 +39,21 @@ public class SceneScript : MonoBehaviour
         UpdateGameTimer();
     }
 
-        // 更新时间显示的逻辑
+    public void UpdateRevertUI(float progress, bool isActive)
+    {
+        if (revertProgressBar == null) return;
+
+        // 设置显示或隐藏
+        revertProgressBar.gameObject.SetActive(isActive);
+        
+        // 设置进度
+        if (isActive)
+        {
+            revertProgressBar.fillAmount = progress;
+        }
+    }
+
+    // 更新时间显示的逻辑
     private void UpdateGameTimer()
     {
         // 确保 UI 组件存在，且 GameManager 单例存在

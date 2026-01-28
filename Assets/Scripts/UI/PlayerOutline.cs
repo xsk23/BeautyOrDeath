@@ -33,9 +33,12 @@ public class PlayerOutline : MonoBehaviour
     {
         if (targetRenderer == null || outlineInstance == null) return;
 
-        // 性能优化：如果状态和颜色没变，就不执行昂贵的材质数组操作
+        // 检查高亮材质是否还在（防止被 WitchPlayer.ApplyMorph 覆盖掉）
+        bool materialLost = active && !targetRenderer.sharedMaterials.Contains(outlineInstance);
         bool colorChanged = (active && outlineInstance.GetColor("_OutlineColor") != color);
-        if (isVisible == active && !colorChanged) return;
+
+        // 如果状态、颜色都没变，且材质也没丢，才返回
+        if (isVisible == active && !colorChanged && !materialLost) return;
 
         isVisible = active;
 
@@ -47,6 +50,18 @@ public class PlayerOutline : MonoBehaviour
         else
         {
             RemoveMaterial(outlineInstance);
+        }
+    }
+    // 建议增加一个方法，允许 WitchPlayer 在变身后手动调用
+    public void RefreshRenderer(Renderer newRenderer)
+    {
+        // 如果变身换了 GameObject，需要更新引用
+        if(newRenderer != null) targetRenderer = newRenderer;
+        
+        // 强制重新触发一次材质添加
+        if (isVisible) 
+        {
+            AddMaterial(outlineInstance);
         }
     }
 
