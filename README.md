@@ -1,46 +1,101 @@
-# BeautyOrDeath
+# BeautyOrDeath 🌲🧙‍♀️🔫
 
-🎮 **2526 软设比赛**  
-基于 Unity + Mirror 的多人联机非对称对抗游戏。
+🎮 **2025-2026 软件设计比赛参赛作品**  
+基于 **Unity 2022** + **Mirror** 框架开发的多人联机非对称对抗游戏。
 
 ## 📖 项目简介
-本项目是一个基于局域网/广域网的多人联机游戏。玩家在 **LobbyRoom (大厅)** 进行集结、聊天和准备，随后跳转至游戏场景并随机分配身份（女巫或猎人）进行对抗。
+本项目是一个支持局域网/广域网联机的多人对抗游戏。游戏流程分为 **Lobby (大厅)** 和 **Game (对局)** 两个阶段。玩家在大厅集结、交流并准备，房主开启游戏后，系统会自动倒计时并跳转至游戏场景，随机分配 **Witch (女巫)** 或 **Hunter (猎人)** 身份进行阵营对抗。
+
+---
+
+## ✨ 核心功能 (Features)
+
+### 1. 完善的大厅系统 (Lobby System)
+*   **动态列表**: 实时显示玩家加入/离开，支持显示玩家准备状态 (Ready/Waiting)。
+*   **个性化设置**: 玩家可在列表中直接修改昵称 (支持行内编辑)，改名后全网同步。
+*   **大厅聊天**: 集成滚动聊天框，支持所有玩家在大厅内公屏交流。
+*   **游戏启动流程**:
+    *   仅当所有玩家都准备 (Ready) 后，房主才可点击开始。
+    *   点击开始后触发 **5秒全服倒计时**，随后自动切换场景。
+
+### 2. 游戏对局 (Gameplay)
+*   **身份分配**:
+    *   **Witch (女巫)**: 移动速度较慢，法力回复一般。目标：寻找古树并集结。
+    *   **Hunter (猎人)**: 移动速度快，法力回复快。目标：在时间耗尽前猎杀女巫。
+*   **中途加入 (Late Join)**: 支持游戏开始后新玩家加入，新加入者将自动分配为 **Hunter** 身份。
+*   **全局倒计时**: 游戏限时 **5分钟 (300秒)**，时间由服务器权威管理并同步至客户端。
+*   **双视角切换**: 支持 **第一人称 (FPS)** 和 **第三人称 (TPS)** 视角的动态切换 (按 `T` 键)。
+
+### 3. 社交与交互 (Interaction)
+*   **局内聊天系统**:
+    *   按 `/` 呼出聊天框，按 `ESC` 关闭。
+    *   支持 **[ALL] 全局频道** 和 **[TEAM] 阵营频道** 切换 (按 `Tab`)。
+    *   聊天框支持背景透明度动态调整与滚动条自动隐藏。
+*   **视觉辅助 (Team Vision)**:
+    *   基于 Shader 的 **队友轮廓高亮 (Outline)** 系统。
+    *   支持透视效果，队友之间可隔墙看到高亮轮廓 (女巫紫色，猎人青色)。
+
+---
 
 ## 🏗️ 核心架构 (Architecture)
 
-本项目采用 **大厅/游戏分离 (Lobby-Game Separation)** 的架构设计，以确保网络同步的稳定性和逻辑的解耦。
+本项目采用 **大厅/游戏分离 (Lobby-Game Separation)** 架构，结合持久化管理器设计。
 
-### 1. 角色系统 (Class Hierarchy)
-为了区分大厅交互与游戏内战斗逻辑，我们在不同场景使用了不同的玩家对象：
+### 1. 场景与生命周期
+*   **LobbyRoom**: 挂载 `PlayerScript`。处理 UI 交互、准备逻辑、名字同步。
+*   **GameScene**: 挂载 `GamePlayer` 及其子类。处理物理移动、技能、战斗计算。
 
-*   **大厅阶段 (Lobby Phase):**
-    *   `PlayerScript`: 负责大厅内的交互逻辑。
-        *   功能：玩家准备 (Ready)、更改名字、大厅聊天、同步房间状态。
-        *   生命周期：仅存在于 `LobbyRoom` 场景。
+### 2. 核心类设计 (Class Hierarchy)
 
-*   **游戏阶段 (Game Phase):**
-    *   `GamePlayer` **(Abstract Base Class)**: 游戏内角色的抽象基类。
-        *   功能：核心移动控制 (CharacterController)、生命值同步、通用攻击接口、摄像机控制。
-    *   `WitchPlayer` (继承自 `GamePlayer`):
-        *   职业：**女巫**
-        *   技能：投掷毒药 (Throw Poison)
-    *   `HunterPlayer` (继承自 `GamePlayer`):
-        *   职业：**猎人**
-        *   技能：射击 (Shoot Gun)
+#### 🎮 玩家对象
+| 类名 | 继承关系 | 职责 |
+| :--- | :--- | :--- |
+| **PlayerScript** | NetworkBehaviour | **[大厅专用]** 处理准备状态、改名请求、大厅聊天。 |
+| **GamePlayer** | NetworkBehaviour (Abstract) | **[游戏专用]** 抽象基类。处理 CharacterController 移动、HP/MP 同步、视角控制、聊天输入拦截。 |
+| **WitchPlayer** | : GamePlayer | 实现女巫特有的 `Attack` 逻辑与属性配置。 |
+| **HunterPlayer** | : GamePlayer | 实现猎人特有的 `Attack` 逻辑与属性配置。 |
 
-### 2. 核心管理器
-*   **GameManager**: 单例管理器。负责在场景切换间隙保存玩家数据（名字、预分配的角色），并在进入游戏场景后负责**角色生成与替换 (Spawn & Replace)**。
-*   **MyNetworkManager**: 扩展自 Mirror 的 NetworkManager，处理跨场景的逻辑判断和断线重连。
+#### ⚙️ 管理器
+*   **GameManager (NetworkBehaviour)**: 
+    *   **全生命周期管理**: 由 `NetworkManager` 在服务器启动时生成，跨场景不销毁。
+    *   **倒计时**: 维护 `gameTimer` SyncVar。
+    *   **角色生成**: 负责在 `SpawnPlayerForConnection` 中根据 `pendingRoles` 生成对应的 Prefab，并处理中途加入的兜底逻辑。
+*   **MyNetworkManager**: 
+    *   扩展自 Mirror，负责连接流程控制。
+    *   判断当前场景，决定是生成大厅玩家还是游戏角色。
+*   **SceneScript**: 
+    *   **[客户端 UI]** 负责游戏内的 HUD 更新 (血条、蓝条、倒计时、目标文本) 及暂停菜单逻辑。
 
-## 🛠️ 技术栈
-*   **引擎**: Unity 2022.3.55f1c1
-*   **网络框架**: Mirror (Networking)
-*   **UI**: UGUI + TextMeshPro (TMP)
+---
+
+## ⌨️ 操作指南 (Controls)
+
+| 按键 | 功能 |
+| :--- | :--- |
+| **W / A / S / D** | 角色移动 |
+| **Mouse Move** | 旋转视角 |
+| **LMB (左键)** | 攻击 / 释放技能 |
+| **T** | 切换 第一人称 / 第三人称 视角 |
+| **/** | 打开聊天框 |
+| **Tab** | (聊天框打开时) 切换 全局/队伍 频道 |
+| **ESC** | 关闭聊天框 / 打开暂停菜单 |
+| **K / J** | (测试用) 扣血 / 扣蓝 |
+
+---
 
 
-## 📝 开发日志
-*   [x] 完成大厅聊天与准备系统。
-*   [x] 完成跨场景角色数据保留。
-*   [x] 进入游戏时女巫与猎人的职业分配。
-*   [x] Linux Dedicated Server 部署支持。
+## 🚀 部署与运行
 
+1.  **环境要求**: Unity 2022.3.55f1c1 或更高版本。
+2.  **插件**: Mirror Networking (需从 Package Manager 或 Asset Store 导入)。
+3.  **启动**:
+    *   打开 `StartMenu` 场景。
+    *   编辑器中运行可作为 Host 或 Client。
+    *   打包后支持 Headless Mode 部署 Linux Dedicated Server。
+
+---
+
+## 📝 待办事项 (TODO)
+*   [ ] 完善具体的攻击判定 (射线检测/碰撞体)。
+*   [ ] 添加角色动画状态机 (Animator)。
+*   [ ] 增加游戏结算面板 (Win/Loss)。
