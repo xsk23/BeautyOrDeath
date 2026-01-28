@@ -39,6 +39,13 @@ public abstract class GamePlayer : NetworkBehaviour
     [Header("移动参数")]
     public float moveSpeed = 6f;
     public float gravity = -9.81f;
+    [Header("跳跃参数")]
+    public float jumpHeight = 2.0f; // 跳跃高度 (建议改小一点，50太高了会飞出地图)
+    public float groundCheckDistance = 1.1f; // 射线长度：胶囊体高度的一半(1.0) + 缓冲(0.1)
+    public LayerMask groundLayer; // 地面层级，防止检测到自己
+    // 【新增】空中控制力 (0 = 完全无法在空中变向，10 = 空中变向也很灵活)
+    // 建议设置为 1.0f 到 5.0f 之间，既有惯性又能微调
+    public float airControl = 2.0f; 
     [Header("Mouse Look")]
     public float mouseSensitivity = 2f;
     float xRotation = 0f;
@@ -182,13 +189,16 @@ public abstract class GamePlayer : NetworkBehaviour
                 UpdateCameraView();
             }
 
-            // 只有当鼠标被锁定时，才允许旋转视角和移动
-            // 防止在菜单界面鼠标移动导致人物乱转
+            // 【修改】始终调用 HandleMovement，在方法内部判断是否处理输入
+            // 这样即使 Cursor 解锁了，重力代码依然会运行
+            HandleMovement();
+
+            // 攻击输入还是只有锁定时才允许
             if (Cursor.lockState == CursorLockMode.Locked)
             {
-                HandleMovement();
                 HandleInput();
             }
+            // 测试用输入
             if (Input.GetKeyDown(KeyCode.K)) CmdTakeDamage(10f); // 测试用
             if (Input.GetKeyDown(KeyCode.J)) CmdUseMana(15f);    // 测试用
       
@@ -222,27 +232,109 @@ public abstract class GamePlayer : NetworkBehaviour
     }
 
 
+    // 【核心修改】HandleMovement 方法
     protected virtual void HandleMovement()
     {
-        float x = Input.GetAxis("Horizontal");
-        float z = Input.GetAxis("Vertical");
-        Vector3 move = transform.right * x + transform.forward * z;
-        controller.Move(move * moveSpeed * Time.deltaTime);
+        // ================================================================
+        // 1. 状态检测
+        // ================================================================
+        bool isInputLocked = false;
+        if (isChatting) isInputLocked = true;
+        if (sceneScript != null && Cursor.lockState != CursorLockMode.Locked) 
+        {
+            isInputLocked = true;
+        }
 
-        if (controller.isGrounded && velocity.y < 0) velocity.y = -2f;
-        velocity.y += gravity * Time.deltaTime;
+        // 自定义地面检测
+        bool isGroundedCustom = Physics.Raycast(transform.position, Vector3.down, groundCheckDistance);
+        Debug.DrawRay(transform.position, Vector3.down * groundCheckDistance, isGroundedCustom ? Color.green : Color.red);
+
+        // ================================================================
+        // 2. 获取输入方向
+        // ================================================================
+        float x = 0f;
+        float z = 0f;
+
+        if (!isInputLocked)
+        {
+            x = Input.GetAxis("Horizontal");
+            z = Input.GetAxis("Vertical");
+        }
+
+        // 计算目标移动方向（本地坐标转世界坐标）
+        Vector3 inputDir = transform.right * x + transform.forward * z;
+        
+        // 归一化输入，防止斜向移动速度变快
+        if (inputDir.magnitude > 1f) inputDir.Normalize();
+
+        // ================================================================
+        // 3. 计算速度 (核心惯性逻辑)
+        // ================================================================
+        
+        if (isGroundedCustom)
+        {
+            // --- 地面逻辑 ---
+            
+            // 地面上：速度直接跟随输入 (无惯性/反应快)
+            velocity.x = inputDir.x * moveSpeed;
+            velocity.z = inputDir.z * moveSpeed;
+
+            // 施加一个向下的力，确保贴地
+            if (velocity.y < 0) velocity.y = -2f;
+
+            // 跳跃
+            if (!isInputLocked && Input.GetButtonDown("Jump"))
+            {
+                velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+                // 这里不需要改 X/Z，跳起的瞬间会保留上面的 velocity.x/z，这就是惯性来源
+            }
+        }
+        else
+        {
+            // --- 空中逻辑 ---
+            
+            // 空中：不要直接覆盖 velocity.x/z，而是基于惯性进行微调
+            // 目标水平速度
+            Vector3 targetHorizontalVelocity = inputDir * moveSpeed;
+            
+            // 当前水平速度
+            Vector3 currentHorizontalVelocity = new Vector3(velocity.x, 0, velocity.z);
+
+            // 使用 MoveTowards 平滑过渡：
+            // 如果松开按键(target=0)，速度不会瞬间变0，而是受 airControl 限制慢慢变0
+            // 这就产生了惯性
+            Vector3 newHorizontalVelocity = Vector3.MoveTowards(
+                currentHorizontalVelocity, 
+                targetHorizontalVelocity, 
+                airControl * Time.deltaTime // 变化率
+            );
+
+            velocity.x = newHorizontalVelocity.x;
+            velocity.z = newHorizontalVelocity.z;
+
+            // 应用重力
+            velocity.y += gravity * Time.deltaTime;
+        }
+
+        // ================================================================
+        // 4. 执行移动 (合并了一次调用)
+        // ================================================================
         controller.Move(velocity * Time.deltaTime);
 
-        // 鼠标视角
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * 100f * Time.deltaTime;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * 100f * Time.deltaTime;
+        // ================================================================
+        // 5. 视角旋转
+        // ================================================================
+        if (!isInputLocked)
+        {
+            float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * 100f * Time.deltaTime;
+            float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * 100f * Time.deltaTime;
 
-        xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -80f, 80f);
-        Camera.main.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        transform.Rotate(Vector3.up * mouseX);
+            xRotation -= mouseY;
+            xRotation = Mathf.Clamp(xRotation, -80f, 80f);
+            Camera.main.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+            transform.Rotate(Vector3.up * mouseX);
+        }
     }
-
     protected virtual void HandleInput()
     {
         if (Input.GetMouseButtonDown(0)) CmdAttack();

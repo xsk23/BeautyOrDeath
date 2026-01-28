@@ -140,8 +140,8 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 1.466, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 8988431923732272850}
   - {fileID: 3844073362534709672}
@@ -215,7 +215,7 @@ CapsuleCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 2
   m_Radius: 0.5
   m_Height: 2
@@ -295,7 +295,7 @@ CharacterController:
   m_Radius: 0.5
   m_SlopeLimit: 45
   m_StepOffset: 0.3
-  m_SkinWidth: 0.08
+  m_SkinWidth: 0.0001
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &8371733064798862289
@@ -315,7 +315,6 @@ MonoBehaviour:
   syncInterval: 0
   controller: {fileID: 7043496421248812656}
   nameText: {fileID: 1554480515126112278}
-  highlightEffectPrefab: {fileID: 2245718309650186862, guid: c2e39d8d575835e429855779b8096e6b, type: 3}
   playerName: 
   currentHealth: 100
   maxHealth: 100
@@ -325,8 +324,11 @@ MonoBehaviour:
   playerRole: 0
   moveSpeed: 6
   gravity: -9.81
+  jumpHeight: 1.5
   mouseSensitivity: 2
   crosshairUI: {fileID: 0}
+  goalText: 
+  isChatting: 0
 --- !u!114 &-9197534069836501081
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -353,6 +355,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7eca71c51bf0ba4468fa0c2ae85e4052, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  witchColor: {r: 1, g: 0, b: 1, a: 1}
+  hunterColor: {r: 0, g: 1, b: 1, a: 1}
+  enemyColor: {r: 1, g: 0, b: 0, a: 1}
+  checkInterval: 0.5
 --- !u!1 &2685145785009683330
 GameObject:
   m_ObjectHideFlags: 0
