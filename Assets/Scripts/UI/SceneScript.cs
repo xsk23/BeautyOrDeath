@@ -15,14 +15,50 @@ public class SceneScript : MonoBehaviour
     [Header("Pause Menu")]
     public GameObject pauseMenuPanel; // 【新增】拖入你的暂停菜单Panel
     private bool isPaused = false; // 记录当前是否暂停
-
-
+    public TextMeshProUGUI GameTime;//显示游戏时间的文本
+    public TextMeshProUGUI GoalText;//显示目标的文本
     private void Start()
     {
         // 游戏开始时隐藏暂停菜单
         if (pauseMenuPanel != null)
         {
             pauseMenuPanel.SetActive(false);
+        }
+    }
+
+    private void Update()
+    {
+        // 【新增】更新倒计时显示
+        UpdateGameTimer();
+    }
+
+        // 更新时间显示的逻辑
+    private void UpdateGameTimer()
+    {
+        // 确保 UI 组件存在，且 GameManager 单例存在
+        if (GameTime != null && GameManager.Instance != null)
+        {
+            float timeLeft = GameManager.Instance.gameTimer;
+            
+            // 防止显示负数
+            if (timeLeft < 0) timeLeft = 0;
+
+            // 计算分和秒
+            int minutes = Mathf.FloorToInt(timeLeft / 60);
+            int seconds = Mathf.FloorToInt(timeLeft % 60);
+
+            // 格式化字符串为 05:00 格式
+            GameTime.text = string.Format("{0:00}:{1:00}", minutes, seconds);
+            
+            // 可选：时间少于30秒变红
+            if (timeLeft <= 30 && timeLeft > 0)
+            {
+                GameTime.color = Color.red;
+            }
+            else
+            {
+                GameTime.color = Color.white;
+            }
         }
     }
 

@@ -15,6 +15,31 @@ public class MyNetworkManager : NetworkManager
     public GameObject witchPrefab;
     public GameObject hunterPrefab;
 
+    [Header("System Prefabs")]
+    // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
+    public GameObject gameManagerPrefab; 
+
+    // ---------------------------------------------------------
+    // 服务器启动时生成 GameManager
+    // ---------------------------------------------------------
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+
+        // 检查是否已经存在 (防止重复生成)
+        if (GameManager.Instance == null && gameManagerPrefab != null)
+        {
+            GameObject gm = Instantiate(gameManagerPrefab);
+            
+            // 【关键】让它在场景切换时不销毁
+            DontDestroyOnLoad(gm);
+            
+            // 在网络上生成
+            NetworkServer.Spawn(gm);
+        }
+    }
+
+
     // ---------------------------------------------------------
     // 场景切换完成后的回调
     // ---------------------------------------------------------
@@ -32,27 +57,6 @@ public class MyNetworkManager : NetworkManager
         {
             Debug.Log("[Mirror] Game Scene Loaded on Server. Waiting for clients to join...");
         }
-
-        // Debug.Log($"[Mirror] Scene Check -> Active: '{activeSceneName}', Config(Clean): '{configNameClean}'");
-
-        // // 3. 进行对比 (使用处理过的名字)
-        // if (activeSceneName == configNameClean)
-        // {
-        //     Debug.Log("[Mirror] Game Scene Match! Spawning Players...");
-            
-        //     if (GameManager.Instance != null)
-        //     {
-        //         GameManager.Instance.SpawnGamePlayers();
-        //     }
-        //     else
-        //     {
-        //         Debug.LogError("[Mirror] GameManager Instance is NULL!");
-        //     }
-        // }
-        // else
-        // {
-        //     Debug.LogWarning($"[Mirror] Scene mismatch. Config wants '{configNameClean}', but active is '{activeSceneName}'");
-        // }
         
         base.OnServerSceneChanged(sceneName);
     }

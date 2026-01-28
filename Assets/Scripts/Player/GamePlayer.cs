@@ -47,8 +47,9 @@ public abstract class GamePlayer : NetworkBehaviour
     private Vector3 velocity;
     // 场景脚本引用
     private SceneScript sceneScript;
-    // 鼠标锁定状态
-    // private bool isCursorLocked = true;
+    // 【修改】这里定义一次，子类直接使用，不要在子类重复定义
+    [HideInInspector] // 可选：不在Inspector显示，防止乱改
+    public string goalText; 
     // 在类字段区域新增或修改
     private bool isFirstPerson = true;           // 默认第一人称
 
@@ -93,6 +94,22 @@ public abstract class GamePlayer : NetworkBehaviour
     // 当本地玩家控制这个物体时调用
     public override void OnStartLocalPlayer()
     {
+
+        // ---------------------------------------------------------
+        // 【新增】名字同步逻辑 (仿照 PlayerScript)
+        // ---------------------------------------------------------
+        if (PlayerSettings.Instance != null && !string.IsNullOrWhiteSpace(PlayerSettings.Instance.PlayerName))
+        {
+            // 如果本地存了名字，立刻告诉服务器覆盖掉那个默认的 "Hunter (Late)"
+            CmdUpdateName(PlayerSettings.Instance.PlayerName);
+        }
+        else
+        {
+            // 如果没存名字（极其罕见），就告诉服务器用个随机名或者保持默认
+            // CmdUpdateName("Player " + Random.Range(100, 999));
+        }
+        // ---------------------------------------------------------
+
         // 设置场景 UI 显示角色和名字
         sceneScript = FindObjectOfType<SceneScript>();
         // 【新增】获取 ChatUI 引用
@@ -107,6 +124,12 @@ public abstract class GamePlayer : NetworkBehaviour
             sceneScript.HealthSlider.value = currentHealth;
             sceneScript.ManaSlider.maxValue = maxMana;
             sceneScript.ManaSlider.value = currentMana;
+            // 【核心修改】直接使用 goalText，不需要判断类型转换了
+            // 因为 goalText 已经在子类的 Awake/Start 中被赋值了
+            if (sceneScript.GoalText != null)
+            {
+                sceneScript.GoalText.text = goalText;
+            }
         }
         xRotation = 0f;
         UpdateCameraView(); // 初始化相机位置
@@ -230,6 +253,21 @@ public abstract class GamePlayer : NetworkBehaviour
     // 网络同步与命令
     // --------------------------------------------------------
 
+    // 【新增】命令：更新名字
+    [Command]
+    public void CmdUpdateName(string newName)
+    {
+        // 简单的验证
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        if (newName.Length > 16) newName = newName.Substring(0, 16);
+        
+        // 修改 SyncVar，自动同步给所有人
+        playerName = newName;
+        
+        // 服务器日志
+        Debug.Log($"[Server] Player {connectionToClient.connectionId} updated name to: {newName}");
+    }
+
     [Command] public void CmdAttack() => Attack();
 
     [Command]
@@ -253,9 +291,23 @@ public abstract class GamePlayer : NetworkBehaviour
     }
 
 
+    // Hook 函数：当名字在服务器改变并同步到客户端时调用
     void OnNameChanged(string oldName, string newName)
     {
+        // 1. 更新头顶的 3D 文字 (给别人看的)
         if (nameText != null) nameText.text = newName;
+
+        // 2. 【核心修复】如果这是“我自己”，顺便更新左上角的 UI (给自己看的)
+        if (isLocalPlayer)
+        {
+            // 确保引用存在
+            if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
+            
+            if (sceneScript != null)
+            {
+                sceneScript.NameText.text = $"Name: {newName}";
+            }
+        }
     }
     void OnHealthChanged(float oldValue, float newValue)
     {

@@ -12,10 +12,16 @@ public class LobbyScript : NetworkBehaviour
     // [SerializeField] private Button btnReady;       // 准备按钮
     [SerializeField] private Button btnStartGame;   // 开始游戏按钮（仅房主可见）
     // [SerializeField] private Text txtReadyBtn; // 准备按钮上的文字
+    [SerializeField] public TextMeshProUGUI roomStatusText; // 显示房间状态的文本
 
     // 状态同步
     [SyncVar(hook = nameof(OnPlayerCountChanged))] private int playerCount = 0;
     [SyncVar(hook = nameof(OnReadyCountChanged))] private int readyCount = 0;
+
+    // 【新增】同步倒计时状态
+    [SyncVar] private bool isGameStarting = false; 
+    [SyncVar] private int countdownDisplay = 5;
+
 
     private bool myReadyState = false;
     [Header("UI List Settings")]
@@ -24,6 +30,32 @@ public class LobbyScript : NetworkBehaviour
     // 用字典来记录：哪个 PlayerScript 对应 UI 里的哪一行
     private Dictionary<PlayerScript, PlayerRowUI> playerRows = new Dictionary<PlayerScript, PlayerRowUI>();
     
+
+    private void Start()
+    {
+        // 绑定按钮事件
+        if(btnStartGame) btnStartGame.onClick.AddListener(OnClickStartGame);
+        // 默认隐藏开始按钮，稍后判断权限开启
+        if(btnStartGame) btnStartGame.gameObject.SetActive(false);
+        
+        foreach (var p in FindObjectsOfType<PlayerScript>())
+        {
+            AddPlayerRow(p);
+        }
+    }
+
+    private void Update()
+    {
+        // 1. 服务器统计人数
+        if (isServer)
+        {
+            UpdatePlayerCounts();
+        }
+
+        // 2. 【核心修改】UI 状态逻辑优化
+        UpdateLobbyUI();
+    }
+
 
 
     // 当有玩家进入时被调用
@@ -88,47 +120,74 @@ public class LobbyScript : NetworkBehaviour
             playerRows[player].UpdateInfo(player.playerName, player.isReady, player.isLocalPlayer);
         }
     }
-    private void Start()
-    {
-        // 绑定按钮事件
-        // if(btnReady) btnReady.onClick.AddListener(OnClickReady);
-        if(btnStartGame) btnStartGame.onClick.AddListener(OnClickStartGame);
+    
 
-        // 默认隐藏开始按钮，稍后判断权限开启
-        if(btnStartGame) btnStartGame.gameObject.SetActive(false);
-        
-        foreach (var p in FindObjectsOfType<PlayerScript>())
+    private void UpdateLobbyUI()
+    {
+        // 只有当 (总人数 > 0) 且 (准备人数 == 总人数) 时，才算全员准备好
+        bool allReady = (playerCount > 0) && (readyCount == playerCount);
+
+        // --- 逻辑 A: 倒计时阶段 ---
+        if (isGameStarting)
         {
-            AddPlayerRow(p);
+            if (roomStatusText != null)
+            {
+                roomStatusText.text = $"Game Starting in {countdownDisplay}...";
+                roomStatusText.color = Color.yellow; // 倒计时显示黄色
+            }
+            
+            // 倒计时开始后，禁用开始按钮
+            if (btnStartGame != null)
+            {
+                btnStartGame.gameObject.SetActive(true);
+                btnStartGame.interactable = false; 
+                // 可选：更改按钮文字
+                var btnText = btnStartGame.GetComponentInChildren<TextMeshProUGUI>();
+                if (btnText) btnText.text = "Launching...";
+            }
+        }
+        // --- 逻辑 B: 等待阶段 ---
+        else
+        {
+            if (btnStartGame != null)
+            {
+                btnStartGame.gameObject.SetActive(true);
+                btnStartGame.interactable = allReady; // 只有全员准备好才能点
+                
+                var btnText = btnStartGame.GetComponentInChildren<TextMeshProUGUI>();
+                if (btnText) btnText.text = "Start";
+            }
+
+            if (roomStatusText != null)
+            {
+                if (allReady)
+                {
+                    roomStatusText.text = "All Ready! Waiting for Players to Start...";
+                    roomStatusText.color = Color.green;
+                }
+                else
+                {
+                    roomStatusText.text = $"Waiting for Players... ({readyCount}/{playerCount} Ready)";
+                    roomStatusText.color = Color.red;
+                }
+            }
         }
     }
 
-private void Update()
-{
-    // 检查按钮是否存在
-    if(btnStartGame != null)
+    private void UpdateUI()
     {
-        // 核心条件：只有当 (总人数 > 0) 且 (准备人数 == 总人数) 时，才允许开始
-        bool allReady = (playerCount > 0) && (readyCount == playerCount);
-
-        // 1. 让所有人都能看到按钮 (之前是 SetActive(NetworkServer.active) 只给房主看)
-        btnStartGame.gameObject.SetActive(true); 
-
-        // 2. 只有全员准备好时，按钮才可点击 (Interactable)
-        // 或者是：也可以做成如果不满足条件就隐藏，看你喜欢哪种交互
-        btnStartGame.interactable = allReady; 
-        
-        // (可选) 你可以根据状态改文字
-        // Text btnText = btnStartGame.GetComponentInChildren<Text>();
-        // if(btnText) btnText.text = allReady ? "Start Game" : "Waiting for Players...";
+        if (playerNumberText != null)
+        {
+            playerNumberText.text = $"Ready: {readyCount} / {playerCount}";
+        }
     }
 
-    // 服务器依然负责统计人数
-    if (isServer)
+    // 更新本地按钮文字
+    public void UpdateMyReadyStatus(bool isReady)
     {
-        UpdatePlayerCounts();
+        myReadyState = isReady;
+        // if(txtReadyBtn) txtReadyBtn.text = isReady ? "Cancel Ready" : "Ready Up";
     }
-}
 
     // 点击准备按钮
     public void OnClickReady()
@@ -148,12 +207,7 @@ private void Update()
         }
     }
 
-    // 更新本地按钮文字
-    public void UpdateMyReadyStatus(bool isReady)
-    {
-        myReadyState = isReady;
-        // if(txtReadyBtn) txtReadyBtn.text = isReady ? "Cancel Ready" : "Ready Up";
-    }
+
 
     // 点击开始游戏按钮
     public void OnClickStartGame()
@@ -164,6 +218,47 @@ private void Update()
             localPlayer.CmdStartGame();
         }
     }
+
+
+
+    private void OnPlayerCountChanged(int _, int __) => UpdateUI();
+    private void OnReadyCountChanged(int _, int __) => UpdateUI();
+
+
+
+
+    
+    // 【新增】服务器端倒计时协程
+    [Server]
+    public void StartGameCountdown()
+    {
+        // 防止重复触发
+        if (isGameStarting) return;
+
+        StartCoroutine(CountdownRoutine());
+    }
+
+    [Server]
+    private IEnumerator CountdownRoutine()
+    {
+        isGameStarting = true;
+        countdownDisplay = 5;
+
+        while (countdownDisplay > 0)
+        {
+            yield return new WaitForSeconds(1f);
+            countdownDisplay--;
+        }
+
+        // 倒计时结束，切换场景
+        Debug.Log("Countdown finished, switching scene...");
+        
+        // 1. 初始化游戏数据
+        GameManager.Instance.StartGame(); 
+        // 2. 切换场景
+        NetworkManager.singleton.ServerChangeScene("MyScene");
+    }
+
 
     [Server]
     private void UpdatePlayerCounts()
@@ -177,16 +272,5 @@ private void Update()
             if (p != null && p.isReady) rCount++;
         }
         readyCount = rCount;
-    }
-
-    private void OnPlayerCountChanged(int _, int __) => UpdateUI();
-    private void OnReadyCountChanged(int _, int __) => UpdateUI();
-
-    private void UpdateUI()
-    {
-        if (playerNumberText != null)
-        {
-            playerNumberText.text = $"Ready: {readyCount} / {playerCount}";
-        }
     }
 }

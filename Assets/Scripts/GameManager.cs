@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
 
-public class GameManager : SingletonAutoMono<GameManager>
+// 【关键修改】不再继承 SingletonAutoMono，直接继承 NetworkBehaviour
+public class GameManager : NetworkBehaviour
 {
+    // 手动实现静态实例，方便访问
+    public static GameManager Instance { get; private set; }
     public enum GameState
     {
         Lobby,
@@ -12,13 +15,48 @@ public class GameManager : SingletonAutoMono<GameManager>
         Paused,
         GameOver
     }
-
+    [SyncVar] 
     private GameState currentState = GameState.Lobby;
 
     public GameState CurrentState
     {
         get { return currentState; }
     }
+    [SyncVar]
+    public float gameTimer = 300f; // 5分钟倒计时
+    private void Awake()
+    {
+        // 严格的单例检查
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        
+        Instance = this;
+        
+        // 确保切换场景不销毁 (客户端和服务器都需要)
+        DontDestroyOnLoad(gameObject);
+    }
+
+    // 【新增】服务器端更新时间
+    [ServerCallback]
+    private void Update()
+    {
+        if (currentState == GameState.InGame)
+        {
+            if (gameTimer > 0)
+            {
+                gameTimer -= Time.deltaTime;
+            }
+            else
+            {
+                gameTimer = 0;
+                EndGame(); 
+            }
+        }
+    }
+
 
     public void SetGameState(GameState newState)
     {
@@ -43,21 +81,31 @@ public class GameManager : SingletonAutoMono<GameManager>
         MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
         if (netManager == null) return;
         int id = conn.connectionId;
-        
-        // --- Debug Start ---
+        // ---------------------------------------------------------
+        // 1. 决定角色 (Role) 和 名字 (Name)
+        // ---------------------------------------------------------
+        PlayerRole role;
+        string pName;
+        // 1. 获取数据
         if (pendingRoles.ContainsKey(id))
         {
-            Debug.Log($"[Spawn] Found Role for ID {id}: {pendingRoles[id]}");
+            role = pendingRoles.ContainsKey(conn.connectionId) ? pendingRoles[conn.connectionId] : PlayerRole.Hunter;
+            pName = pendingNames.ContainsKey(conn.connectionId) ? pendingNames[conn.connectionId] : $"Player {conn.connectionId}";            
         }
         else
         {
-            Debug.LogError($"[Spawn] NO Role found for ID {id}! Assigning Default (Hunter). Dumping keys:");
-            foreach(var key in pendingRoles.Keys) Debug.LogError($"Key: {key}");
+            // --- 核心修改：中途加入处理 ---
+            // 如果是中途加入 (InGame)，或者预分配列表里没有 (Late Join)，强制给 Hunter
+            // 你也可以在这里扩展：比如给 "Spectator" 观察者模式
+            role = PlayerRole.Hunter;
+            
+            // 名字尝试从连接对象获取，或者给个默认名
+            // 注意：因为是中途加入，conn.identity 可能为空或者不是 PlayerScript
+            // 这里我们给一个默认名，或者之后让玩家自己改
+            pName = $"Hunter (Late) {id}";
+            
+            Debug.LogWarning($"[Spawn] No role found for ID {id}. Assigning Default (Hunter). GameState: {currentState}");
         }
-        // --- Debug End ---
-        // 1. 获取数据
-        PlayerRole role = pendingRoles.ContainsKey(conn.connectionId) ? pendingRoles[conn.connectionId] : PlayerRole.Hunter;
-        string pName = pendingNames.ContainsKey(conn.connectionId) ? pendingNames[conn.connectionId] : $"Player {conn.connectionId}";
 
         // 2. 获取 Prefab
         GameObject prefabToUse = (role == PlayerRole.Witch) ? netManager.witchPrefab : netManager.hunterPrefab;
@@ -104,69 +152,6 @@ public class GameManager : SingletonAutoMono<GameManager>
 
         Debug.Log($"[Server] Spawning {role} ({pName}) for ConnId: {conn.connectionId}");
     }
-    // // 【核心逻辑】替换玩家对象
-    // [Server]
-    // public void SpawnGamePlayers()
-    // {
-    //     // 1. 【新增】获取 MyNetworkManager 实例引用
-    //     // 因为 NetworkManager.singleton 是基类类型，需要强转为你的子类 MyNetworkManager
-    //     MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
-
-    //     if (netManager == null)
-    //     {
-    //         Debug.LogError("MyNetworkManager not found! Check your NetworkManager setup.");
-    //         return;
-    //     }
-
-
-    //     // 获取特定的生成点 (可选：你可以设置多个 SpawnPoint)
-    //     // Transform startPos = NetworkManager.singleton.GetStartPosition();
-
-    //     foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
-    //     {
-    //         if (conn == null) continue;
-
-    //         // 1. 查找该玩家预选的角色和名字
-    //         // 如果找不到（比如中途加入的），默认给 Hunter
-    //         PlayerRole role = pendingRoles.ContainsKey(conn.connectionId) ? pendingRoles[conn.connectionId] : PlayerRole.Hunter;
-    //         string pName = pendingNames.ContainsKey(conn.connectionId) ? pendingNames[conn.connectionId] : $"Player {conn.connectionId}";
-
-    //         // 2. 【修改】从 MyNetworkManager 获取 Prefab
-    //         GameObject prefabToUse = (role == PlayerRole.Witch) ? netManager.witchPrefab : netManager.hunterPrefab;
-    //         if (prefabToUse == null) 
-    //         {
-    //             Debug.LogError("Prefab missing in GameManager!");
-    //             continue;
-    //         }
-
-    //         // 3. 计算生成位置
-    //         // 简单起见，这里用随机位置防止重叠，或者使用 NetworkManager 的 StartPosition
-    //         Transform startTrans = NetworkManager.singleton.GetStartPosition();
-    //         Vector3 spawnPos = startTrans != null ? startTrans.position : Vector3.zero;
-    //         Quaternion spawnRot = startTrans != null ? startTrans.rotation : Quaternion.identity;
-
-    //         // 4. 生成实例
-    //         GameObject characterInstance = Instantiate(prefabToUse, spawnPos, spawnRot);
-
-    //         // 5. 初始化数据 (设置名字、血量等)
-    //         // 假设你的 WitchPrefab 和 HunterPrefab 都继承自新的 GamePlayer 基类
-    //         GamePlayer playerScript = characterInstance.GetComponent<GamePlayer>();
-    //         if (playerScript != null)
-    //         {
-    //             playerScript.playerName = pName;
-    //             // playerScript.role = role; // 如果基类里还有 role 字段的话
-    //         }
-
-    //         // 6. 替换
-    //         // 原来的写法会导致警告
-    //         // NetworkServer.ReplacePlayerForConnection(conn, characterInstance);
-
-    //         // 【修改为】：
-    //         NetworkServer.ReplacePlayerForConnection(conn, characterInstance, ReplacePlayerOptions.Destroy);
-            
-    //         Debug.Log($"[Server] Spawning {role} ({pName}) for ConnId: {conn.connectionId}");
-    //     }
-    // }
 
     // 【修改】将分配逻辑改为预分配，存入字典
     [Server]
@@ -202,11 +187,14 @@ public class GameManager : SingletonAutoMono<GameManager>
     {
         // 重置游戏逻辑
         SetGameState(GameState.Lobby);
+        gameTimer = 300f;
         Debug.Log("Game has been reset to Lobby state.");
     }
     public void StartGame()
     {                                                                           
         SetGameState(GameState.InGame);
+        //设置游戏时间为倒计时5分钟
+        gameTimer = 300f; 
         Debug.Log("Game has started.");
         
         if (NetworkServer.active)

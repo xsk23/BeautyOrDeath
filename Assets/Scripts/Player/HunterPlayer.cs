@@ -2,6 +2,11 @@ using UnityEngine;
 
 public class HunterPlayer : GamePlayer
 {
+    // 【新增】在初始化时赋值给父类的字段
+    private void Awake()
+    {
+        goalText = "Hunt Down The Witch Until the Time Runs Out!";
+    }
     // 重写基类的抽象方法
     protected override void Attack()
     {

@@ -350,16 +350,22 @@ public class PlayerScript : NetworkBehaviour
             }
         }
 
-        // 2. 只有校验通过才切换场景
+        // 2. 只有校验通过才开始倒计时
         if (total > 0 && total == ready)
         {
-            UnityEngine.Debug.Log("All players are ready, starting the game...");
-            GameManager.Instance.StartGame();  // 调用 StartGame() 来分配角色和切换状态
-            NetworkManager.singleton.ServerChangeScene("MyScene");
+            // 【修改】不再直接切换场景，而是调用 LobbyScript 的倒计时
+            LobbyScript lobby = FindObjectOfType<LobbyScript>();
+            if (lobby != null)
+            {
+                lobby.StartGameCountdown();
+            }
+            else
+            {
+                UnityEngine.Debug.LogError("LobbyScript not found on Server!");
+            }
         }
         else
         {
-            //英文debug
             UnityEngine.Debug.LogWarning("Not all players are ready!");
         }
     }

@@ -2,6 +2,11 @@ using UnityEngine;
 
 public class WitchPlayer : GamePlayer
 {
+    // 【新增】在初始化时赋值给父类的字段
+    private void Awake()
+    {
+        goalText = "Get Your Own Tree And Assemble at the Gates!";
+    }
     // 重写基类的抽象方法
     protected override void Attack()
     {

@@ -2642,17 +2642,41 @@ PrefabInstance:
       propertyPath: m_AnchorMax.y
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 1541836668669641318, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1541836668669641318, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1541836668669641318, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_SizeDelta.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1541836668669641318, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_SizeDelta.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3884202129394486866, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
       propertyPath: m_Name
       value: ChatPanel
       objectReference: {fileID: 0}
     - target: {fileID: 5447180823826173800, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 1.3117827
+      value: -0.00010681152
+      objectReference: {fileID: 0}
+    - target: {fileID: 5991256491870157449, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5991256491870157449, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_SizeDelta.x
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6910259258419782950, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
       propertyPath: m_Size
-      value: 0.9950307
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7787523655580172147, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
       propertyPath: m_AnchorMax.x
@@ -2660,6 +2684,14 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7787523655580172147, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
       propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8703959083753222195, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8703959083753222195, guid: b1557a47c7794f64e9e0a1ef04a07483, type: 3}
+      propertyPath: m_SizeDelta.y
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
