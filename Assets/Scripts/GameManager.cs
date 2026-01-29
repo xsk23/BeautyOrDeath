@@ -111,10 +111,44 @@ public class GameManager : NetworkBehaviour
         GameObject prefabToUse = (role == PlayerRole.Witch) ? netManager.witchPrefab : netManager.hunterPrefab;
         if (prefabToUse == null) return;
 
+
+
         // 3. 计算位置
-        Transform startTrans = NetworkManager.singleton.GetStartPosition();
-        Vector3 spawnPos = startTrans != null ? startTrans.position : Vector3.zero;
-        Quaternion spawnRot = startTrans != null ? startTrans.rotation : Quaternion.identity;
+        // Transform startTrans = NetworkManager.singleton.GetStartPosition();
+        // Vector3 spawnPos = startTrans != null ? startTrans.position : Vector3.zero;
+        // Quaternion spawnRot = startTrans != null ? startTrans.rotation : Quaternion.identity;
+        
+        // ---------------------------------------------------------
+        // 3. 【核心修改】根据阵营计算位置
+        // ---------------------------------------------------------
+        Vector3 spawnPos = Vector3.zero;
+        Quaternion spawnRot = Quaternion.identity;
+
+        // 寻找对应的出生点组物体
+        string groupName = (role == PlayerRole.Witch) ? "WitchSpawnPoints" : "HunterSpawnPoints";
+        GameObject spawnGroup = GameObject.Find(groupName);
+
+        if (spawnGroup != null && spawnGroup.transform.childCount > 0)
+        {
+            // 从该组的子物体中随机选一个
+            int randomIndex = UnityEngine.Random.Range(0, spawnGroup.transform.childCount);
+            Transform targetPoint = spawnGroup.transform.GetChild(randomIndex);
+            spawnPos = targetPoint.position;
+            spawnRot = targetPoint.rotation;
+        }
+        else
+        {
+            // 兜底方案：如果没找到组，使用 Mirror 默认逻辑
+            Debug.LogWarning($"[Spawn] Could not find spawn group {groupName}, using default.");
+            Transform startTrans = NetworkManager.singleton.GetStartPosition();
+            if (startTrans != null)
+            {
+                spawnPos = startTrans.position;
+                spawnRot = startTrans.rotation;
+            }
+        }
+
+
 
         // 4. 生成实例
         GameObject characterInstance = Instantiate(prefabToUse, spawnPos, spawnRot);

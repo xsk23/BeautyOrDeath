@@ -35,11 +35,14 @@ public abstract class GamePlayer : NetworkBehaviour
 
     [SyncVar(hook = nameof(OnMorphChanged))] 
     public bool isMorphed = false; // 当前是否处于变身状态 
+    [SyncVar(hook = nameof(OnMorphedPropIDChanged))]
+    public int morphedPropID = -1; // -1 表示没变身，>=0 表示对应的 PropID
 
     [SyncVar] 
     public PlayerRole playerRole = PlayerRole.None;
 
     [Header("移动参数")]
+    [SyncVar(hook = nameof(OnMoveSpeedChanged))] // 添加 SyncVar 和钩子
     public float moveSpeed = 6f;
     public float gravity = -9.81f;
     [Header("跳跃参数")]
@@ -408,6 +411,19 @@ public abstract class GamePlayer : NetworkBehaviour
     {
         // 强制调用 TeamVision 的刷新逻辑（如果有必要）
         // 或者仅仅依靠 TeamVision 的协程检测
+    }   
+
+    // 建议添加一个钩子函数用于调试（可选）
+    protected virtual void OnMoveSpeedChanged(float oldSpeed, float newSpeed)
+    {
+        // 可以在这里打印日志查看速度是否真的同步过来了
+        // Debug.Log($"Speed synced: {newSpeed}");
+    }
+
+    protected virtual void OnMorphedPropIDChanged(int oldID, int newID)
+    {
+        // 这个钩子在所有客户端运行（包括新加入的）
+        // 子类 WitchPlayer 会重写这个逻辑
     }
 
     // ---------------------------------------------------
