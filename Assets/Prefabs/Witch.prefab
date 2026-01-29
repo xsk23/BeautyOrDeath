@@ -379,6 +379,10 @@ MonoBehaviour:
   syncInterval: 0
   controller: {fileID: 7043496421248812656}
   nameText: {fileID: 1554480515126112278}
+  requiredClicks: 2
+  maxTrapTime: 6
+  currentClicks: 0
+  isStunned: 0
   playerName: 
   currentHealth: 100
   maxHealth: 100
@@ -453,7 +457,6 @@ GameObject:
   - component: {fileID: 7768496917859858329}
   - component: {fileID: 3162606790404752756}
   - component: {fileID: 3529448275262004024}
-  - component: {fileID: 9200221138085650360}
   m_Layer: 0
   m_Name: Weapon2
   m_TagString: Untagged
@@ -550,24 +553,6 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
---- !u!114 &9200221138085650360
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2685145785009683330}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 82466796162d8e749851cd62d3d7bce5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  firePoint: {fileID: 3704588685420413946}
-  bulletPrefab: {fileID: 7205609430714872807, guid: 1d70454db050b2e4686cc7e6e10a194c, type: 3}
-  bulletSpeed: 5
-  bulletLifetime: 3
-  bulletCount: 5
-  cooldownTime: 1
 --- !u!1 &5625634381831284002
 GameObject:
   m_ObjectHideFlags: 0
@@ -878,7 +863,6 @@ GameObject:
   - component: {fileID: 4222987266537122511}
   - component: {fileID: 5827012143566801373}
   - component: {fileID: 1536432240393070476}
-  - component: {fileID: 7883911808888051214}
   m_Layer: 0
   m_Name: Weapon1
   m_TagString: Untagged
@@ -973,21 +957,3 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &7883911808888051214
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8074657428632159682}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 82466796162d8e749851cd62d3d7bce5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  firePoint: {fileID: 4111728957134277049}
-  bulletPrefab: {fileID: 4376218212519654712, guid: e74aa12158a3600408560695dc95fc72, type: 3}
-  bulletSpeed: 15
-  bulletLifetime: 1
-  bulletCount: 15
-  cooldownTime: 0.1

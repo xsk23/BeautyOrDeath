@@ -2,6 +2,7 @@ using UnityEngine;
 using Mirror;
 using TMPro;
 using System.Collections.Generic;
+using kcp2k;
 
 public enum PlayerRole
 {
@@ -21,7 +22,17 @@ public abstract class GamePlayer : NetworkBehaviour
     [SerializeField] protected CharacterController controller;
     [SerializeField] public TextMeshPro nameText; // 头顶名字
 
+    [Header("挣脱设置")]
+    public int requiredClicks = 2; // 需要按多少次空格才能挣脱
+    public float maxTrapTime = 6.0f; // 6秒后还没挣脱就释放
+
+    [SyncVar]
+    public int currentClicks = 0; // 当前挣扎次数
+    private float trapTimer = 0f;// 计时器
+
     [Header("同步属性")]
+    [SyncVar(hook = nameof(OnStunChanged))]
+    public bool isStunned = false; // 是否被禁锢
     [SyncVar(hook = nameof(OnNameChanged))] public string playerName;
     [SyncVar(hook = nameof(OnHealthChanged))]// 血量变化钩子
     public float currentHealth = 100f;
@@ -189,6 +200,16 @@ public abstract class GamePlayer : NetworkBehaviour
             {
                 return; 
             }
+            //硬直或禁锢下禁止移动
+            if (isStunned)
+            {
+                if (Input.GetKeyDown(KeyCode.Space))
+                {
+                    CmdStruggle(); // 发送挣扎命令
+                }
+                return; // 阻止移动
+            }
+
             // 按 T 切换第一人称 / 第三人称
             if (Input.GetKeyDown(KeyCode.T))
             {
@@ -346,6 +367,54 @@ public abstract class GamePlayer : NetworkBehaviour
         Debug.Log($"[Server] Player {connectionToClient.connectionId} updated name to: {newName}");
     }
 
+    // 计时器逻辑修改
+    [ServerCallback]
+    void LateUpdate()
+    {
+        if (isStunned)
+        {
+            trapTimer += Time.deltaTime;
+
+            // ★ 修改点：超时 = 自动释放 (而不是处决)
+            if (trapTimer >= maxTrapTime)
+            {
+                ServerEscape();
+            }
+        }
+    }
+    // 服务器端兜网抓住
+    [Server]
+    public void ServerGetTrapped()
+    {
+        if (isStunned) return; // 已经被抓了就不重复抓
+        isStunned = true; // 继承基类的禁止移动
+        trapTimer = 0f;
+        currentClicks = 0;
+
+        Debug.Log("被抓住了！开始计时！");
+    }
+
+    // 客户端按空格 -> 呼叫服务器
+    [Command]
+    void CmdStruggle()
+    {
+        currentClicks++;
+
+        // 判定：点击次数够了 -> 成功挣脱
+        if (currentClicks >= requiredClicks)
+        {
+            ServerEscape();
+        }
+    }
+
+    [Server]
+    void ServerEscape()
+    {
+        isStunned = false;
+        Debug.Log("成功挣脱！");
+    }
+
+
     [Command] public void CmdAttack() => Attack();
 
     [Command]
@@ -368,6 +437,15 @@ public abstract class GamePlayer : NetworkBehaviour
         }
     }
 
+    // 受伤函数
+    [Server]
+    public void ServerTakeDamage(float amount)
+    {
+        currentHealth = Mathf.Max(0, currentHealth - amount);
+        //改成英文debug
+        Debug.Log($"{playerName} took {amount} damage, current health: {currentHealth}");
+        
+    }
 
     // Hook 函数：当名字在服务器改变并同步到客户端时调用
     void OnNameChanged(string oldName, string newName)
@@ -387,6 +465,19 @@ public abstract class GamePlayer : NetworkBehaviour
             }
         }
     }
+    void OnStunChanged(bool oldValue, bool newValue)
+    {
+        // 可以在这里添加被禁锢时的视觉效果或音效
+        if (newValue)
+        {
+            Debug.Log($"{playerName} is stunned!");
+        }
+        else
+        {
+            Debug.Log($"{playerName} is no longer stunned!");
+        }
+    }
+
     void OnHealthChanged(float oldValue, float newValue)
     {
         float percent = newValue / maxHealth;

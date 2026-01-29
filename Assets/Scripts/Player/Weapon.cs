@@ -1,13 +1,27 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 
-public class Weapon : MonoBehaviour
+public abstract class WeaponBase : NetworkBehaviour
 {
-    public Transform firePoint;//子弹发射点
-    public GameObject bulletPrefab;//子弹预制体
-    public float bulletSpeed;//子弹速度
-    public float bulletLifetime;//子弹存活时间
-    public int bulletCount;//子弹数量
-    public float cooldownTime;//子弹发射间隔时间
+    [Header("通用设置")]
+    public string weaponName;
+    public float damage = 20f;       // 伤害（兜网可能没伤害，但有禁锢效果）
+    public float fireRate = 1.0f;   // 射击间隔
+    public Transform firePoint;     // 枪口位置（子弹/射线发出的地方）
+
+    // 内部冷却计时
+    protected float nextFireTime = 0f;
+
+    // 判断是否冷却完毕
+    public bool CanFire()
+    {
+        return Time.time >= nextFireTime;
+    }
+
+    // ★ 抽象方法：具体开火逻辑交给子类实现
+    // origin: 射击起点（通常是摄像机位置）
+    // direction: 射击方向（通常是摄像机正前方）
+    public abstract void OnFire(Vector3 origin, Vector3 direction);
+
+
 }
