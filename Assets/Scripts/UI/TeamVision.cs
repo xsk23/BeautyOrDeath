@@ -32,7 +32,7 @@ public class TeamVision : NetworkBehaviour
     private void UpdateAllOutlines()
     {
         if (localPlayer == null) return;
-
+        localPlayer.nameText.gameObject.SetActive(false); // 本人名字隐藏
         // 遍历全局玩家列表 (需要在 GamePlayer 里维护这个静态列表)
         foreach (var targetPlayer in GamePlayer.AllPlayers)
         {

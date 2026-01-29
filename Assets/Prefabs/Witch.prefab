@@ -386,6 +386,7 @@ MonoBehaviour:
   currentMana: 100
   maxMana: 100
   isMorphed: 0
+  morphedPropID: -1
   playerRole: 0
   moveSpeed: 6
   gravity: -9.81
