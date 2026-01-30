@@ -52,6 +52,12 @@ public abstract class GamePlayer : NetworkBehaviour
     [SyncVar] 
     public PlayerRole playerRole = PlayerRole.None;
 
+    [SyncVar(hook = nameof(OnSecondChanceChanged))]
+    public bool isInSecondChance = false; // 是否在小动物逃跑状态
+
+    [SyncVar(hook = nameof(OnPermanentDeadChanged))]
+    public bool isPermanentDead = false; // 是否永久死亡
+
     [Header("移动参数")]
     [SyncVar(hook = nameof(OnMoveSpeedChanged))] // 添加 SyncVar 和钩子
     public float moveSpeed = 6f;
@@ -106,6 +112,8 @@ public abstract class GamePlayer : NetworkBehaviour
         base.OnStartClient();
         // 加入全局列表
         if (!AllPlayers.Contains(this)) AllPlayers.Add(this);
+        // 只要有新玩家加入，刷新计数
+        RefreshSceneUI();
     }
 
     public override void OnStopClient()
@@ -113,6 +121,8 @@ public abstract class GamePlayer : NetworkBehaviour
         base.OnStopClient();
         // 移除全局列表
         if (AllPlayers.Contains(this)) AllPlayers.Remove(this);
+        // 只要有玩家离开，刷新计数
+        RefreshSceneUI();
     }
 
     // 当本地玩家控制这个物体时调用
@@ -347,6 +357,24 @@ public abstract class GamePlayer : NetworkBehaviour
         if (Input.GetMouseButtonDown(0)) CmdAttack();
     }
 
+    // 虚方法，让女巫类去实现具体的变身逻辑
+    protected virtual void HandleDeath()
+    {
+        // 默认死亡逻辑（比如猎人被打死，暂时直接重置或出局）
+        isPermanentDead = true;
+        UnityEngine.Debug.Log($"{playerName} has died.");
+    }
+
+
+    private void RefreshSceneUI()
+    {
+        // 尝试寻找场景脚本并刷新
+        SceneScript ss = FindObjectOfType<SceneScript>();
+        if (ss != null)
+        {
+            ss.UpdateAlivePlayerCount();
+        }
+    }
 
     // --------------------------------------------------------
     // 网络同步与命令
@@ -441,10 +469,15 @@ public abstract class GamePlayer : NetworkBehaviour
     [Server]
     public void ServerTakeDamage(float amount)
     {
+        if (isPermanentDead) return;
+
         currentHealth = Mathf.Max(0, currentHealth - amount);
         //改成英文debug
         Debug.Log($"{playerName} took {amount} damage, current health: {currentHealth}");
-        
+        if (currentHealth <= 0)
+        {
+            HandleDeath();
+        }        
     }
 
     // Hook 函数：当名字在服务器改变并同步到客户端时调用
@@ -515,6 +548,20 @@ public abstract class GamePlayer : NetworkBehaviour
     {
         // 这个钩子在所有客户端运行（包括新加入的）
         // 子类 WitchPlayer 会重写这个逻辑
+    }
+
+    // 增加一个钩子方便客户端处理 UI（比如显示“快跑！”）
+    protected virtual void OnSecondChanceChanged(bool oldVal, bool newVal) { }
+    // 添加虚方法供子类重写
+    protected virtual void OnPermanentDeadChanged(bool oldVal, bool newVal)
+    {
+        if (newVal)
+        {
+            // 通用的死亡逻辑（隐藏名字等）
+            if (nameText != null) nameText.gameObject.SetActive(false);
+        }
+        // 只要有人永久死亡，刷新计数
+        RefreshSceneUI();
     }
 
     // ---------------------------------------------------

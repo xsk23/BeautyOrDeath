@@ -45,6 +45,7 @@ public class MyNetworkManager : NetworkManager
     // ---------------------------------------------------------
     public override void OnServerSceneChanged(string sceneName)
     {
+        base.OnServerSceneChanged(sceneName);
         // 1. 获取当前激活的场景名称 (例如 "MyScene")
         string activeSceneName = SceneManager.GetActiveScene().name;
 
@@ -57,8 +58,17 @@ public class MyNetworkManager : NetworkManager
         {
             Debug.Log("[Mirror] Game Scene Loaded on Server. Waiting for clients to join...");
         }
+        // 只有当加载的是游戏地图时才触发
+        if (sceneName == configNameClean)
+        {
+            if (GameManager.Instance != null)
+            {
+                // 通知 GameManager：游戏场景已就绪，可以生成东西了
+                GameManager.Instance.OnGameSceneReady();
+            }
+        }
         
-        base.OnServerSceneChanged(sceneName);
+        
     }
 
     // ---------------------------------------------------------

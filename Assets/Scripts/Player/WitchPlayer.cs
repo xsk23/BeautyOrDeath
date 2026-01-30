@@ -37,7 +37,9 @@ public class WitchPlayer : GamePlayer
     private float originalHumanSpeed = 5f; // 备份人类速度
     private bool isMorphedIntoAnimal = false; // 记录当前变身的是否为有动画的动物
     private Vector3 lastPosition;
-
+    [Header("复活赛设置")]
+    public int frogPropID = 1; // 假设 PropDatabase 中 ID 1 是青蛙
+    public float frogHealth = 20f; // 小动物形态血量
     private void Awake()
     {
         goalText = "Get Your Own Tree And Assemble at the Gates!";
@@ -83,6 +85,12 @@ public class WitchPlayer : GamePlayer
 
     public override void Update()
     {
+        // 如果永久死亡，跳过所有交互逻辑，只保留基础移动（基类 HandleMovement）
+        if (isPermanentDead)
+        {
+            base.Update(); // 允许观察者移动
+            return; 
+        }
         // 1. 如果变身了，根据按键实时更新基础移动速度
         if (isLocalPlayer && isMorphed)
         {
@@ -193,6 +201,7 @@ public class WitchPlayer : GamePlayer
     // 处理变身输入
     private void HandleMorphInput()
     {
+        if (isInSecondChance) return; // 复活赛期间锁死形态，不能通过长按左键恢复
         // --- 处理左键按下 ---
         if (Input.GetMouseButton(0))
         {
@@ -523,6 +532,99 @@ public class WitchPlayer : GamePlayer
         // 在这里写具体的实例化药水逻辑...
         // GameObject potion = Instantiate(potionPrefab, ...);
         // NetworkServer.Spawn(potion);
+    }
+    protected override void HandleDeath()
+    {
+        if (!isInSecondChance)
+        {
+            // --- 第一次死亡：进入复活赛 ---
+            UnityEngine.Debug.Log($"{playerName} entered second chance mode!");
+            isInSecondChance = true;
+            
+            // 恢复少量血量供逃跑
+            currentHealth = frogHealth;
+            
+            // 强制变身为小动物
+            morphedPropID = frogPropID;
+            isMorphed = true;
+
+            // 可以在此处给一个3秒无敌，通过协程取消
+        }
+        else
+        {
+            // --- 第二次死亡：彻底出局 ---
+            UnityEngine.Debug.Log($"{playerName} is permanently dead!");
+            isPermanentDead = true;
+        }
+    }
+    // 服务器端：由传送门调用
+    [Server]
+    public void ServerRevive()
+    {
+        if (!isInSecondChance || isPermanentDead) return;
+        
+        isInSecondChance = false;
+        currentHealth = maxHealth;
+        morphedPropID = -1; // 变回人类
+        isMorphed = false;
+        UnityEngine.Debug.Log($"{playerName} has been revived at the portal!");
+    }
+    protected override void OnPermanentDeadChanged(bool oldVal, bool newVal)
+    {
+        base.OnPermanentDeadChanged(oldVal, newVal);
+        if (newVal)
+        {
+            SetPermanentDeath();
+        }
+    }
+
+    private void SetPermanentDeath()
+    {
+        UnityEngine.Debug.Log($"[Client] {playerName} is now a spectator.");
+        moveSpeed = 10f; // 允许观察者快速移动
+
+        
+
+        // 1. 所有人不可见：禁用所有渲染器
+        // 隐藏人类模型
+        if (HideGroup != null) HideGroup.SetActive(false);
+        // 隐藏可能存在的动物模型
+        if (currentVisualProp != null) currentVisualProp.SetActive(false);
+        // 隐藏原始渲染器
+        if (myRenderer != null) myRenderer.enabled = false;
+        // 隐藏名字
+        if (nameText != null) nameText.gameObject.SetActive(false);
+
+        // 2. 禁用交互：修改物理层级
+        // 建议在 Unity 中创建一个 Layer 叫 "Spectator"，并在 Physics Matrix 中设置它不与 Player 碰撞
+        gameObject.layer = LayerMask.NameToLayer("Ignore Raycast"); 
+
+        // 3. 禁用碰撞体（针对非本地玩家直接禁用 CC）
+        if (!isLocalPlayer)
+        {
+            if (controller != null) controller.enabled = false;
+        }
+        else
+        {
+            // 4. 本地玩家：作为观察者逻辑
+            // 我们可以让本地玩家依然有碰撞，以便在场景中走动但不卡住别人
+            // 或者你可以将 CC 的半径设为 0
+            if (controller != null)
+            {
+                controller.radius = 0.01f; 
+            }
+
+            // 提示 UI
+            if (sceneScript != null)
+            {
+                // 假设你在 SceneScript 中有一个提示文本
+                // sceneScript.GoalText.text = "<color=red>YOU ARE ELIMINATED (SPECTATING)</color>";
+            }
+        }
+        
+        // 5. 确保不再触发变身或还原
+        isMorphed = false;
+        isMorphedIntoAnimal = false;
     }
 
 }

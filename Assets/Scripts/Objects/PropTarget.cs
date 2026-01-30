@@ -1,11 +1,14 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
+using Mirror;
 
-public class PropTarget : MonoBehaviour
+public class PropTarget : NetworkBehaviour
 {
     [Header("Identity")]
+    [SyncVar]
     public int propID; 
+    public int runtimeID;
 
     [Header("Visuals")]
     // 不需要手动拖，代码会自动找
@@ -19,8 +22,22 @@ public class PropTarget : MonoBehaviour
     private Material[] originalMaterials; // 保存初始材质数组
     private Material[] highlightedMaterials; // 预存高亮时的材质数组
 
-    private void Awake()
+    public override void OnStartClient()
     {
+        Register();
+    }
+     public override void OnStartServer()
+    {
+        Register();
+    }   
+    private void Register()
+    {
+        runtimeID = (int)netId; 
+        if (PropDatabase.Instance != null)
+        {
+            PropDatabase.Instance.RegisterProp(runtimeID, this);
+        }
+        // ... 原有的 Awake 里的初始化逻辑移到这里（Renderer、Materials 等） ...
         targetRenderer = GetComponent<Renderer>() ?? GetComponentInChildren<Renderer>();
 
         if (targetRenderer == null) return;
@@ -42,6 +59,11 @@ public class PropTarget : MonoBehaviour
             }
             highlightedMaterials[highlightedMaterials.Length - 1] = outlineInstance;
         }
+
+    }
+    private void Awake()
+    {
+
     }
 
     public void SetHighlight(bool active)

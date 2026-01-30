@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 512904118322672024}
   - component: {fileID: 3859451474239998663}
   - component: {fileID: 3604454511685890708}
+  - component: {fileID: 6637414504872863689}
   m_Layer: 3
   m_Name: Chicken_001
   m_TagString: Untagged
@@ -131,7 +132,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 747d2ee7a0b53a4488b854d8733c8438, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
   propID: 1
+  runtimeID: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!64 &3604454511685890708
 MeshCollider:
@@ -155,3 +160,20 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: -2014698503841005554, guid: 605d0caffe3b2fe489bc37e772cb7496, type: 3}
+--- !u!114 &6637414504872863689
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7521825788994678682}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b91ecbcc199f4492b9a91e820070131, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneId: 0
+  _assetId: 2301125855
+  serverOnly: 0
+  visibility: 0
+  hasSpawned: 0

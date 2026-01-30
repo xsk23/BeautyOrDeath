@@ -8,6 +8,7 @@ public class GameManager : NetworkBehaviour
 {
     // 手动实现静态实例，方便访问
     public static GameManager Instance { get; private set; }
+    private ServerAnimalSpawner animalSpawner;
     public enum GameState
     {
         Lobby,
@@ -217,6 +218,28 @@ public class GameManager : NetworkBehaviour
         }
     }
 
+    // 【新增】当游戏场景真正加载完成后被调用
+    [Server]
+    public void OnGameSceneReady()
+    {
+        Debug.Log("[Server] Game Scene Ready. Initializing spawner...");
+        
+        // 此时已经在新场景，可以找到物体了
+        if (animalSpawner == null) 
+        {
+            animalSpawner = FindObjectOfType<ServerAnimalSpawner>();
+        }
+
+        if (animalSpawner != null)
+        {
+            animalSpawner.SpawnAnimals();
+        }
+        else
+        {
+            Debug.LogError("[Server] Failed to find ServerAnimalSpawner in the new scene!");
+        }
+    }
+
     public void ResetGame()
     {
         // 重置游戏逻辑
@@ -225,7 +248,12 @@ public class GameManager : NetworkBehaviour
         Debug.Log("Game has been reset to Lobby state.");
     }
     public void StartGame()
-    {                                                                           
+    {                  
+        // 动态找一下场景里的 Spawner，因为 Prefab 无法预存场景里的物体引用
+        if (animalSpawner == null) {
+            animalSpawner = FindObjectOfType<ServerAnimalSpawner>();
+        }
+
         SetGameState(GameState.InGame);
         //设置游戏时间为倒计时5分钟
         gameTimer = 300f; 

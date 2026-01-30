@@ -9,10 +9,28 @@ public class PropDatabase : MonoBehaviour
     // 这里拖入你的 Prefab (或者场景里用到的每种模型的一个样本)
     // 索引 0 就是 ID 0 的物品
     public List<GameObject> propPrefabs;
+    [Header("仅限服务器自动生成的动物列表")]
+    public List<GameObject> animalPrefabs; // 在 Inspector 里只把鸡、鹿等拖进这个列表
 
+
+    // 【新增】用于存储场景中当前存在的物体实例 <netId, 脚本实例>
+    private Dictionary<int, PropTarget> runtimeProps = new Dictionary<int, PropTarget>();
     private void Awake()
     {
         Instance = this;
+    }
+
+    // 【新增】供 PropTarget 在初始化时调用
+    public void RegisterProp(int id, PropTarget prop)
+    {
+        if (!runtimeProps.ContainsKey(id))
+        {
+            runtimeProps.Add(id, prop);
+        }
+        else
+        {
+            runtimeProps[id] = prop; // 防止重复注册时引用过期
+        }
     }
 
     public bool GetPropPrefab(int id, out GameObject prefab)
@@ -24,41 +42,72 @@ public class PropDatabase : MonoBehaviour
     }
 
     // 根据 ID 获取模型数据
+    // public bool GetPropData(int id, out Mesh mesh, out Material[] materials, out Vector3 scale)
+    // {
+    //     mesh = null;
+    //     materials = null;
+    //     scale = Vector3.one;
+
+    //     // 基础检查
+    //     if (id < 0 || id >= propPrefabs.Count || propPrefabs[id] == null) return false;
+
+    //     GameObject prefab = propPrefabs[id];
+        
+    //     // 1. 获取渲染器（不管是哪种）
+    //     Renderer rd = prefab.GetComponentInChildren<Renderer>();
+    //     if (rd == null) return false;
+
+    //     materials = rd.sharedMaterials;
+    //     scale = rd.transform.localScale;
+
+    //     // 2. 核心修改：尝试获取网格
+    //     // 优先尝试静态网格 (MeshFilter)
+    //     MeshFilter mf = prefab.GetComponentInChildren<MeshFilter>();
+    //     if (mf != null)
+    //     {
+    //         mesh = mf.sharedMesh;
+    //     }
+    //     else
+    //     {
+    //         // 如果没有 MeshFilter，尝试获取皮肤网格 (SkinnedMeshRenderer，例如鸡)
+    //         SkinnedMeshRenderer smr = prefab.GetComponentInChildren<SkinnedMeshRenderer>();
+    //         if (smr != null)
+    //         {
+    //             mesh = smr.sharedMesh;
+    //         }
+    //     }
+
+    //     return mesh != null;
+    // }
+
+        // 根据运行时 ID (netId) 获取模型数据
     public bool GetPropData(int id, out Mesh mesh, out Material[] materials, out Vector3 scale)
     {
         mesh = null;
         materials = null;
         scale = Vector3.one;
 
-        // 基础检查
-        if (id < 0 || id >= propPrefabs.Count || propPrefabs[id] == null) return false;
-
-        GameObject prefab = propPrefabs[id];
-        
-        // 1. 获取渲染器（不管是哪种）
-        Renderer rd = prefab.GetComponentInChildren<Renderer>();
-        if (rd == null) return false;
-
-        materials = rd.sharedMaterials;
-        scale = rd.transform.localScale;
-
-        // 2. 核心修改：尝试获取网格
-        // 优先尝试静态网格 (MeshFilter)
-        MeshFilter mf = prefab.GetComponentInChildren<MeshFilter>();
-        if (mf != null)
+        // 现在 runtimeProps 已定义，这里可以正确查找
+        if (runtimeProps.TryGetValue(id, out PropTarget prop))
         {
-            mesh = mf.sharedMesh;
-        }
-        else
-        {
-            // 如果没有 MeshFilter，尝试获取皮肤网格 (SkinnedMeshRenderer，例如鸡)
-            SkinnedMeshRenderer smr = prefab.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (smr != null)
+            Renderer rd = prop.GetComponentInChildren<Renderer>();
+            if (rd != null)
             {
-                mesh = smr.sharedMesh;
+                materials = rd.sharedMaterials;
+                scale = prop.transform.lossyScale;
+
+                if (rd is SkinnedMeshRenderer smr)
+                {
+                    mesh = smr.sharedMesh;
+                }
+                else
+                {
+                    MeshFilter mf = prop.GetComponentInChildren<MeshFilter>();
+                    if (mf != null) mesh = mf.sharedMesh;
+                }
+                return mesh != null;
             }
         }
-
-        return mesh != null;
+        return false;
     }
 }

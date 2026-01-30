@@ -12,6 +12,8 @@ public class SceneScript : MonoBehaviour
     public TextMeshProUGUI NameText;//显示名字的文本
     public Slider HealthSlider;//血量滑动条
     public Slider ManaSlider;//法力值滑动条
+    public TextMeshProUGUI PlayerCountText;//显示玩家数量的文本
+
     [Header("Pause Menu")]
     public GameObject pauseMenuPanel; // 【新增】拖入你的暂停菜单Panel
     private bool isPaused = false; // 记录当前是否暂停
@@ -37,6 +39,8 @@ public class SceneScript : MonoBehaviour
     {
         // 【新增】更新倒计时显示
         UpdateGameTimer();
+        // 每一帧或每隔几帧更新人数（简单粗暴但有效）
+        UpdateAlivePlayerCount(); 
     }
 
     public void UpdateRevertUI(float progress, bool isActive)
@@ -51,6 +55,34 @@ public class SceneScript : MonoBehaviour
         {
             revertProgressBar.fillAmount = progress;
         }
+    }
+
+    public void UpdateAlivePlayerCount()
+    {
+        if (PlayerCountText == null) return;
+
+        int aliveHunters = 0;
+        int aliveWitches = 0;
+
+        // 遍历所有连接的玩家
+        foreach (var player in GamePlayer.AllPlayers)
+        {
+            if (player == null || player.isPermanentDead) continue;
+
+            if (player.playerRole == PlayerRole.Hunter)
+            {
+                aliveHunters++;
+            }
+            else if (player.playerRole == PlayerRole.Witch)
+            {
+                aliveWitches++;
+            }
+        }
+
+        // 更新 UI 显示
+        // 使用富文本可以增加颜色识别度
+        // 使用 16 进制代码：青色 (#00FFFF)，品红色 (#FF00FF)
+        PlayerCountText.text = $"<color=#00FFFF>Hunters: {aliveHunters}</color> | <color=#FF00FF>Witches: {aliveWitches}</color>";
     }
 
     // 更新时间显示的逻辑
