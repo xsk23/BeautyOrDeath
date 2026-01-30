@@ -33,15 +33,16 @@ public abstract class GamePlayer : NetworkBehaviour
     [Header("同步属性")]
     [SyncVar(hook = nameof(OnStunChanged))]
     public bool isStunned = false; // 是否被禁锢
-    [SyncVar(hook = nameof(OnNameChanged))] public string playerName;
+    [SyncVar(hook = nameof(OnNameChanged))] 
+    public string playerName;
     [SyncVar(hook = nameof(OnHealthChanged))]// 血量变化钩子
     public float currentHealth = 100f;
-
+    [SyncVar(hook = nameof(OnMaxHealthChanged))]
     public float maxHealth = 100f;
-
     public float manaRegenRate = 5f;
     [SyncVar(hook = nameof(OnManaChanged))]
     public float currentMana = 100f;
+    [SyncVar(hook = nameof(OnMaxManaChanged))]
     public float maxMana = 100f;
 
     [SyncVar(hook = nameof(OnMorphChanged))] 
@@ -661,6 +662,21 @@ public abstract class GamePlayer : NetworkBehaviour
         }
         // 只要有人永久死亡，刷新计数
         RefreshSceneUI();
+    }
+
+    protected void OnMaxHealthChanged(float oldValue, float newValue)
+    {
+        if (isLocalPlayer && sceneScript != null)
+        {
+            sceneScript.HealthSlider.maxValue = newValue;
+        }
+    }
+    protected void OnMaxManaChanged(float oldValue, float newValue)
+    {
+        if (isLocalPlayer && sceneScript != null)
+        {
+            sceneScript.ManaSlider.maxValue = newValue;
+        }
     }
 
     // ---------------------------------------------------

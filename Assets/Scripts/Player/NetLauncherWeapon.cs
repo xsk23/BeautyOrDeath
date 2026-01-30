@@ -20,6 +20,8 @@ public class NetLauncherWeapon : WeaponBase
       // 注意：虽然射击方向是 direction (摄像机朝向)，但为了让网从枪口飞出，我们放在 firePoint
       GameObject net = Instantiate(netPrefab, firePoint.position, Quaternion.LookRotation(direction));
       net.GetComponent<Rigidbody>().velocity = direction * BulletSpeed;
+      // 【新增】获取发射者的阵营并传给网子
+      PlayerRole shooterRole = GetComponentInParent<GamePlayer>().playerRole;
       NetworkServer.Spawn(net);
       // 设置网的生命周期
       Destroy(net, lifeTime);

@@ -104,9 +104,9 @@ public class WitchPlayer : GamePlayer
     {
         base.OnStartServer();
 
-        moveSpeed = 5f;
+        // moveSpeed = 5f;
         // mouseSensitivity = 2f;
-        manaRegenRate = 5f;
+        // manaRegenRate = 5f;
     }
 
     public override void Update()

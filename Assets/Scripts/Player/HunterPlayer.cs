@@ -35,9 +35,9 @@ public class HunterPlayer : GamePlayer
     {
         base.OnStartServer();
 
-        moveSpeed = 7f;
+        // moveSpeed = 7f;
         // mouseSensitivity = 2.5f;
-        manaRegenRate = 8f;
+        // manaRegenRate = 8f;
     }
     public void OnWeaponChanged(int oldWeaponIndex, int newWeaponIndex)
     {

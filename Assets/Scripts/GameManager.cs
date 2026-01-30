@@ -25,6 +25,15 @@ public class GameManager : NetworkBehaviour
     }
     [SyncVar]
     public float gameTimer = 300f; // 5分钟倒计时
+    // 【新增】持久化设置存储（用于跨场景）
+    private float witchHPInternal = 100f;
+    private float witchManaInternal = 100f;
+    private float hunterSpeedInternal = 7f;
+    private int trapDifficultyInternal = 2;
+    private float manaRegenInternal = 5f;
+    private int animalsToSpawnInternal = 10;
+    private bool friendlyFireInternal = false; // 【新增】
+    public bool FriendlyFire => friendlyFireInternal; // 提供一个只读访问接口
     private void Awake()
     {
         // 严格的单例检查
@@ -155,12 +164,30 @@ public class GameManager : NetworkBehaviour
         GameObject characterInstance = Instantiate(prefabToUse, spawnPos, spawnRot);
 
         // 5. 初始化数据
+        LobbyScript lobby = FindObjectOfType<LobbyScript>();
         GamePlayer playerScript = characterInstance.GetComponent<GamePlayer>();
         if (playerScript != null)
         {
             playerScript.playerName = pName;
-            playerScript.playerRole = role; // 重要：设置角色类型
+            playerScript.playerRole = role;
+
+            // 2. 【核心】在这里应用刚才抢救下来的内部变量
+            playerScript.manaRegenRate = this.manaRegenInternal;
+            playerScript.requiredClicks = this.trapDifficultyInternal;
+
+            if (role == PlayerRole.Witch)
+            {
+                playerScript.maxHealth = this.witchHPInternal;
+                playerScript.currentHealth = this.witchHPInternal;
+                playerScript.maxMana = this.witchManaInternal;
+                playerScript.currentMana = this.witchManaInternal;
+            }
+            else if (role == PlayerRole.Hunter)
+            {
+                playerScript.moveSpeed = this.hunterSpeedInternal;
+            }
         }
+
 
         // 6. 【关键修改】处理 "Replace" 还是 "Add"
         // 当通过 OnServerAddPlayer 调用时，Mirror 期望我们调用 AddPlayerForConnection
@@ -232,7 +259,7 @@ public class GameManager : NetworkBehaviour
 
         if (animalSpawner != null)
         {
-            animalSpawner.SpawnAnimals();
+            animalSpawner.SpawnAnimals(this.animalsToSpawnInternal);
         }
         else
         {
@@ -247,21 +274,54 @@ public class GameManager : NetworkBehaviour
         gameTimer = 300f;
         Debug.Log("Game has been reset to Lobby state.");
     }
+    [Server] // 确保只在服务器运行
     public void StartGame()
-    {                  
-        // 动态找一下场景里的 Spawner，因为 Prefab 无法预存场景里的物体引用
+    {              
+        // 1. 寻找大厅脚本
+        LobbyScript lobby = FindObjectOfType<LobbyScript>();
+        
+        if (lobby != null)
+        {
+            // 1. 【核心】在切换场景前，把所有 SyncVar 的值存入 GameManager
+            this.gameTimer = lobby.syncedGameTimer;
+            this.animalsToSpawnInternal = lobby.syncedAnimalsNumber;
+            this.witchHPInternal = lobby.syncedWitchHP;
+            this.witchManaInternal = lobby.syncedWitchMana;
+            this.hunterSpeedInternal = lobby.syncedHunterSpeed;
+            this.trapDifficultyInternal = lobby.syncedTrapDifficulty;
+            this.manaRegenInternal = lobby.syncedManaRegen;
+            this.friendlyFireInternal = lobby.syncedFriendlyFire; // 【核心修改】捕获开关状态
+            Debug.Log($"[Server] Applying Lobby Settings: Timer = {this.gameTimer}, Animals = {this.animalsToSpawnInternal}, WitchHP = {this.witchHPInternal}, WitchMana = {this.witchManaInternal}, HunterSpeed = {this.hunterSpeedInternal}, TrapDifficulty = {this.trapDifficultyInternal}, ManaRegen = {this.manaRegenInternal}, FriendlyFire = {this.friendlyFireInternal}");
+        }
+        else
+        {
+            // 兜底方案：如果找不到大厅（比如直接从开发场景启动），使用默认值
+            this.gameTimer = 300f; 
+            this.animalsToSpawnInternal = 10;
+            this.witchHPInternal = 100f;
+            this.witchManaInternal = 100f;
+            this.hunterSpeedInternal = 7f;
+            this.trapDifficultyInternal = 2;
+            this.manaRegenInternal = 5f;
+            this.friendlyFireInternal = false; // 【核心修改】默认关闭
+            Debug.LogWarning("[Server] LobbyScript not found, using default timer 300s");
+        }
+
+        // 2. 寻找 Spawner
         if (animalSpawner == null) {
             animalSpawner = FindObjectOfType<ServerAnimalSpawner>();
         }
 
+        // 3. 改变游戏状态
         SetGameState(GameState.InGame);
-        //设置游戏时间为倒计时5分钟
-        gameTimer = 300f; 
-        Debug.Log("Game has started.");
+        
+        // --- 【删除掉原来的 gameTimer = 300f; 这行】 ---
+
+        Debug.Log($"Game has started with duration: {gameTimer}s");
         
         if (NetworkServer.active)
         {
-            PreAssignRoles(); // 先把角色定下来，存到 GameManager 里
+            PreAssignRoles(); 
         }
    
     }

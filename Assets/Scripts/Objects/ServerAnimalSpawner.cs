@@ -12,7 +12,7 @@ public class ServerAnimalSpawner : NetworkBehaviour
     public float margin = 5f;
 
     [Server]
-    public void SpawnAnimals()
+    public void SpawnAnimals(int countFromManager)
     {
         // 1. 改为使用 PropDatabase 里的 animalPrefabs
         var db = PropDatabase.Instance;
@@ -21,7 +21,7 @@ public class ServerAnimalSpawner : NetworkBehaviour
         TerrainData tData = targetTerrain.terrainData;
         Vector3 terrainPos = targetTerrain.transform.position;
 
-        for (int i = 0; i < animalCount; i++)
+        for (int i = 0; i < countFromManager; i++)
         {
             // 随机选一只动物
             int animalIndex = Random.Range(0, db.animalPrefabs.Count);

@@ -7,13 +7,32 @@ using UnityEngine.UI;
 
 public class LobbyScript : NetworkBehaviour
 {
+    [Header("Game Settings (Synced)")]
+    [SyncVar(hook = nameof(OnGameTimerChanged))] 
+    public float syncedGameTimer = 300f;
+
+    [SyncVar(hook = nameof(OnFriendlyFireChanged))] 
+    public bool syncedFriendlyFire = false;
+
+    [SyncVar(hook = nameof(OnMapIndexChanged))] 
+    public int syncedMapIndex = 0;
+    [SyncVar(hook = nameof(OnAnimalsNumberChanged))] 
+    public int syncedAnimalsNumber = 10;
+    // 新增：数值平衡设置
+    [SyncVar(hook = nameof(OnSettingChanged))] public float syncedWitchHP = 100f;
+    [SyncVar(hook = nameof(OnSettingChanged))] public float syncedWitchMana = 100f;
+    [SyncVar(hook = nameof(OnSettingChanged))] public float syncedHunterSpeed = 7f;
+    [SyncVar(hook = nameof(OnSettingChanged))] public int syncedTrapDifficulty = 2; // 挣脱点击数
+    [SyncVar(hook = nameof(OnSettingChanged))] public float syncedManaRegen = 5f;
+
+
+
     [Header("UI References")]
     [SerializeField] private TextMeshProUGUI playerNumberText; // 显示人数
     // [SerializeField] private Button btnReady;       // 准备按钮
     [SerializeField] private Button btnStartGame;   // 开始游戏按钮（仅房主可见）
     // [SerializeField] private Text txtReadyBtn; // 准备按钮上的文字
     [SerializeField] public TextMeshProUGUI roomStatusText; // 显示房间状态的文本
-
     // 状态同步
     [SyncVar(hook = nameof(OnPlayerCountChanged))] private int playerCount = 0;
     [SyncVar(hook = nameof(OnReadyCountChanged))] private int readyCount = 0;
@@ -30,7 +49,7 @@ public class LobbyScript : NetworkBehaviour
     // 用字典来记录：哪个 PlayerScript 对应 UI 里的哪一行
     private Dictionary<PlayerScript, PlayerRowUI> playerRows = new Dictionary<PlayerScript, PlayerRowUI>();
     
-
+    private Coroutine countdownCoroutine; // 【新增】保存协程引用
     private void Start()
     {
         // 绑定按钮事件
@@ -235,7 +254,28 @@ public class LobbyScript : NetworkBehaviour
         // 防止重复触发
         if (isGameStarting) return;
 
-        StartCoroutine(CountdownRoutine());
+        // StartCoroutine(CountdownRoutine());
+        countdownCoroutine = StartCoroutine(CountdownRoutine());
+    }
+
+    // 【新增】取消倒计时的逻辑
+    [Server]
+    public void CancelCountdown()
+    {
+        if (!isGameStarting) return;
+
+        Debug.Log("A player unreadied! Cancelling countdown...");
+
+        if (countdownCoroutine != null)
+        {
+            StopCoroutine(countdownCoroutine);
+            countdownCoroutine = null;
+        }
+
+        isGameStarting = false;
+        countdownDisplay = 5; // 重置倒计时数字
+        
+        // UI 会在 UpdateLobbyUI 中自动根据 isGameStarting 的变化而切换回等待状态
     }
 
     [Server]
@@ -250,13 +290,16 @@ public class LobbyScript : NetworkBehaviour
             countdownDisplay--;
         }
 
-        // 倒计时结束，切换场景
+        // 倒计时自然结束
         Debug.Log("Countdown finished, switching scene...");
         
-        // 1. 初始化游戏数据
+        // 切换场景前确保状态正确
+        isGameStarting = false; 
+
         GameManager.Instance.StartGame(); 
-        // 2. 切换场景
         NetworkManager.singleton.ServerChangeScene("MyScene");
+        
+        countdownCoroutine = null;
     }
 
 
@@ -272,5 +315,26 @@ public class LobbyScript : NetworkBehaviour
             if (p != null && p.isReady) rCount++;
         }
         readyCount = rCount;
+        // --- 【核心修改】检测是否需要取消倒计时 ---
+        // 如果正在倒计时，但有人取消了准备 或 有人中途退出
+        if (isGameStarting && (readyCount < playerCount || playerCount == 0))
+        {
+            CancelCountdown();
+        }
+    }
+    // 无论谁改了，所有人都要刷新 UI 界面
+    void OnGameTimerChanged(float oldV, float newV) => RefreshAllUI();
+    void OnFriendlyFireChanged(bool oldV, bool newV) => RefreshAllUI();
+    void OnMapIndexChanged(int oldV, int newV) => RefreshAllUI();
+    void OnAnimalsNumberChanged(int oldV, int newV) => RefreshAllUI();
+    // 统一的视觉刷新钩子
+    void OnSettingChanged(float oldV, float newV) => RefreshAllUI();
+    void OnSettingChanged(int oldV, int newV) => RefreshAllUI();
+    private void RefreshAllUI()
+    {
+        if (LobbySettingsManager.Instance != null)
+        {
+            LobbySettingsManager.Instance.UpdateVisuals();
+        }
     }
 }

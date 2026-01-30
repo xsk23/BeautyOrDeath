@@ -25,17 +25,26 @@ public class GunWeapon : WeaponBase
                 // 我们尝试从命中物体或其父级寻找 GamePlayer
                 GamePlayer target = hit.collider.GetComponent<GamePlayer>();
 
-                if (target == null)
-                    target = hit.collider.GetComponentInParent<GamePlayer>();
-
                 if (target != null)
                 {
-                    target.ServerTakeDamage(damage);
-                    Debug.Log($"[GunWeapon] Hit {target.playerName} on CC");
+                    // 获取攻击者（枪是在猎人手里的，所以父级一定是 HunterPlayer）
+                    GamePlayer attacker = GetComponentInParent<GamePlayer>();
+
+                    // --- 【队友伤害检查逻辑】 ---
+                    bool isSameTeam = (target.playerRole == attacker.playerRole);
+                    bool canDamage = !isSameTeam || GameManager.Instance.FriendlyFire;
+
+                    if (canDamage)
+                    {
+                        target.ServerTakeDamage(damage);
+                        Debug.Log($"[GunWeapon] {attacker.playerName} shot {target.playerName}. FF: {isSameTeam}");
+                    }
+                    else
+                    {
+                        Debug.Log($"[GunWeapon] Hit blocked by Friendly Fire setting!");
+                    }
                 }
-                // 2. ★ 触发命中特效
-                // 传入命中点 (hit.point) 和 法线 (hit.normal)
-                RpcSpawnImpact(hit.point, hit.normal);
+                RpcSpawnImpact(hit.point, hit.normal);   
             }
             [ClientRpc]
             void RpcSpawnImpact(Vector3 hitPoint, Vector3 surfaceNormal)
