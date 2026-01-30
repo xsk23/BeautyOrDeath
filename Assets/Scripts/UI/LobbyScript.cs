@@ -24,8 +24,7 @@ public class LobbyScript : NetworkBehaviour
     [SyncVar(hook = nameof(OnSettingChanged))] public float syncedHunterSpeed = 7f;
     [SyncVar(hook = nameof(OnSettingChanged))] public int syncedTrapDifficulty = 2; // 挣脱点击数
     [SyncVar(hook = nameof(OnSettingChanged))] public float syncedManaRegen = 5f;
-
-
+    [SyncVar(hook = nameof(OnSettingChanged))] public float syncedHunterRatio = 0.3f; // 默认 30% 猎人
 
     [Header("UI References")]
     [SerializeField] private TextMeshProUGUI playerNumberText; // 显示人数

@@ -33,6 +33,7 @@ public class GameManager : NetworkBehaviour
     private float manaRegenInternal = 5f;
     private int animalsToSpawnInternal = 10;
     private bool friendlyFireInternal = false; // 【新增】
+    private float hunterRatioInternal = 0.3f; // 猎人比例
     public bool FriendlyFire => friendlyFireInternal; // 提供一个只读访问接口
     private void Awake()
     {
@@ -216,32 +217,80 @@ public class GameManager : NetworkBehaviour
     }
 
     // 【修改】将分配逻辑改为预分配，存入字典
+    // [Server]
+    // public void PreAssignRoles()//纯随机分配
+    // {
+    //     pendingRoles.Clear();
+    //     pendingNames.Clear(); // 【新增】清空名字字典
+
+    //     Debug.Log($"[PreAssignRoles] Starting... Total Connections: {NetworkServer.connections.Count}");
+
+    //     foreach (var conn in NetworkServer.connections.Values)
+    //     {
+    //         if (conn?.identity == null) 
+    //         {
+    //             Debug.LogWarning($"[PreAssignRoles] Skip connection {conn.connectionId} (No Identity)");
+    //             continue;
+    //         }
+
+    //         // 1. 保存角色 (原有逻辑)
+    //         PlayerRole newRole = (UnityEngine.Random.value < 0.5f) ? PlayerRole.Witch : PlayerRole.Hunter;
+    //         pendingRoles[conn.connectionId] = newRole;
+
+    //         // 2. 获取名字
+    //         var playerScript = conn.identity.GetComponent<PlayerScript>();
+    //         string pName = (playerScript != null) ? playerScript.playerName : "Unknown";
+    //         pendingNames[conn.connectionId] = pName;
+
+    //         Debug.Log($"[PreAssignRoles] ID: {conn.connectionId} | Name: {pName} | Role: {newRole}");
+    //     }
+    // }
+
     [Server]
     public void PreAssignRoles()
     {
         pendingRoles.Clear();
-        pendingNames.Clear(); // 【新增】清空名字字典
+        pendingNames.Clear();
 
-        Debug.Log($"[PreAssignRoles] Starting... Total Connections: {NetworkServer.connections.Count}");
-
+        // 1. 获取所有有效连接
+        List<NetworkConnectionToClient> connections = new List<NetworkConnectionToClient>();
         foreach (var conn in NetworkServer.connections.Values)
         {
-            if (conn?.identity == null) 
-            {
-                Debug.LogWarning($"[PreAssignRoles] Skip connection {conn.connectionId} (No Identity)");
-                continue;
-            }
+            if (conn?.identity != null) connections.Add(conn);
+        }
 
-            // 1. 保存角色 (原有逻辑)
-            PlayerRole newRole = (UnityEngine.Random.value < 0.5f) ? PlayerRole.Witch : PlayerRole.Hunter;
-            pendingRoles[conn.connectionId] = newRole;
+        int totalPlayers = connections.Count;
+        if (totalPlayers == 0) return;
 
-            // 2. 获取名字
+        // 2. 计算猎人应有数量 (至少 1 名猎人，除非只有 1 个人)
+        int hunterTargetCount = Mathf.Max(1, Mathf.RoundToInt(totalPlayers * hunterRatioInternal));
+        // 如果总人数超过1人，确保至少留一个位置给女巫
+        if (totalPlayers > 1 && hunterTargetCount >= totalPlayers) hunterTargetCount = totalPlayers - 1;
+
+        // 3. 洗牌算法 (Shuffle) 确保公平分配
+        for (int i = 0; i < connections.Count; i++)
+        {
+            NetworkConnectionToClient temp = connections[i];
+            int randomIndex = UnityEngine.Random.Range(i, connections.Count);
+            connections[i] = connections[randomIndex];
+            connections[randomIndex] = temp;
+        }
+
+        // 4. 按洗牌后的顺序分配角色
+        for (int i = 0; i < connections.Count; i++)
+        {
+            NetworkConnectionToClient conn = connections[i];
+            
+            // 前 hunterTargetCount 名玩家为猎人，其余为女巫
+            PlayerRole assignedRole = (i < hunterTargetCount) ? PlayerRole.Hunter : PlayerRole.Witch;
+            
+            pendingRoles[conn.connectionId] = assignedRole;
+
             var playerScript = conn.identity.GetComponent<PlayerScript>();
             string pName = (playerScript != null) ? playerScript.playerName : "Unknown";
             pendingNames[conn.connectionId] = pName;
 
-            Debug.Log($"[PreAssignRoles] ID: {conn.connectionId} | Name: {pName} | Role: {newRole}");
+            Debug.Log($"[PreAssignRoles] ID: {conn.connectionId} | Name: {pName} | Role: {assignedRole} (Ratio Target: {hunterTargetCount}/{totalPlayers})");
         }
     }
 
@@ -291,6 +340,7 @@ public class GameManager : NetworkBehaviour
             this.trapDifficultyInternal = lobby.syncedTrapDifficulty;
             this.manaRegenInternal = lobby.syncedManaRegen;
             this.friendlyFireInternal = lobby.syncedFriendlyFire; // 【核心修改】捕获开关状态
+            this.hunterRatioInternal = lobby.syncedHunterRatio;
             Debug.Log($"[Server] Applying Lobby Settings: Timer = {this.gameTimer}, Animals = {this.animalsToSpawnInternal}, WitchHP = {this.witchHPInternal}, WitchMana = {this.witchManaInternal}, HunterSpeed = {this.hunterSpeedInternal}, TrapDifficulty = {this.trapDifficultyInternal}, ManaRegen = {this.manaRegenInternal}, FriendlyFire = {this.friendlyFireInternal}");
         }
         else
@@ -304,6 +354,7 @@ public class GameManager : NetworkBehaviour
             this.trapDifficultyInternal = 2;
             this.manaRegenInternal = 5f;
             this.friendlyFireInternal = false; // 【核心修改】默认关闭
+            this.hunterRatioInternal = 0.3f; // 默认猎人比例 30%
             Debug.LogWarning("[Server] LobbyScript not found, using default timer 300s");
         }
 

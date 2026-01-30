@@ -80,17 +80,25 @@ public class LobbySettingsManager : MonoBehaviour
         //将CmdUpdateLobbySettings的type顺序编号与UI生成顺序对应起来，方便维护
         // --- 类别：核心规则 ---
         CreateHeader("--- BASIC RULES ---");
-        CreateSlider("GameTime", "Game Time (sec)", 60, 600, lobby.syncedGameTimer, (v) => localPlayer?.CmdUpdateLobbySettings(0, v, false, 0));
-        CreateSlider("Animals", "Animal Count", 0, 50, lobby.syncedAnimalsNumber, (v) => localPlayer?.CmdUpdateLobbySettings(1, v, false, 0));
+        // 游戏时间：整数 (true)
+        CreateSlider("GameTime", "Game Time (sec)", 60, 600, lobby.syncedGameTimer, true, (v) => localPlayer?.CmdUpdateLobbySettings(0, v, false, 0));
+        // 动物数量：整数 (true)
+        CreateSlider("Animals", "Animal Count", 0, 50, lobby.syncedAnimalsNumber, true, (v) => localPlayer?.CmdUpdateLobbySettings(1, v, false, 0));
         CreateToggle("FriendlyFire", "Friendly Fire", lobby.syncedFriendlyFire, (v) => localPlayer?.CmdUpdateLobbySettings(2, 0, v, 0));
 
         // --- 类别：阵营平衡 ---
         CreateHeader("--- BALANCE ---");
-        CreateSlider("WitchHP", "Witch Max HP", 50, 200, lobby.syncedWitchHP, (v) => localPlayer?.CmdUpdateLobbySettings(3, v, false, 0));
-        CreateSlider("WitchMana", "Witch Max Mana", 50, 200, lobby.syncedWitchMana, (v) => localPlayer?.CmdUpdateLobbySettings(4, v, false, 0));
-        CreateSlider("HunterSpeed", "Hunter Speed", 4, 12, lobby.syncedHunterSpeed, (v) => localPlayer?.CmdUpdateLobbySettings(5, v, false, 0));
-        CreateSlider("TrapDiff", "Trap Escape Clicks", 1, 10, lobby.syncedTrapDifficulty, (v) => localPlayer?.CmdUpdateLobbySettings(6, v, false, 0));
-        CreateSlider("ManaRate", "Mana Regen Rate", 1, 20, lobby.syncedManaRegen, (v) => localPlayer?.CmdUpdateLobbySettings(7, v, false, 0));
+        // 血量：整数 (true)
+        CreateSlider("WitchHP", "Witch Max HP", 50, 200, lobby.syncedWitchHP, true, (v) => localPlayer?.CmdUpdateLobbySettings(3, v, false, 0));
+        CreateSlider("WitchMana", "Witch Max Mana", 50, 200, lobby.syncedWitchMana, true, (v) => localPlayer?.CmdUpdateLobbySettings(4, v, false, 0));
+        // 速度：小数 (false)
+        CreateSlider("HunterSpeed", "Hunter Speed", 4, 12, lobby.syncedHunterSpeed, false, (v) => localPlayer?.CmdUpdateLobbySettings(5, v, false, 0));
+        // 挣脱：整数 (true)
+        CreateSlider("TrapDiff", "Trap Escape Clicks", 1, 10, lobby.syncedTrapDifficulty, true, (v) => localPlayer?.CmdUpdateLobbySettings(6, v, false, 0));
+        // 恢复率：小数 (false)
+        CreateSlider("ManaRate", "Mana Regen Rate", 1, 20, lobby.syncedManaRegen, false, (v) => localPlayer?.CmdUpdateLobbySettings(7, v, false, 0));
+        // 猎人比例：小数 (false) 【这是你刚才报错的地方】
+        CreateSlider("HunterRatio", "Hunter Ratio (%)", 0.1f, 0.9f, lobby.syncedHunterRatio, false, (v) => localPlayer?.CmdUpdateLobbySettings(8, v, false, 0));    
     }
     private void CreateHeader(string title)
     {
@@ -116,24 +124,29 @@ public class LobbySettingsManager : MonoBehaviour
         }
     }
 
-    private void CreateSlider(string key, string label, float min, float max, float current, System.Action<float> onCmd)
+    // 增加 isWhole 参数
+    private void CreateSlider(string key, string label, float min, float max, float current, bool isWhole, System.Action<float> onCmd)
     {
         GameObject go = Instantiate(sliderPrefab, container);
-        go.name = key; // 设置名称以便后续查找
+        go.name = key;
         go.transform.Find("Text (TMP)").GetComponent<TextMeshProUGUI>().text = label;
         
         Slider s = go.GetComponentInChildren<Slider>();
-        // 查找 SliderValue 文本物体
         TextMeshProUGUI valText = go.transform.Find("SliderGroup/SliderValue").GetComponent<TextMeshProUGUI>();
 
         s.minValue = min;
         s.maxValue = max;
-        s.wholeNumbers = true; // 通常时间设置为整数拖动更顺滑
+        
+        // 【关键修改】：不再写死 true，而是使用传进来的变量
+        s.wholeNumbers = isWhole; 
+        
         s.value = current;
-        valText.text = current.ToString(); // 初始化数值显示
+
+        // 【视觉优化】：如果是小数，显示两位精度；如果是整数，显示为 0 精度
+        valText.text = isWhole ? current.ToString("F0") : current.ToString("F2");
 
         s.onValueChanged.AddListener((v) => {
-            valText.text = v.ToString(); // 拖动时即时更新本地数值文本
+            valText.text = isWhole ? v.ToString("F0") : v.ToString("F2");
             onCmd?.Invoke(v);
         });
 
@@ -221,6 +234,7 @@ public class LobbySettingsManager : MonoBehaviour
         UpdateSliderVisual("HunterSpeed", lobby.syncedHunterSpeed);
         UpdateSliderVisual("TrapDiff", lobby.syncedTrapDifficulty);
         UpdateSliderVisual("ManaRate", lobby.syncedManaRegen);
+        UpdateSliderVisual("HunterRatio", lobby.syncedHunterRatio);
     }
     // 辅助方法减少重复代码
     private void UpdateSliderVisual(string key, float value)
@@ -228,10 +242,12 @@ public class LobbySettingsManager : MonoBehaviour
         if (spawnedSettings.TryGetValue(key, out GameObject go))
         {
             Slider s = go.GetComponentInChildren<Slider>();
-            if (Input.GetMouseButton(0) == false) // 只有玩家没在拖拽时才更新
+            if (Input.GetMouseButton(0) == false) 
             {
                 s.SetValueWithoutNotify(value);
-                go.transform.Find("SliderGroup/SliderValue").GetComponent<TextMeshProUGUI>().text = value.ToString();
+                // 根据滑块自身的 wholeNumbers 属性决定显示格式
+                string format = s.wholeNumbers ? "F0" : "F2";
+                go.transform.Find("SliderGroup/SliderValue").GetComponent<TextMeshProUGUI>().text = value.ToString(format);
             }
         }
     }

@@ -317,6 +317,9 @@ public class PlayerScript : NetworkBehaviour
             case 7:
                 lobby.syncedManaRegen = floatVal;
                 break;
+            case 8:
+                lobby.syncedHunterRatio = floatVal;
+                break;
             default:
                 UnityEngine.Debug.LogWarning($"Unknown lobby setting type: {type}");
                 break;
