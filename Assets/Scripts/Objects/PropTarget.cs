@@ -12,7 +12,7 @@ public class PropTarget : NetworkBehaviour
 
     [Header("Visuals")]
     // 不需要手动拖，代码会自动找
-    private Renderer targetRenderer; 
+    public Renderer targetRenderer; 
     
     [Header("Highlight Settings")]
     [SerializeField] private Material outlineMaterialSource; 
@@ -37,21 +37,31 @@ public class PropTarget : NetworkBehaviour
         {
             PropDatabase.Instance.RegisterProp(runtimeID, this);
         }
-        // ... 原有的 Awake 里的初始化逻辑移到这里（Renderer、Materials 等） ...
-        targetRenderer = GetComponent<Renderer>() ?? GetComponentInChildren<Renderer>();
+        
+        // 如果 targetRenderer 还没赋值（比如场景里的静态物体），尝试自动查找
+        if (targetRenderer == null)
+        {
+            targetRenderer = GetComponent<Renderer>() ?? GetComponentInChildren<Renderer>();
+        }
+        InitMaterials();
+    }
 
+    private void InitMaterials()
+    {
         if (targetRenderer == null) return;
 
-        // 1. 记录初始材质 (注意用 sharedMaterials 以免在 Awake 就触发实例化)
+        // 1. 记录初始材质
         originalMaterials = targetRenderer.sharedMaterials;
 
-        // 2. 预热高亮材质数组
+        // 2. 预热高亮材质
         if (outlineMaterialSource != null)
         {
-            outlineInstance = new Material(outlineMaterialSource);
-            outlineInstance.color = Color.yellow; // 或者 SetColor("_OutlineColor", ...)
+            if (outlineInstance == null) 
+            {
+                outlineInstance = new Material(outlineMaterialSource);
+                outlineInstance.color = Color.yellow; 
+            }
 
-            // 创建一个比原数组多一个长度的新数组
             highlightedMaterials = new Material[originalMaterials.Length + 1];
             for (int i = 0; i < originalMaterials.Length; i++)
             {
@@ -59,8 +69,17 @@ public class PropTarget : NetworkBehaviour
             }
             highlightedMaterials[highlightedMaterials.Length - 1] = outlineInstance;
         }
-
     }
+    
+    // 【新增】供女巫变身后手动初始化
+    public void ManualInit(int id, Renderer r)
+    {
+        this.propID = id;
+        this.targetRenderer = r;
+        InitMaterials();
+    }
+
+
     private void Awake()
     {
 
@@ -70,7 +89,8 @@ public class PropTarget : NetworkBehaviour
     {
         if (targetRenderer == null || highlightedMaterials == null) return;
         if (isHighlighted == active) return;
-        
+        // 【修复】增加 enabled 检查，防止给隐藏的物体高亮
+        if (!targetRenderer.enabled) return;
         isHighlighted = active;
 
         // 直接整体替换数组，效率最高且避免引用问题

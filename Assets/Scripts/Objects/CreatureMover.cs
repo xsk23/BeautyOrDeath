@@ -1,13 +1,14 @@
 using System;
 using UnityEditor;
 using UnityEngine;
+using Mirror;
 
 namespace Controller
 {
     [RequireComponent(typeof(CharacterController))]
     [RequireComponent(typeof(Animator))]
     [DisallowMultipleComponent]
-    public class CreatureMover : MonoBehaviour
+    public class CreatureMover : NetworkBehaviour
     {
         [Header("Movement")]
         [SerializeField]
@@ -63,13 +64,13 @@ namespace Controller
             m_Movement = new MovementHandler(m_Controller, m_Transform, m_WalkSpeed, m_RunSpeed, m_RotateSpeed, m_JumpHeight, m_Space);
             m_Animation = new AnimationHandler(m_Animator, m_VerticalID, m_StateID);
         }
-
+        [ServerCallback]
         private void Update()
         {
             m_Movement.Move(Time.deltaTime, in m_Axis, in m_Target, m_IsRun, m_IsMoving, out var animAxis, out var isAir);
             m_Animation.Animate(in animAxis, m_IsRun ? 1f : 0f, Time.deltaTime);
         }
-
+        [ServerCallback]
         private void OnAnimatorIK()
         {
             m_Animation.AnimateIK(in m_Target, m_LookWeight);

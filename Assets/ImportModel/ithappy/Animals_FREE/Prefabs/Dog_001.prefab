@@ -494,9 +494,9 @@ GameObject:
   - component: {fileID: 9003410764456430701}
   - component: {fileID: 4203687711656398374}
   - component: {fileID: -7810881396125501181}
-  - component: {fileID: 8592144788571991367}
   - component: {fileID: -2184335598781506024}
   - component: {fileID: 1689761362492811928}
+  - component: {fileID: -6665669336714653325}
   m_Layer: 3
   m_Name: Dog_001
   m_TagString: Untagged
@@ -580,6 +580,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: be2f4aa750c530144bd7219a00354c98, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
   m_WalkSpeed: 1
   m_RunSpeed: 4
   m_RotateSpeed: 245
@@ -604,6 +607,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2c35b76c657cd2b4cb6837ec4530f436, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
   m_IdleWeight: 0.3
   m_WalkWeight: 0.4
   m_RunWeight: 0.3
@@ -611,26 +617,6 @@ MonoBehaviour:
   m_IdleTimeMax: 5
   m_MoveTimeMin: 3
   m_MoveTimeMax: 6
---- !u!114 &8592144788571991367
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2629182449500102118}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b2c67ce836140b4479603ebcf944cddd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_HorizontalAxis: Horizontal
-  m_VerticalAxis: Vertical
-  m_JumpButton: Jump
-  m_RunKey: 304
-  m_Camera: {fileID: 0}
-  m_MouseX: Mouse X
-  m_MouseY: Mouse Y
-  m_MouseScroll: Mouse ScrollWheel
 --- !u!114 &-2184335598781506024
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -660,7 +646,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8ff3ba0becae47b8b9381191598957c8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  syncDirection: 1
+  syncDirection: 0
   syncMode: 0
   syncInterval: 0
   target: {fileID: 3402305891407841116}
@@ -682,6 +668,23 @@ MonoBehaviour:
   rotationSensitivity: 0.01
   positionPrecision: 0.01
   scalePrecision: 0.01
+--- !u!114 &-6665669336714653325
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2629182449500102118}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f6f3bf89aa97405989c802ba270f815, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 1
+  syncMode: 0
+  syncInterval: 0
+  clientAuthority: 0
+  animator: {fileID: 9003410764456430701}
 --- !u!1 &2735724662372591797
 GameObject:
   m_ObjectHideFlags: 0

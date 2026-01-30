@@ -13,6 +13,7 @@ public class SceneScript : MonoBehaviour
     public Slider HealthSlider;//血量滑动条
     public Slider ManaSlider;//法力值滑动条
     public TextMeshProUGUI PlayerCountText;//显示玩家数量的文本
+    public TextMeshProUGUI RunText;//女巫小动物形态逃跑即复活提示文本
 
     [Header("Pause Menu")]
     public GameObject pauseMenuPanel; // 【新增】拖入你的暂停菜单Panel
@@ -32,6 +33,10 @@ public class SceneScript : MonoBehaviour
         if(revertProgressBar != null)
         {
             revertProgressBar.gameObject.SetActive(false);
+        }
+        if (RunText != null)
+        {
+            RunText.gameObject.SetActive(false);
         }
     }
 

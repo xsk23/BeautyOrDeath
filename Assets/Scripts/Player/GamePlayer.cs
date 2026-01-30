@@ -57,6 +57,8 @@ public abstract class GamePlayer : NetworkBehaviour
 
     [SyncVar(hook = nameof(OnPermanentDeadChanged))]
     public bool isPermanentDead = false; // 是否永久死亡
+    [SyncVar]
+    public bool isInvulnerable = false; // 是否无敌
 
     [Header("移动参数")]
     [SyncVar(hook = nameof(OnMoveSpeedChanged))] // 添加 SyncVar 和钩子
@@ -229,7 +231,10 @@ public abstract class GamePlayer : NetworkBehaviour
 
             // 【修改】始终调用 HandleMovement，在方法内部判断是否处理输入
             // 这样即使 Cursor 解锁了，重力代码依然会运行
-            HandleMovement();
+            // HandleMovement();
+            Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+            HandleMovementOverride(input);
+
 
             // 攻击输入还是只有锁定时才允许
             if (Cursor.lockState == CursorLockMode.Locked)
@@ -253,7 +258,7 @@ public abstract class GamePlayer : NetworkBehaviour
 
 
     // 新增方法：根据视角更新相机位置
-    private void UpdateCameraView()
+    public void UpdateCameraView()
     {
         if (isFirstPerson)
         {
@@ -267,6 +272,99 @@ public abstract class GamePlayer : NetworkBehaviour
             Camera.main.transform.localPosition = new Vector3(0, 2f, -3.27f);
             Camera.main.transform.localRotation = Quaternion.Euler(20f, 0f, 0f);
         }
+    }
+
+    // 将原来的 HandleMovement 改名为 HandleMovementOverride 并接受参数
+    protected virtual void HandleMovementOverride(Vector2 inputOverride)
+    {
+        // ... 原有代码 ...
+        // 唯一的区别是：把里面所有的 Input.GetAxis("Horizontal") 替换为 inputOverride.x
+        // 把 Input.GetAxis("Vertical") 替换为 inputOverride.y
+        
+
+        // 1. 更加精准的状态检测
+        // 射线起点稍微高一点（从膝盖位置发射），长度稍微长一点
+        float rayLength = (controller.height * 0.5f) + 0.3f; 
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f; 
+        bool isHit = Physics.Raycast(rayOrigin, Vector3.down, rayLength, groundLayer);
+        
+        // 结合 Controller 的状态，防止在斜坡上判定丢失
+        bool actuallyOnGround = isHit || controller.isGrounded;
+
+        // 2. 输入锁定
+        bool isInputLocked = isChatting || (sceneScript != null && Cursor.lockState != CursorLockMode.Locked);
+
+        // 3. 获取输入方向
+        float x = 0f; float z = 0f;
+        x = inputOverride.x; 
+        z = inputOverride.y;
+        
+        // if (!isInputLocked) { x = Input.GetAxis("Horizontal"); z = Input.GetAxis("Vertical"); }
+        Vector3 inputDir = (transform.right * x + transform.forward * z);
+        if (inputDir.magnitude > 1f) inputDir.Normalize();
+
+        // 4. 计算目标水平速度
+        Vector3 targetVelocity = inputDir * moveSpeed;
+
+        // 5. 【核心修改】找回惯性的速度计算
+        // 这里的参数决定了惯性的强弱：
+        // groundAccel: 地面启动速度 (越大启动越快)
+        // groundDecel: 地面摩擦力 (越大停得越快，设置小一点就有溜冰感)
+        float groundAccel = 8f; 
+        float groundDecel = 12f; 
+        
+        // 选择当前的加速度
+        float currentAccel;
+        if (actuallyOnGround)
+        {
+            // 如果有输入，用加速度；没输入（想停下来），用摩擦力
+            currentAccel = (inputDir.magnitude > 0) ? groundAccel : groundDecel;
+        }
+        else
+        {
+            // 空中加速度（airControl），通常很小，产生巨大的惯性
+            currentAccel = airControl; 
+        }
+
+        // 平滑改变速度 (不再乘以 10f，让变化过程肉眼可见)
+        velocity.x = Mathf.MoveTowards(velocity.x, targetVelocity.x, currentAccel * Time.deltaTime * moveSpeed);
+        velocity.z = Mathf.MoveTowards(velocity.z, targetVelocity.z, currentAccel * Time.deltaTime * moveSpeed);
+
+        // 6. 重力处理 (修复出生漂浮)
+        if (actuallyOnGround && velocity.y < 0)
+        {
+            // 已经在地面时，保持一个小小的下压力
+            velocity.y = -2f; 
+        }
+        else
+        {
+            // 只要不在地面，重力就会一直累加，确保哪怕出生在 0.1米高度也会掉下去
+            velocity.y += gravity * Time.deltaTime;
+        }
+
+        // 7. 跳跃逻辑
+        if (actuallyOnGround && !isInputLocked && Input.GetButtonDown("Jump"))
+        {
+            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            actuallyOnGround = false; // 瞬间起跳，脱离地面判定
+        }
+
+        // 8. 执行最终移动
+        controller.Move(velocity * Time.deltaTime);
+
+        // 9. 旋转视角 (保持不变)
+        if (!isInputLocked)
+        {
+            float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * 100f * Time.deltaTime;
+            float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * 100f * Time.deltaTime;
+            xRotation -= mouseY;
+            xRotation = Mathf.Clamp(xRotation, -80f, 80f);
+            Camera.main.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+            transform.Rotate(Vector3.up * mouseX);
+        }
+
+        // 调试射线：绿色代表判定为地面，红色代表空中
+        Debug.DrawRay(rayOrigin, Vector3.down * rayLength, actuallyOnGround ? Color.green : Color.red);
     }
 
     protected virtual void HandleMovement()
@@ -469,7 +567,8 @@ public abstract class GamePlayer : NetworkBehaviour
     [Server]
     public void ServerTakeDamage(float amount)
     {
-        if (isPermanentDead) return;
+        // 如果无敌或永久死亡，不处理伤害
+        if (isInvulnerable || isPermanentDead) return;
 
         currentHealth = Mathf.Max(0, currentHealth - amount);
         //改成英文debug

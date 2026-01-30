@@ -1,9 +1,10 @@
 using UnityEngine;
+using Mirror;
 
 namespace Controller
 {
     [RequireComponent(typeof(CreatureMover))]
-    public class CreatureAIWander : MonoBehaviour
+    public class CreatureAIWander : NetworkBehaviour
     {
         public enum WanderState { Idle, Walking, Running }
 
@@ -28,7 +29,7 @@ namespace Controller
             m_Mover = GetComponent<CreatureMover>();
             SelectNextState();
         }
-
+        [ServerCallback] 
         private void Update()
         {
             m_Timer -= Time.deltaTime;
