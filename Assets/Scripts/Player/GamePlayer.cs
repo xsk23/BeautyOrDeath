@@ -104,11 +104,18 @@ public abstract class GamePlayer : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
+        // 【核心修复】服务器启动时也加入列表
+        if (!AllPlayers.Contains(this)) AllPlayers.Add(this);
         if (this is WitchPlayer) playerRole = PlayerRole.Witch;
         else if (this is HunterPlayer) playerRole = PlayerRole.Hunter;
         else playerRole = PlayerRole.None;
     }
-
+    public override void OnStopServer()
+    {
+        // 【核心修复】服务器断开时移除
+        if (AllPlayers.Contains(this)) AllPlayers.Remove(this);
+        base.OnStopServer();
+    }
     // 客户端初始化
     public override void OnStartClient()
     {

@@ -131,12 +131,12 @@ public class WitchPlayer : GamePlayer
         // =========================================================
         if (isMorphed && myPropTarget != null && currentVisualProp != null)
         {
-            // 确保 PropTarget 的 Renderer 始终是最新的
-            // 这样别人射线打到新生成的猪/树上时，能高亮
-             if (myPropTarget.targetRenderer == null)
-             {
-                 myPropTarget.ManualInit(morphedPropID, currentVisualProp.GetComponentInChildren<Renderer>());
-             }
+            // 修改前：if (myPropTarget.targetRenderer == null)
+            // 修改后：使用我们刚才在 PropTarget 里加的属性
+            if (!myPropTarget.IsInitialized)
+            {
+                myPropTarget.ManualInit(morphedPropID, currentVisualProp);
+            }
         }
         // =========================================================
         // 如果变身了，根据按键实时更新基础移动速度
@@ -549,7 +549,8 @@ public class WitchPlayer : GamePlayer
 
             // 8. 【新增】启用我的 PropTarget，允许别人瞄准我变身后的模型
             myPropTarget.enabled = true;
-            myPropTarget.ManualInit(propID, currentVisualProp.GetComponentInChildren<Renderer>());
+            // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
+            myPropTarget.ManualInit(propID, currentVisualProp); 
             gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
         }
     }

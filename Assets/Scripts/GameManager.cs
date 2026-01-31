@@ -35,6 +35,24 @@ public class GameManager : NetworkBehaviour
     private bool friendlyFireInternal = false; // 【新增】
     private float hunterRatioInternal = 0.3f; // 猎人比例
     public bool FriendlyFire => friendlyFireInternal; // 提供一个只读访问接口
+
+    [SyncVar(hook = nameof(OnWinnerChanged))]
+    public PlayerRole gameWinner = PlayerRole.None;
+    [SyncVar]
+    public int restartCountdown = 5;
+    [Header("Alive Stats (Synced)")]
+    [SyncVar] public int aliveHuntersCount = 0;
+    [SyncVar] public int aliveWitchesCount = 0;
+
+    // 当获胜者确定时，客户端回调
+    void OnWinnerChanged(PlayerRole oldW, PlayerRole newW)
+    {
+        if (newW != PlayerRole.None)
+        {
+            SceneScript.Instance?.ShowGameResult(newW);
+        }
+    }
+
     private void Awake()
     {
         // 严格的单例检查
@@ -63,11 +81,81 @@ public class GameManager : NetworkBehaviour
             else
             {
                 gameTimer = 0;
-                EndGame(); 
+                // EndGame(); 
+                // 时间到，如果女巫没完成任务（目前默认逻辑），猎人胜
+                ServerEndGame(PlayerRole.Hunter); 
             }
+            // 2. 【核心修改】统计人数并检查胜负
+            UpdateAliveCountsAndCheckWin();
         }
     }
 
+
+    [Server]
+    private void UpdateAliveCountsAndCheckWin()
+    {
+        int hunters = 0;
+        int witches = 0;
+        int totalWitchesEver = 0; // 记录本局游戏总共生成过多少女巫
+
+        // 此时遍历的是服务器端的 AllPlayers 列表
+        foreach (var player in GamePlayer.AllPlayers)
+        {
+            if (player == null) continue;
+
+            if (player.playerRole == PlayerRole.Hunter)
+            {
+                if (!player.isPermanentDead) hunters++;
+            }
+            else if (player.playerRole == PlayerRole.Witch)
+            {
+                totalWitchesEver++; // 只要角色是女巫，就计入总数
+                if (!player.isPermanentDead) witches++;
+            }
+        }
+
+        // 更新同步变量（这会触发客户端 UI 更新）
+        aliveHuntersCount = hunters;
+        aliveWitchesCount = witches;
+
+        // 判定逻辑优化：
+        // 1. 游戏必须处于 InGame 状态（防止加载界面判定）
+        // 2. 确认场上曾经有过女巫（totalWitchesEver > 0）
+        // 3. 当前活着的女巫为 0
+        if (currentState == GameState.InGame && totalWitchesEver > 0 && aliveWitchesCount == 0)
+        {
+            Debug.Log($"[Server] Game Over! Total Witches: {totalWitchesEver}, Alive: {aliveWitchesCount}");
+            ServerEndGame(PlayerRole.Hunter);
+        }
+    }
+
+    [Server]
+    public void ServerEndGame(PlayerRole winner)
+    {
+        if (currentState == GameState.GameOver) return;
+
+        gameWinner = winner;
+        SetGameState(GameState.GameOver);
+        
+        // 开始重启倒计时协程
+        StartCoroutine(RestartRoutine());
+    }
+
+    [Server]
+    private IEnumerator RestartRoutine()
+    {
+        restartCountdown = 5;
+        while (restartCountdown > 0)
+        {
+            yield return new WaitForSeconds(1f);
+            restartCountdown--;
+        }
+
+        // 回到大厅场景
+        ResetGame();
+        // 假设你的大厅场景在 NetworkManager 的 Online Scene 槽位里
+        NetworkManager.singleton.ServerChangeScene(MyNetworkManager.singleton.onlineScene);
+    }
 
     public void SetGameState(GameState newState)
     {
@@ -319,8 +407,11 @@ public class GameManager : NetworkBehaviour
     public void ResetGame()
     {
         // 重置游戏逻辑
-        SetGameState(GameState.Lobby);
+        currentState = GameState.Lobby;
         gameTimer = 300f;
+        gameWinner = PlayerRole.None;
+        aliveHuntersCount = 0; // 重置
+        aliveWitchesCount = 0; // 重置
         Debug.Log("Game has been reset to Lobby state.");
     }
     [Server] // 确保只在服务器运行

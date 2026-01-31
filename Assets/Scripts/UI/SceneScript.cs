@@ -8,6 +8,7 @@ using TMPro;
 
 public class SceneScript : MonoBehaviour
 {
+    public static SceneScript Instance { get; private set; } // 单例方便访问
     public TextMeshProUGUI RoleText;//显示角色的文本
     public TextMeshProUGUI NameText;//显示名字的文本
     public Slider HealthSlider;//血量滑动条
@@ -23,8 +24,18 @@ public class SceneScript : MonoBehaviour
     public GameObject Crosshair;//准心
     [Header("Witch UI")]
     public Image revertProgressBar; // 拖入刚才创建的 Image
+    [Header("Result UI")]
+    public GameObject gameResultPanel;     // 结算面板根物体
+    public TextMeshProUGUI gameResultText; // 显示 "Hunters Win!"
+    public TextMeshProUGUI gameRestartText;// 显示 "Restarting in 5..."
+    private void Awake()
+    {
+        Instance = this;
+    }
     private void Start()
     {
+        // 初始隐藏结算面板
+        if (gameResultPanel != null) gameResultPanel.SetActive(false);
         // 游戏开始时隐藏暂停菜单
         if (pauseMenuPanel != null)
         {
@@ -46,6 +57,38 @@ public class SceneScript : MonoBehaviour
         UpdateGameTimer();
         // 每一帧或每隔几帧更新人数（简单粗暴但有效）
         UpdateAlivePlayerCount(); 
+        // 如果处于 GameOver 状态，更新重启倒计时文字
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            if (gameRestartText != null)
+            {
+                gameRestartText.text = $"Returning to Lobby in {GameManager.Instance.restartCountdown}...";
+            }
+        }
+    }
+
+    // 供 GameManager 调用显示结果
+    public void ShowGameResult(PlayerRole winner)
+    {
+        if (gameResultPanel == null) return;
+
+        gameResultPanel.SetActive(true);
+        
+        if (gameResultText != null)
+        {
+            if (winner == PlayerRole.Hunter)
+            {
+                gameResultText.text = "<color=#00FFFF>HUNTERS WIN!</color>";
+            }
+            else if (winner == PlayerRole.Witch)
+            {
+                gameResultText.text = "<color=#FF00FF>WITCHES WIN!</color>";
+            }
+        }
+        
+        // 游戏结束时解锁鼠标，方便点击可能的按钮（虽然现在是自动重启）
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     public void UpdateRevertUI(float progress, bool isActive)
@@ -64,30 +107,14 @@ public class SceneScript : MonoBehaviour
 
     public void UpdateAlivePlayerCount()
     {
-        if (PlayerCountText == null) return;
+        if (PlayerCountText == null || GameManager.Instance == null) return;
 
-        int aliveHunters = 0;
-        int aliveWitches = 0;
+        // 直接从 GameManager 读取服务器同步过来的人数
+        int hunters = GameManager.Instance.aliveHuntersCount;
+        int witches = GameManager.Instance.aliveWitchesCount;
 
-        // 遍历所有连接的玩家
-        foreach (var player in GamePlayer.AllPlayers)
-        {
-            if (player == null || player.isPermanentDead) continue;
-
-            if (player.playerRole == PlayerRole.Hunter)
-            {
-                aliveHunters++;
-            }
-            else if (player.playerRole == PlayerRole.Witch)
-            {
-                aliveWitches++;
-            }
-        }
-
-        // 更新 UI 显示
-        // 使用富文本可以增加颜色识别度
-        // 使用 16 进制代码：青色 (#00FFFF)，品红色 (#FF00FF)
-        PlayerCountText.text = $"<color=#00FFFF>Hunters: {aliveHunters}</color> | <color=#FF00FF>Witches: {aliveWitches}</color>";
+        // 更新 UI
+        PlayerCountText.text = $"<color=#00FFFF>Hunters: {hunters}</color> | <color=#FF00FF>Witches: {witches}</color>";
     }
 
     // 更新时间显示的逻辑

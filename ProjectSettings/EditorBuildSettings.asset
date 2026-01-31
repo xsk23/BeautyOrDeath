@@ -15,10 +15,13 @@ EditorBuildSettings:
     path: Assets/Scenes/Lobby.unity
     guid: dcaf62f72281b254b83e436c8bec8d08
   - enabled: 1
+    path: Assets/Scenes/MyScene.unity
+    guid: a5cbd595230e7bf4a9fb33b96cd88fe6
+  - enabled: 1
     path: Assets/Scenes/MyOtherScene.unity
     guid: 85d387722cc56644695e443c8791d56f
   - enabled: 1
-    path: Assets/Scenes/MyScene.unity
+    path: Assets/Scenes/MyScene1-1.unity
     guid: 8360706459c4aaf45ab2792c25994f7f
   - enabled: 1
     path: Assets/Scenes/MyScene2.unity
