@@ -33,7 +33,9 @@ public abstract class GamePlayer : NetworkBehaviour
     [Header("同步属性")]
     [SyncVar(hook = nameof(OnStunChanged))]
     public bool isStunned = false; // 是否被禁锢
-    [SyncVar(hook = nameof(OnNameChanged))] 
+    [SyncVar]
+    public bool isTrappedByNet = false; // 是否被网住
+    [SyncVar(hook = nameof(OnNameChanged))]
     public string playerName;
     [SyncVar(hook = nameof(OnHealthChanged))]// 血量变化钩子
     public float currentHealth = 100f;
@@ -45,12 +47,12 @@ public abstract class GamePlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnMaxManaChanged))]
     public float maxMana = 100f;
 
-    [SyncVar(hook = nameof(OnMorphChanged))] 
+    [SyncVar(hook = nameof(OnMorphChanged))]
     public bool isMorphed = false; // 当前是否处于变身状态 
     [SyncVar(hook = nameof(OnMorphedPropIDChanged))]
     public int morphedPropID = -1; // -1 表示没变身，>=0 表示对应的 PropID
 
-    [SyncVar] 
+    [SyncVar]
     public PlayerRole playerRole = PlayerRole.None;
 
     [SyncVar(hook = nameof(OnSecondChanceChanged))]
@@ -71,7 +73,7 @@ public abstract class GamePlayer : NetworkBehaviour
     public LayerMask groundLayer; // 地面层级，防止检测到自己
     // 【新增】空中控制力 (0 = 完全无法在空中变向，10 = 空中变向也很灵活)
     // 建议设置为 1.0f 到 5.0f 之间，既有惯性又能微调
-    public float airControl = 2.0f; 
+    public float airControl = 2.0f;
     [Header("Mouse Look")]
     public float mouseSensitivity = 2f;
     float xRotation = 0f;
@@ -82,7 +84,7 @@ public abstract class GamePlayer : NetworkBehaviour
     public SceneScript sceneScript;
     // 【修改】这里定义一次，子类直接使用，不要在子类重复定义
     [HideInInspector] // 可选：不在Inspector显示，防止乱改
-    public string goalText; 
+    public string goalText;
     // 在类字段区域新增或修改
     private bool isFirstPerson = true;           // 默认第一人称
 
@@ -181,7 +183,7 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 逻辑循环
     // --------------------------------------------------------
-    
+
 
     public virtual void Update()
     {
@@ -196,27 +198,27 @@ public abstract class GamePlayer : NetworkBehaviour
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 // 优先级 1: 如果聊天正在进行，按 Esc 只是关闭聊天
-                if (isChatting) 
+                if (isChatting)
                 {
                     if (gameChatUI != null) gameChatUI.SetChatState(false);
                 }
                 // 优先级 2: 如果没在聊天，按 Esc 打开暂停菜单
-                else 
+                else
                 {
                     if (sceneScript != null) sceneScript.TogglePauseMenu();
                 }
                 // 只要按了 Esc，本帧剩下的逻辑（移动等）就不跑了
-                return; 
+                return;
             }
             // 1. 如果正在聊天，阻止移动
-            if (isChatting) 
+            if (isChatting)
             {
-                return; 
+                return;
             }
             //硬直或禁锢下禁止移动
             if (isStunned)
             {
-                if (Input.GetKeyDown(KeyCode.Space))
+                if (isTrappedByNet && Input.GetKeyDown(KeyCode.Space))
                 {
                     CmdStruggle(); // 发送挣扎命令
                 }
@@ -245,7 +247,7 @@ public abstract class GamePlayer : NetworkBehaviour
             // 测试用输入
             if (Input.GetKeyDown(KeyCode.K)) CmdTakeDamage(10f); // 测试用
             if (Input.GetKeyDown(KeyCode.J)) CmdUseMana(15f);    // 测试用
-      
+
         }
         if (isServer)
         {
@@ -281,14 +283,14 @@ public abstract class GamePlayer : NetworkBehaviour
         // ... 原有代码 ...
         // 唯一的区别是：把里面所有的 Input.GetAxis("Horizontal") 替换为 inputOverride.x
         // 把 Input.GetAxis("Vertical") 替换为 inputOverride.y
-        
+
 
         // 1. 更加精准的状态检测
         // 射线起点稍微高一点（从膝盖位置发射），长度稍微长一点
-        float rayLength = (controller.height * 0.5f) + 0.3f; 
-        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f; 
+        float rayLength = (controller.height * 0.5f) + 0.3f;
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f;
         bool isHit = Physics.Raycast(rayOrigin, Vector3.down, rayLength, groundLayer);
-        
+
         // 结合 Controller 的状态，防止在斜坡上判定丢失
         bool actuallyOnGround = isHit || controller.isGrounded;
 
@@ -297,9 +299,9 @@ public abstract class GamePlayer : NetworkBehaviour
 
         // 3. 获取输入方向
         float x = 0f; float z = 0f;
-        x = inputOverride.x; 
+        x = inputOverride.x;
         z = inputOverride.y;
-        
+
         // if (!isInputLocked) { x = Input.GetAxis("Horizontal"); z = Input.GetAxis("Vertical"); }
         Vector3 inputDir = (transform.right * x + transform.forward * z);
         if (inputDir.magnitude > 1f) inputDir.Normalize();
@@ -311,9 +313,9 @@ public abstract class GamePlayer : NetworkBehaviour
         // 这里的参数决定了惯性的强弱：
         // groundAccel: 地面启动速度 (越大启动越快)
         // groundDecel: 地面摩擦力 (越大停得越快，设置小一点就有溜冰感)
-        float groundAccel = 8f; 
-        float groundDecel = 12f; 
-        
+        float groundAccel = 8f;
+        float groundDecel = 12f;
+
         // 选择当前的加速度
         float currentAccel;
         if (actuallyOnGround)
@@ -324,7 +326,7 @@ public abstract class GamePlayer : NetworkBehaviour
         else
         {
             // 空中加速度（airControl），通常很小，产生巨大的惯性
-            currentAccel = airControl; 
+            currentAccel = airControl;
         }
 
         // 平滑改变速度 (不再乘以 10f，让变化过程肉眼可见)
@@ -335,7 +337,7 @@ public abstract class GamePlayer : NetworkBehaviour
         if (actuallyOnGround && velocity.y < 0)
         {
             // 已经在地面时，保持一个小小的下压力
-            velocity.y = -2f; 
+            velocity.y = -2f;
         }
         else
         {
@@ -372,10 +374,10 @@ public abstract class GamePlayer : NetworkBehaviour
     {
         // 1. 更加精准的状态检测
         // 射线起点稍微高一点（从膝盖位置发射），长度稍微长一点
-        float rayLength = (controller.height * 0.5f) + 0.3f; 
-        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f; 
+        float rayLength = (controller.height * 0.5f) + 0.3f;
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f;
         bool isHit = Physics.Raycast(rayOrigin, Vector3.down, rayLength, groundLayer);
-        
+
         // 结合 Controller 的状态，防止在斜坡上判定丢失
         bool actuallyOnGround = isHit || controller.isGrounded;
 
@@ -395,9 +397,9 @@ public abstract class GamePlayer : NetworkBehaviour
         // 这里的参数决定了惯性的强弱：
         // groundAccel: 地面启动速度 (越大启动越快)
         // groundDecel: 地面摩擦力 (越大停得越快，设置小一点就有溜冰感)
-        float groundAccel = 8f; 
-        float groundDecel = 12f; 
-        
+        float groundAccel = 8f;
+        float groundDecel = 12f;
+
         // 选择当前的加速度
         float currentAccel;
         if (actuallyOnGround)
@@ -408,7 +410,7 @@ public abstract class GamePlayer : NetworkBehaviour
         else
         {
             // 空中加速度（airControl），通常很小，产生巨大的惯性
-            currentAccel = airControl; 
+            currentAccel = airControl;
         }
 
         // 平滑改变速度 (不再乘以 10f，让变化过程肉眼可见)
@@ -419,7 +421,7 @@ public abstract class GamePlayer : NetworkBehaviour
         if (actuallyOnGround && velocity.y < 0)
         {
             // 已经在地面时，保持一个小小的下压力
-            velocity.y = -2f; 
+            velocity.y = -2f;
         }
         else
         {
@@ -486,10 +488,10 @@ public abstract class GamePlayer : NetworkBehaviour
         // 简单的验证
         if (string.IsNullOrWhiteSpace(newName)) return;
         if (newName.Length > 16) newName = newName.Substring(0, 16);
-        
+
         // 修改 SyncVar，自动同步给所有人
         playerName = newName;
-        
+
         // 服务器日志
         Debug.Log($"[Server] Player {connectionToClient.connectionId} updated name to: {newName}");
     }
@@ -513,8 +515,9 @@ public abstract class GamePlayer : NetworkBehaviour
     [Server]
     public void ServerGetTrapped()
     {
-        if (isStunned) return; // 已经被抓了就不重复抓
-        isStunned = true; // 继承基类的禁止移动
+        if (isStunned && isTrappedByNet) return; // 已经被抓了就不重复抓
+        isStunned = true;
+        isTrappedByNet = true; // 标记为网兜状态
         trapTimer = 0f;
         currentClicks = 0;
 
@@ -538,6 +541,7 @@ public abstract class GamePlayer : NetworkBehaviour
     void ServerEscape()
     {
         isStunned = false;
+        isTrappedByNet = false; // 清除网兜标记
         Debug.Log("成功挣脱！");
     }
 
@@ -577,7 +581,7 @@ public abstract class GamePlayer : NetworkBehaviour
         if (currentHealth <= 0)
         {
             HandleDeath();
-        }        
+        }
     }
 
     // Hook 函数：当名字在服务器改变并同步到客户端时调用
@@ -591,7 +595,7 @@ public abstract class GamePlayer : NetworkBehaviour
         {
             // 确保引用存在
             if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
-            
+
             if (sceneScript != null)
             {
                 sceneScript.NameText.text = $"Name: {newName}";
@@ -635,7 +639,7 @@ public abstract class GamePlayer : NetworkBehaviour
     {
         // 强制调用 TeamVision 的刷新逻辑（如果有必要）
         // 或者仅仅依靠 TeamVision 的协程检测
-    }   
+    }
 
     // 建议添加一个钩子函数用于调试（可选）
     protected virtual void OnMoveSpeedChanged(float oldSpeed, float newSpeed)
@@ -727,9 +731,9 @@ public abstract class GamePlayer : NetworkBehaviour
             if (chatUI != null)
             {
                 // 根据角色决定名字颜色
-                Color roleColor = (senderRole == PlayerRole.Witch) ? Color.magenta : 
+                Color roleColor = (senderRole == PlayerRole.Witch) ? Color.magenta :
                                   (senderRole == PlayerRole.Hunter) ? Color.cyan : Color.white;
-                
+
                 chatUI.AppendMessage(senderName, msg, channel, roleColor);
             }
         }

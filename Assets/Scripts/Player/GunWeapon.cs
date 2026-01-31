@@ -8,6 +8,12 @@ public class GunWeapon : WeaponBase
     [Header("猎枪特有设置")]
     public float range = 100;// 射程
     public GameObject impactEffectPrefab; // 命中特效预制体
+
+    private void Awake()
+    {
+        weaponName = "Gun";
+    }
+
     public override void OnFire(Vector3 origin, Vector3 direction)
     {
 
@@ -44,7 +50,7 @@ public class GunWeapon : WeaponBase
                         Debug.Log($"[GunWeapon] Hit blocked by Friendly Fire setting!");
                     }
                 }
-                RpcSpawnImpact(hit.point, hit.normal);   
+                RpcSpawnImpact(hit.point, hit.normal);
             }
             [ClientRpc]
             void RpcSpawnImpact(Vector3 hitPoint, Vector3 surfaceNormal)

@@ -10,6 +10,7 @@ public class SceneScript : MonoBehaviour
 {
     public TextMeshProUGUI RoleText;//显示角色的文本
     public TextMeshProUGUI NameText;//显示名字的文本
+    public TextMeshProUGUI WeaponText;//显示当前武器\道具的文本
     public Slider HealthSlider;//血量滑动条
     public Slider ManaSlider;//法力值滑动条
     public TextMeshProUGUI PlayerCountText;//显示玩家数量的文本
@@ -23,6 +24,8 @@ public class SceneScript : MonoBehaviour
     public GameObject Crosshair;//准心
     [Header("Witch UI")]
     public Image revertProgressBar; // 拖入刚才创建的 Image
+    [Header("Hunter UI")]
+    public TextMeshProUGUI ExecutionText;//显示猎人处决提示文本
     private void Start()
     {
         // 游戏开始时隐藏暂停菜单
@@ -30,13 +33,17 @@ public class SceneScript : MonoBehaviour
         {
             pauseMenuPanel.SetActive(false);
         }
-        if(revertProgressBar != null)
+        if (revertProgressBar != null)
         {
             revertProgressBar.gameObject.SetActive(false);
         }
         if (RunText != null)
         {
             RunText.gameObject.SetActive(false);
+        }
+        if (ExecutionText != null)
+        {
+            ExecutionText.gameObject.SetActive(false);
         }
     }
 
@@ -45,7 +52,7 @@ public class SceneScript : MonoBehaviour
         // 【新增】更新倒计时显示
         UpdateGameTimer();
         // 每一帧或每隔几帧更新人数（简单粗暴但有效）
-        UpdateAlivePlayerCount(); 
+        UpdateAlivePlayerCount();
     }
 
     public void UpdateRevertUI(float progress, bool isActive)
@@ -54,7 +61,7 @@ public class SceneScript : MonoBehaviour
 
         // 设置显示或隐藏
         revertProgressBar.gameObject.SetActive(isActive);
-        
+
         // 设置进度
         if (isActive)
         {
@@ -97,7 +104,7 @@ public class SceneScript : MonoBehaviour
         if (GameTime != null && GameManager.Instance != null)
         {
             float timeLeft = GameManager.Instance.gameTimer;
-            
+
             // 防止显示负数
             if (timeLeft < 0) timeLeft = 0;
 
@@ -107,7 +114,7 @@ public class SceneScript : MonoBehaviour
 
             // 格式化字符串为 05:00 格式
             GameTime.text = string.Format("{0:00}:{1:00}", minutes, seconds);
-            
+
             // 可选：时间少于30秒变红
             if (timeLeft <= 30 && timeLeft > 0)
             {
@@ -166,7 +173,7 @@ public class SceneScript : MonoBehaviour
         Cursor.visible = true;
 
         Debug.Log("尝试退出游戏");
-        
+
         if (NetworkServer.active && NetworkClient.isConnected)
         {
             // Host

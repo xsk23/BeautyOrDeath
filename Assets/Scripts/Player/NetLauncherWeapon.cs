@@ -8,6 +8,11 @@ public class NetLauncherWeapon : WeaponBase
   public float BulletSpeed = 20f; // 网的飞行速度
   public float lifeTime = 5f; // 网的存在时间
 
+  private void Awake()
+  {
+    weaponName = "NetLauncher";
+  }
+
   public override void OnFire(Vector3 origin, Vector3 direction)
   {
     // 冷却
