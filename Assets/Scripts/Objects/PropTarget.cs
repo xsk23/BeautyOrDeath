@@ -8,8 +8,14 @@ public class PropTarget : NetworkBehaviour
     [Header("Identity")]
     [SyncVar]
     public int propID; 
+    [SyncVar(hook = nameof(OnAncientStatusChanged))] 
+    public bool isAncientTree = false;
     public int runtimeID;
-
+    [Header("Possession State")]
+    [SyncVar(hook = nameof(OnPossessedChanged))]
+    public bool isHiddenByPossession = false; // 树是否因为被附身而隐藏
+    [Header("Tree Manager Settings")]
+    public bool isStaticTree = false; // 在 Inspector 中勾选此项
     [Header("Visuals")]
     // 修改：改为存储多个渲染器
     private Renderer[] allLODRenderers; 
@@ -27,7 +33,35 @@ public class PropTarget : NetworkBehaviour
     private List<Material[]> originalMaterialsList = new List<Material[]>();
     private List<Material[]> highlightedMaterialsList = new List<Material[]>();
 
+    // 当服务器同步 isAncientTree 状态到客户端时调用
+    void OnAncientStatusChanged(bool oldVal, bool newVal)
+    {
+        // 如果渲染器已经获取到了，重新初始化材质数组以应用绿色高亮
+        if (IsInitialized)
+        {
+            // 先销毁旧的实例，防止内存泄漏
+            if (outlineInstance != null) Destroy(outlineInstance);
+            outlineInstance = null;
+            
+            InitMaterials();
+        }
+    }
 
+    // 只有古树需要同步这个 Hook
+    void OnPossessedChanged(bool oldVal, bool newVal)
+    {
+        // 禁用/启用树的所有视觉效果和碰撞
+        foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = !newVal;
+        foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = !newVal;
+        
+        // 如果是古树，还需要关闭名字显示（如果有的话）
+        // if (nameText != null) nameText.gameObject.SetActive(!newVal);
+    }  
+    [Server]
+    public void ServerSetHidden(bool hidden)
+    {
+        isHiddenByPossession = hidden;
+    }
     public override void OnStartClient()
     {
         Register();
@@ -86,13 +120,13 @@ public class PropTarget : NetworkBehaviour
         originalMaterialsList.Clear();
         highlightedMaterialsList.Clear();
 
-        // 【核心改动】决定使用哪个源材质
+        // 【核心修改】选择源材质：如果是古树，使用古树材质，否则使用默认材质
         Material sourceMat = outlineMaterialSource;
-        
-        // 如果本地没填，尝试从数据库获取全局默认材质
         if (sourceMat == null && PropDatabase.Instance != null)
         {
-            sourceMat = PropDatabase.Instance.defaultHighlightMaterial;
+            sourceMat = isAncientTree ? 
+                PropDatabase.Instance.ancientHighlightMaterial : 
+                PropDatabase.Instance.defaultHighlightMaterial;
         }
 
         foreach (var renderer in allLODRenderers)
@@ -111,9 +145,13 @@ public class PropTarget : NetworkBehaviour
                 if (outlineInstance == null) 
                 {
                     outlineInstance = new Material(sourceMat);
-                    // 可以在这里设置颜色，比如黄色
+                    // 【关键】如果是古树，强制设为绿色；否则设为黄色
+                    Color highlightColor = isAncientTree ? Color.green : Color.yellow;
+                    
                     if(outlineInstance.HasProperty("_OutlineColor"))
-                        outlineInstance.SetColor("_OutlineColor", Color.yellow);
+                        outlineInstance.SetColor("_OutlineColor", highlightColor);
+                    else if(outlineInstance.HasProperty("_BaseColor")) // 兼容不同 Shader
+                        outlineInstance.SetColor("_BaseColor", highlightColor);
                 }
 
                 Material[] highlighted = new Material[originals.Length + 1];

@@ -64,6 +64,7 @@ public class SceneScript : MonoBehaviour
         UpdateGameTimer();
         // 每一帧或每隔几帧更新人数（简单粗暴但有效）
         UpdateAlivePlayerCount(); 
+        UpdateGoalProgressText(); // 【新增】更新目标文本
         // 如果处于 GameOver 状态，更新重启倒计时文字
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
@@ -71,6 +72,29 @@ public class SceneScript : MonoBehaviour
             {
                 gameRestartText.text = $"Returning to Lobby in {GameManager.Instance.restartCountdown}...";
             }
+        }
+    }
+    private void UpdateGoalProgressText()
+    {
+        if (GameManager.Instance == null || GoalText == null) return;
+
+        int delivered = GameManager.Instance.deliveredTreesCount;
+        int total = GameManager.Instance.totalRequiredTrees;
+        int remaining = Mathf.Max(0, total - delivered);
+
+        GamePlayer local = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        
+        if (remaining <= 0 && total > 0)
+        {
+            GoalText.text = "<color=green>Requirement met! Survive!</color>";
+        }
+        else
+        {
+            // 显示当前进度，例如 "Progress: 1/2"
+            if (local is WitchPlayer)
+                GoalText.text = $"Trees to collect: <color=yellow>{remaining}</color> (Team Progress: {delivered}/{total})";
+            else
+                GoalText.text = $"Witches need: <color=red>{remaining}</color> more (Progress: {delivered}/{total})";
         }
     }
 

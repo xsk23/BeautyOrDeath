@@ -19,6 +19,7 @@ public class PropDatabase : MonoBehaviour
     private Dictionary<int, PropTarget> runtimeProps = new Dictionary<int, PropTarget>();
     [Header("全局视觉设置")]
     public Material defaultHighlightMaterial; // <--- 在 Inspector 拖入你的 Mat_Outline
+    public Material ancientHighlightMaterial;  // <--- 新增：在此处拖入你的 Mat_TeamOutline (绿色版)
     private void Awake()
     {
         Instance = this;

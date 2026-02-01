@@ -59,6 +59,17 @@ public class WitchPlayer : GamePlayer
     // 宿主用来同步所有乘客的总输入向量 (X, Z)
     [SyncVar]
     private Vector2 combinedPassengerInput; 
+
+    [Header("Possession Settings")]
+    public float possessLongPressTime = 1.0f; // 右键长按多久附身
+    private float rmbHoldTimer = 0f;
+
+    [SyncVar]
+    public uint possessedTreeNetId = 0; // 记录当前附身的树的 NetId
+    [Header("Delivery Progress")]
+    [SyncVar(hook = nameof(OnDeliveryStatusChanged))]
+    public bool hasDeliveredTree = false; // 是否已经作为驾驶员带回过古树
+
     // ========================================================================
 
     private void Awake()
@@ -389,6 +400,37 @@ public class WitchPlayer : GamePlayer
 
             lmbHoldTimer = 0f; 
         }
+        // --- 【右键逻辑：新增附身检测】 ---
+        if (!isPassenger) // 乘客不能主动附身其他东西
+        {
+            if (Input.GetMouseButton(1)) // 右键按住
+            {
+                // 只有指向古树时才处理
+                if (currentFocusProp != null && currentFocusProp.isAncientTree)
+                {
+                    rmbHoldTimer += Time.deltaTime;
+                    float progress = Mathf.Clamp01(rmbHoldTimer / possessLongPressTime);
+                    
+                    if (sceneScript != null)
+                        sceneScript.UpdateRevertUI(progress, true); // 复用进度条UI
+
+                    if (rmbHoldTimer >= possessLongPressTime)
+                    {
+                        rmbHoldTimer = 0f;
+                        if (sceneScript != null) sceneScript.UpdateRevertUI(0, false);
+                        
+                        // 执行附身命令
+                        CmdPossessAncientTree(currentFocusProp.netId);
+                    }
+                }
+            }
+            
+            if (Input.GetMouseButtonUp(1))
+            {
+                rmbHoldTimer = 0f;
+                if (sceneScript != null) sceneScript.UpdateRevertUI(0, false);
+            }
+        }
     }
 
     // ----------------------------------------------------
@@ -645,6 +687,102 @@ public class WitchPlayer : GamePlayer
     // ----------------------------------------------------
     // 网络同步：恢复原状
     // ----------------------------------------------------
+    [Server]
+    public void ServerOnReachPortal()
+    {
+        // 只有当前正在驾驶古树的人才能触发回收逻辑
+        if (possessedTreeNetId != 0)
+        {
+            // 1. 记录该女巫完成任务
+            hasDeliveredTree = true;
+
+            // 2. 彻底移除这棵古树（回收）
+            if (NetworkServer.spawned.TryGetValue(possessedTreeNetId, out NetworkIdentity treeIdentity))
+            {
+                // 将树隐藏并放到极远位置（或者直接 Destroy，但隐藏更安全防止引用报错）
+                PropTarget tree = treeIdentity.GetComponent<PropTarget>();
+                if (tree != null)
+                {
+                    tree.ServerSetHidden(true);
+                    tree.transform.position = Vector3.down * 1000f; 
+                }
+            }
+            possessedTreeNetId = 0;
+
+            // 3. 增加全局计数
+            GameManager.Instance.RegisterTreeDelivery();
+
+            // 4. 强制所有人下车
+            ServerKickAllPassengers();
+
+            // 5. 自身恢复人形
+            isMorphed = false;
+            morphedPropID = -1;
+        }
+    }
+    void OnDeliveryStatusChanged(bool oldVal, bool newVal)
+    {
+        if (newVal && isLocalPlayer)
+        {
+            goalText = "Goal Accomplished! Help your sisters as a passenger!";
+            if (sceneScript != null) sceneScript.GoalText.text = goalText;
+        }
+    }
+
+    [Command]
+    private void CmdPossessAncientTree(uint treeNetId)
+    { 
+        // 【新增限制】如果已经带回过古树，不能再次成为宿主（驾驶员）
+        if (hasDeliveredTree) 
+        {
+            UnityEngine.Debug.Log($"[Server] {playerName} has already delivered a tree and cannot drive again.");
+            return; 
+        }
+        if (!NetworkServer.spawned.TryGetValue(treeNetId, out NetworkIdentity treeIdentity)) return;
+        PropTarget tree = treeIdentity.GetComponent<PropTarget>();
+        
+        if (tree == null || !tree.isAncientTree) return;
+
+        // --- 核心逻辑：判断树是否已经被别人附身 ---
+        WitchPlayer existingHost = null;
+        foreach (var player in AllPlayers)
+        {
+            if (player is WitchPlayer witch && witch.possessedTreeNetId == treeNetId && witch.possessedTreeNetId != 0)
+            {
+                existingHost = witch;
+                break;
+            }
+        }
+
+        if (existingHost != null)
+        {
+            // 情况 A: 树已被附身 -> 加入成为乘客 (实现多人附身)
+            if (existingHost.netId == this.netId) return; // 不能附身自己
+            
+            this.hostNetId = existingHost.netId;
+            existingHost.ServerAddPassenger(this.netId);
+            RpcSetVisible(false); // 隐藏自己
+            UnityEngine.Debug.Log($"[Server] {playerName} joined tree host {existingHost.playerName}");
+        }
+        else
+        {
+            // 情况 B: 树是空的 -> 我成为宿主
+            // 1. 让场景里的树消失
+            tree.ServerSetHidden(true);
+            
+            // 2. 我变身成这棵树
+            this.possessedTreeNetId = treeNetId;
+            this.isMorphed = true;
+            this.morphedPropID = tree.propID; // 使用树的 PropID
+            
+            // 3. 瞬间移动到树的位置，保证无缝衔接
+            this.transform.position = tree.transform.position;
+            this.transform.rotation = tree.transform.rotation;
+            
+            UnityEngine.Debug.Log($"[Server] {playerName} possessed Ancient Tree: {tree.name}");
+        }
+    }
+
 
     // 重写基类的钩子函数
     protected override void OnMorphedPropIDChanged(int oldID, int newID)
@@ -671,11 +809,25 @@ public class WitchPlayer : GamePlayer
 
     [Command]
     private void CmdRevert() {
-        // 【关键修改】在变回人形之前，先在服务器端强制把所有乘客踢下去
-        ServerKickAllPassengers();
+        if (possessedTreeNetId != 0)
+        {
+            // 如果是附身状态，把树“种”在当前位置
+            if (NetworkServer.spawned.TryGetValue(possessedTreeNetId, out NetworkIdentity treeIdentity))
+            {
+                PropTarget tree = treeIdentity.GetComponent<PropTarget>();
+                if (tree != null)
+                {
+                    tree.transform.position = this.transform.position;
+                    tree.transform.rotation = this.transform.rotation;
+                    tree.ServerSetHidden(false); // 重新显示树
+                }
+            }
+            possessedTreeNetId = 0;
+        }
 
+        ServerKickAllPassengers(); // 踢掉所有同乘的女巫
         isMorphed = false; 
-        morphedPropID = -1; // 这会触发客户端的视觉 Hook (ApplyRevert)
+        morphedPropID = -1;
     }
 
     private void ApplyRevert()

@@ -6,16 +6,21 @@ public class ResurrectionPortal : MonoBehaviour
     [ServerCallback]
     private void OnTriggerEnter(Collider other)
     {
-        // 只有女巫能复活
         WitchPlayer witch = other.GetComponentInParent<WitchPlayer>();
-        
-        if (witch != null && witch.isInSecondChance && !witch.isPermanentDead)// 确保女巫处于小动物逃跑状态且未永久死亡
+        if (witch == null) return;
+
+        // 逻辑 A：原有的小动物复活
+        if (witch.isInSecondChance && !witch.isPermanentDead)
         {
-            // 执行复活逻辑
             witch.ServerRevive();
-            
-            // 可以在这里加一个视觉特效的 Rpc 调用
-            // RpcPlayReviveEffect(witch.transform.position);
+        }
+
+        // 逻辑 B：【新增】检测带回古树
+        // 只有驾驶员 (possessedTreeNetId != 0) 且还没完成过任务的能触发
+        if (witch.possessedTreeNetId != 0 && !witch.hasDeliveredTree)
+        {
+            UnityEngine.Debug.Log($"[Server] Driver {witch.playerName} reached the portal with a tree!");
+            witch.ServerOnReachPortal();
         }
     }
 

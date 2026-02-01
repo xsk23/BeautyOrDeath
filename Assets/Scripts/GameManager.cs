@@ -43,6 +43,30 @@ public class GameManager : NetworkBehaviour
     [Header("Alive Stats (Synced)")]
     [SyncVar] public int aliveHuntersCount = 0;
     [SyncVar] public int aliveWitchesCount = 0;
+    [Header("Ancient Tree Goal")]
+    [SyncVar(hook = nameof(OnGoalProgressChanged))]
+    public int deliveredTreesCount = 0; // 已带回的数量
+    [SyncVar]
+    public int totalRequiredTrees = 0; // 总共需要的数量（初始女巫人数）
+
+    [Server]
+    public void RegisterTreeDelivery()
+    {
+        deliveredTreesCount++;
+        Debug.Log($"[Server] Tree Delivered! Progress: {deliveredTreesCount}/{totalRequiredTrees}");
+        
+        // 检查胜利条件
+        if (deliveredTreesCount >= totalRequiredTrees && totalRequiredTrees > 0)
+        {
+            ServerEndGame(PlayerRole.Witch);
+        }
+    }
+
+    // 当进度改变时，客户端同步更新 UI
+    void OnGoalProgressChanged(int oldVal, int newVal)
+    {
+        // 触发 SceneScript 更新文本（我们稍后在 SceneScript 里实现）
+    }
 
     // 当获胜者确定时，客户端回调
     void OnWinnerChanged(PlayerRole oldW, PlayerRole newW)
@@ -95,8 +119,9 @@ public class GameManager : NetworkBehaviour
     private void UpdateAliveCountsAndCheckWin()
     {
         int hunters = 0;
-        int witches = 0;
-        int totalWitchesEver = 0; // 记录本局游戏总共生成过多少女巫
+        int witchesAlive = 0;
+        int witchesFinishedButDead = 0; // 记录那些完成了任务但死掉的女巫
+        int totalWitchesEver = 0; 
 
         // 此时遍历的是服务器端的 AllPlayers 列表
         foreach (var player in GamePlayer.AllPlayers)
@@ -109,23 +134,42 @@ public class GameManager : NetworkBehaviour
             }
             else if (player.playerRole == PlayerRole.Witch)
             {
-                totalWitchesEver++; // 只要角色是女巫，就计入总数
-                if (!player.isPermanentDead) witches++;
+                totalWitchesEver++;
+                WitchPlayer witch = (WitchPlayer)player;
+
+                if (!witch.isPermanentDead)
+                {
+                    witchesAlive++;
+                }
+                else if (witch.hasDeliveredTree)
+                {
+                    // 虽然她死了，但她生前带回了树，这颗树应该保留在总目标里作为“已完成”的占位
+                    witchesFinishedButDead++;
+                }
             }
         }
 
-        // 更新同步变量（这会触发客户端 UI 更新）
+        // 更新同步变量
         aliveHuntersCount = hunters;
-        aliveWitchesCount = witches;
+        aliveWitchesCount = witchesAlive;
 
-        // 判定逻辑优化：
-        // 1. 游戏必须处于 InGame 状态（防止加载界面判定）
-        // 2. 确认场上曾经有过女巫（totalWitchesEver > 0）
-        // 3. 当前活着的女巫为 0
-        if (currentState == GameState.InGame && totalWitchesEver > 0 && aliveWitchesCount == 0)
+        // 【核心修改】动态更新总目标
+        // 目标数 = 活着的女巫 + 死了但生前完成任务的女巫
+        totalRequiredTrees = witchesAlive + witchesFinishedButDead;
+
+        // 判定逻辑：
+        // 1. 猎人胜：全员女巫死亡 且 她们没能在临死前凑齐树
+        if (currentState == GameState.InGame && totalWitchesEver > 0 && aliveWitchesCount == 0 && deliveredTreesCount < totalRequiredTrees)
         {
-            Debug.Log($"[Server] Game Over! Total Witches: {totalWitchesEver}, Alive: {aliveWitchesCount}");
+            Debug.Log($"[Server] Hunters Win! Witches are all dead. Delivered: {deliveredTreesCount}/{totalRequiredTrees}");
             ServerEndGame(PlayerRole.Hunter);
+        }
+        
+        // 2. 女巫胜：带回的树 >= 动态目标 (这个逻辑其实已经在 RegisterTreeDelivery 里判断了，但这里加上更稳)
+        if (currentState == GameState.InGame && totalRequiredTrees > 0 && deliveredTreesCount >= totalRequiredTrees)
+        {
+            Debug.Log($"[Server] Witches Win! Goal reached: {deliveredTreesCount}/{totalRequiredTrees}");
+            ServerEndGame(PlayerRole.Witch);
         }
     }
 
@@ -304,36 +348,6 @@ public class GameManager : NetworkBehaviour
         Debug.Log($"[Server] Spawning {role} ({pName}) for ConnId: {conn.connectionId}");
     }
 
-    // 【修改】将分配逻辑改为预分配，存入字典
-    // [Server]
-    // public void PreAssignRoles()//纯随机分配
-    // {
-    //     pendingRoles.Clear();
-    //     pendingNames.Clear(); // 【新增】清空名字字典
-
-    //     Debug.Log($"[PreAssignRoles] Starting... Total Connections: {NetworkServer.connections.Count}");
-
-    //     foreach (var conn in NetworkServer.connections.Values)
-    //     {
-    //         if (conn?.identity == null) 
-    //         {
-    //             Debug.LogWarning($"[PreAssignRoles] Skip connection {conn.connectionId} (No Identity)");
-    //             continue;
-    //         }
-
-    //         // 1. 保存角色 (原有逻辑)
-    //         PlayerRole newRole = (UnityEngine.Random.value < 0.5f) ? PlayerRole.Witch : PlayerRole.Hunter;
-    //         pendingRoles[conn.connectionId] = newRole;
-
-    //         // 2. 获取名字
-    //         var playerScript = conn.identity.GetComponent<PlayerScript>();
-    //         string pName = (playerScript != null) ? playerScript.playerName : "Unknown";
-    //         pendingNames[conn.connectionId] = pName;
-
-    //         Debug.Log($"[PreAssignRoles] ID: {conn.connectionId} | Name: {pName} | Role: {newRole}");
-    //     }
-    // }
-
     [Server]
     public void PreAssignRoles()
     {
@@ -386,8 +400,13 @@ public class GameManager : NetworkBehaviour
     [Server]
     public void OnGameSceneReady()
     {
-        Debug.Log("[Server] Game Scene Ready. Initializing spawner...");
-        
+        Debug.Log("[Server] Game Scene Ready. Initializing managers...");
+        // 1. 随机分布树木
+        TreeManager treeMgr = FindObjectOfType<TreeManager>();
+        if (treeMgr != null)
+        {
+            treeMgr.ShuffleTrees();
+        }
         // 此时已经在新场景，可以找到物体了
         if (animalSpawner == null) 
         {

@@ -179,6 +179,7 @@ GameObject:
   - component: {fileID: -4489445708368921958}
   - component: {fileID: -4645219907095859244}
   - component: {fileID: 4943559808659309685}
+  - component: {fileID: -280643277029517371}
   m_Layer: 3
   m_Name: Tree_03
   m_TagString: Untagged
@@ -243,6 +244,7 @@ MonoBehaviour:
   syncInterval: 0
   propID: 0
   runtimeID: 0
+  isStaticTree: 1
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &-4645219907095859244
 MonoBehaviour:
@@ -283,3 +285,37 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 2478876932983402796, guid: 69f0af3a0a6c73b4ab4b89eb82cdc488, type: 3}
+--- !u!114 &-280643277029517371
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6941765000743290380}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8ff3ba0becae47b8b9381191598957c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  target: {fileID: 880970725214738984}
+  syncPosition: 1
+  syncRotation: 1
+  syncScale: 1
+  onlySyncOnChange: 1
+  compressRotation: 1
+  interpolatePosition: 1
+  interpolateRotation: 1
+  interpolateScale: 1
+  coordinateSpace: 0
+  timelineOffset: 1
+  showGizmos: 0
+  showOverlay: 0
+  overlayColor: {r: 0, g: 0, b: 0, a: 0.5}
+  onlySyncOnChangeCorrectionMultiplier: 2
+  useFixedUpdate: 0
+  rotationSensitivity: 0.01
+  positionPrecision: 0.01
+  scalePrecision: 0.01
