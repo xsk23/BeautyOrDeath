@@ -69,6 +69,20 @@ namespace Controller
         {
             m_Movement.Move(Time.deltaTime, in m_Axis, in m_Target, m_IsRun, m_IsMoving, out var animAxis, out var isAir);
             m_Animation.Animate(in animAxis, m_IsRun ? 1f : 0f, Time.deltaTime);
+            // 【新增】服务器端强制边界约束
+            if (WorldBoundaryManager.Instance != null && WorldBoundaryManager.Instance.isActive)
+            {
+                // 动物通常没有 localPlayer 概念，由服务器统一约束
+                Vector3 constrainedPos = WorldBoundaryManager.Instance.GetConstrainedPosition(
+                    transform.position, 
+                    m_Controller.radius
+                );
+
+                if (constrainedPos != transform.position)
+                {
+                    transform.position = constrainedPos;
+                }
+            }
         }
         [ServerCallback]
         private void OnAnimatorIK()

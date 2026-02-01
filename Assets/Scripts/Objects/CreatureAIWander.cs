@@ -34,6 +34,22 @@ namespace Controller
         {
             m_Timer -= Time.deltaTime;
 
+            // 【新增逻辑】如果当前位置已经在边界边缘，强制立即切换状态（重新选路）
+            if (WorldBoundaryManager.Instance != null)
+            {
+                float distToCenter = Vector3.Distance(transform.position, WorldBoundaryManager.Instance.Center);
+                // 如果距离边缘不到 2 米，提前换向
+                if (distToCenter > (WorldBoundaryManager.Instance.Radius - 2f))
+                {
+                    // 只有当动物还在“往外走”时才重置计时器
+                    Vector3 moveDir = new Vector3(m_MoveInput.x, 0, m_MoveInput.y);
+                    if (Vector3.Dot(moveDir, (transform.position - WorldBoundaryManager.Instance.Center)) > 0)
+                    {
+                        m_Timer = 0; // 强制下一帧进入 SelectNextState
+                    }
+                }
+            }
+            
             if (m_Timer <= 0)
             {
                 SelectNextState();

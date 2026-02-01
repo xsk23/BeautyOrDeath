@@ -91,6 +91,12 @@ public abstract class GamePlayer : NetworkBehaviour
 
     [Header("Chat State")]
     public bool isChatting = false; // 用于禁止移动
+
+    [Header("球形边界设置")]
+    public bool useSphereBoundary = true;
+    public Vector3 sphereCenter = Vector3.zero; // 你的球体中心坐标
+    public float sphereRadius = 20f; // 你的球体半径
+
     // 新增一个变量缓存 ChatUI
     private GameChatUI gameChatUI;
 
@@ -244,6 +250,8 @@ public abstract class GamePlayer : NetworkBehaviour
             // HandleMovement();
             Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
             HandleMovementOverride(input);
+            // 执行边界约束
+            ApplySphereBoundary(); 
 
 
             // 攻击输入还是只有锁定时才允许
@@ -265,7 +273,27 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 功能函数
     // --------------------------------------------------------
+    protected void ApplySphereBoundary()
+    {
+        // 只有本地玩家需要执行位置约束（服务器会同步结果）
+        // 并且确保单例存在
+        if (!isLocalPlayer || WorldBoundaryManager.Instance == null || !WorldBoundaryManager.Instance.isActive) 
+            return;
 
+        // 从管理器获取约束后的位置
+        // 传入 transform.position 和 CharacterController 的半径
+        Vector3 constrainedPos = WorldBoundaryManager.Instance.GetConstrainedPosition(
+            transform.position, 
+            controller.radius
+        );
+
+        // 如果位置发生了变化（说明出界了），强制拉回
+        if (constrainedPos != transform.position)
+        {
+            // 直接设置 transform.position 对 CharacterController 有效
+            transform.position = constrainedPos;
+        }
+    }
 
     // 新增方法：根据视角更新相机位置
     public void UpdateCameraView()
