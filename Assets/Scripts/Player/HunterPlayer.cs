@@ -5,6 +5,10 @@ using System;
 
 public class HunterPlayer : GamePlayer
 {
+    [Header("Execution Settings")]
+    public float executionRange = 3.0f; // 处决距离
+    public float executionDamage = 40f; // 处决伤害
+    public float executionRecoveryTime = 2.0f; // 猎人硬直时间
     // 用于冷却UI的辅助变量
     private bool wasCoolingDown = false;
     //定义事件
@@ -30,6 +34,11 @@ public class HunterPlayer : GamePlayer
         Debug.Log($"<color=green>[Hunter] {playerName} used skill: Shoot Gun!</color>");
         // 在这里写具体的射线检测逻辑...
         // if (Physics.Raycast(...)) { ... }
+    }
+    public override void OnStartLocalPlayer()
+    {
+        base.OnStartLocalPlayer();
+        ChangeWeapon(currentWeaponIndex);
     }
     public override void OnStartServer()
     {
@@ -64,22 +73,26 @@ public class HunterPlayer : GamePlayer
             // 切换武器
             if (Input.GetKeyDown(KeyCode.Alpha1))
             {
-                CmdChangeWeapon(0);
+                ChangeWeapon(0);
             }
             else if (Input.GetKeyDown(KeyCode.Alpha2))
             {
-                CmdChangeWeapon(1);
+                ChangeWeapon(1);
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha3))
+            {
+                ChangeWeapon(2);
             }
             if (Input.GetAxis("Mouse ScrollWheel") > 0f)
             {
                 int nextIndex = (currentWeaponIndex + 1) % hunterWeapon.Length;
-                CmdChangeWeapon(nextIndex);
+                ChangeWeapon(nextIndex);
 
             }
             else if (Input.GetAxis("Mouse ScrollWheel") < 0f)
             {
                 int nextIndex = (currentWeaponIndex - 1 + hunterWeapon.Length) % hunterWeapon.Length;
-                CmdChangeWeapon(nextIndex);
+                ChangeWeapon(nextIndex);
             }
             // 开火
             if (Input.GetMouseButtonDown(0))
@@ -98,8 +111,11 @@ public class HunterPlayer : GamePlayer
             }
             // 处理冷却UI
             HandleCooldownUI();
+            // 处决检查
+            HandleExecutionCheck(Camera.main.transform.position, Camera.main.transform.forward);
         }
     }
+
     [Command]
     void CmdChangeWeapon(int weaponIndex)
     {
@@ -162,5 +178,96 @@ public class HunterPlayer : GamePlayer
                 }
             }
         }
+    }
+
+    private void ChangeWeapon(int weaponIndex)
+    {
+        CmdChangeWeapon(weaponIndex);
+        if (sceneScript == null) return;
+
+        string weaponName = "None";
+        if (weaponIndex >= 0 && weaponIndex < hunterWeapon.Length)
+        {
+            WeaponBase weaponBase = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
+            if (weaponBase != null)
+            {
+                weaponName = weaponBase.weaponName;
+            }
+        }
+        sceneScript.WeaponText.text = weaponName;
+    }
+    private void HandleExecutionCheck(Vector3 origin, Vector3 direction)
+    {
+        if (sceneScript == null) return;
+        WitchPlayer targetWitch = null;
+        Vector3 startPos = origin + direction * 0.6f;
+        if (Physics.Raycast(startPos, direction, out RaycastHit hit, executionRange))
+        {
+            GamePlayer target = hit.collider.GetComponent<GamePlayer>();
+            if (target is WitchPlayer witch)
+            {
+                if (witch.currentHealth > 0 && witch.isTrappedByNet)
+                {
+                    targetWitch = witch;
+                }
+            }
+        }
+        // UI 显示与输入处理
+        if (targetWitch != null)
+        {
+            sceneScript.ExecutionText.gameObject.SetActive(true);
+
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                // 发送处决命令
+                CmdExecuteWitch(targetWitch.netId);
+                // 此时本地立刻隐藏文字
+                sceneScript.ExecutionText.gameObject.SetActive(false);
+            }
+        }
+        else
+        {
+            sceneScript.ExecutionText.gameObject.SetActive(false);
+        }
+    }
+
+    [Command]
+    private void CmdExecuteWitch(uint targetNetId)
+    {
+        // 1. 校验：不能在硬直期间再次处决
+        if (isStunned) return;
+
+        // 2. 获取目标对象
+        if (NetworkServer.spawned.TryGetValue(targetNetId, out NetworkIdentity identity))
+        {
+            WitchPlayer witch = identity.GetComponent<WitchPlayer>();
+
+            if (witch != null && witch.isTrappedByNet)
+            {
+                float dist = Vector3.Distance(transform.position, witch.transform.position);
+                // 允许一点点网络延迟导致的距离误差 (比如 range + 1.0f)
+                if (dist <= executionRange + 1.5f)
+                {
+                    // A. 女巫扣血并释放
+                    witch.ServerGetExecuted(executionDamage);
+
+                    // B. 猎人进入硬直
+                    isStunned = true;
+
+                    // C. 开启协程或计时器，2秒后恢复
+                    StartCoroutine(RecoverFromExecution());
+
+                    Debug.Log($"{playerName} Executed {witch.playerName}!");
+                }
+            }
+        }
+    }
+
+    // 服务器端恢复协程
+    [Server]
+    private System.Collections.IEnumerator RecoverFromExecution()
+    {
+        yield return new WaitForSeconds(executionRecoveryTime);
+        isStunned = false;
     }
 }

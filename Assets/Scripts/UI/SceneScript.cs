@@ -11,6 +11,7 @@ public class SceneScript : MonoBehaviour
     public static SceneScript Instance { get; private set; } // 单例方便访问
     public TextMeshProUGUI RoleText;//显示角色的文本
     public TextMeshProUGUI NameText;//显示名字的文本
+    public TextMeshProUGUI WeaponText;//显示当前武器\道具的文本
     public Slider HealthSlider;//血量滑动条
     public Slider ManaSlider;//法力值滑动条
     public TextMeshProUGUI PlayerCountText;//显示玩家数量的文本
@@ -24,6 +25,8 @@ public class SceneScript : MonoBehaviour
     public GameObject Crosshair;//准心
     [Header("Witch UI")]
     public Image revertProgressBar; // 拖入刚才创建的 Image
+    [Header("Hunter UI")]
+    public TextMeshProUGUI ExecutionText;//显示猎人处决提示文本
     [Header("Result UI")]
     public GameObject gameResultPanel;     // 结算面板根物体
     public TextMeshProUGUI gameResultText; // 显示 "Hunters Win!"
@@ -48,6 +51,10 @@ public class SceneScript : MonoBehaviour
         if (RunText != null)
         {
             RunText.gameObject.SetActive(false);
+        }
+        if (ExecutionText != null)
+        {
+            ExecutionText.gameObject.SetActive(false);
         }
     }
 

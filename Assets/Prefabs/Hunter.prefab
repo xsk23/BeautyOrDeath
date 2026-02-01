@@ -321,6 +321,7 @@ MonoBehaviour:
   maxTrapTime: 6
   currentClicks: 0
   isStunned: 0
+  isTrappedByNet: 0
   playerName: 
   currentHealth: 100
   maxHealth: 100
@@ -330,6 +331,9 @@ MonoBehaviour:
   isMorphed: 0
   morphedPropID: -1
   playerRole: 0
+  isInSecondChance: 0
+  isPermanentDead: 0
+  isInvulnerable: 0
   moveSpeed: 6
   gravity: -9.81
   jumpHeight: 1.5
@@ -343,7 +347,11 @@ MonoBehaviour:
   sceneScript: {fileID: 0}
   goalText: 
   isChatting: 0
+  executionRange: 3
+  executionDamage: 40
+  executionRecoveryTime: 2
   hunterWeapon:
+  - {fileID: 3392373309386926382}
   - {fileID: 1677384472921881559}
   - {fileID: 2975003112646079810}
   currentWeaponIndex: 0
@@ -490,6 +498,63 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!1 &3392373309386926382
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6315808911249877626}
+  - component: {fileID: 1071289052398910491}
+  m_Layer: 0
+  m_Name: Weapon0
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6315808911249877626
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3392373309386926382}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6653054490891981253}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1071289052398910491
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3392373309386926382}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f3003573d6eb5a948a7c4b45c5505f1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  weaponName: 
+  damage: 20
+  fireRate: 1
+  firePoint: {fileID: 0}
+  muzzleFlash: {fileID: 0}
+  fireSound: {fileID: 0}
+  nextFireTime: 0
+  attackRadius: 0.5
+  attackDistance: 2
+  stunDuration: 0.5
 --- !u!1 &5625634381831284002
 GameObject:
   m_ObjectHideFlags: 0
@@ -745,11 +810,22 @@ PrefabInstance:
       propertyPath: m_Name
       value: WeaponHolder (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 6484258505365000561, guid: b40f64dcf77fef34ea63407a000c43f3, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7490232862640627684, guid: b40f64dcf77fef34ea63407a000c43f3, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 5218300864401234464, guid: b40f64dcf77fef34ea63407a000c43f3, type: 3}
     - {fileID: 2393425259121120305, guid: b40f64dcf77fef34ea63407a000c43f3, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 1364475532321405795, guid: b40f64dcf77fef34ea63407a000c43f3, type: 3}
+      insertIndex: 0
+      addedObject: {fileID: 6315808911249877626}
     - targetCorrespondingSourceObject: {fileID: 5960345254323702731, guid: b40f64dcf77fef34ea63407a000c43f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 4650378849765723595}
@@ -787,6 +863,7 @@ MonoBehaviour:
   firePoint: {fileID: 3820481846542452601}
   muzzleFlash: {fileID: 3583964936394300538}
   fireSound: {fileID: 8300000, guid: 1f2b099c0140d38498259663dd944726, type: 3}
+  nextFireTime: 0
   range: 100
   impactEffectPrefab: {fileID: 3808001919834717643, guid: 9a50811984fdaa047960732bf8b3f502, type: 3}
 --- !u!4 &2021154052220641645 stripped
@@ -820,6 +897,7 @@ MonoBehaviour:
   firePoint: {fileID: 4567652247977758010}
   muzzleFlash: {fileID: 0}
   fireSound: {fileID: 0}
+  nextFireTime: 0
   netPrefab: {fileID: 7205609430714872807, guid: 1d70454db050b2e4686cc7e6e10a194c, type: 3}
   BulletSpeed: 20
   lifeTime: 5

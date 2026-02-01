@@ -33,6 +33,8 @@ public abstract class GamePlayer : NetworkBehaviour
     [Header("同步属性")]
     [SyncVar(hook = nameof(OnStunChanged))]
     public bool isStunned = false; // 是否被禁锢
+    [SyncVar]
+    public bool isTrappedByNet = false; // 是否被网住
     [SyncVar(hook = nameof(OnNameChanged))] 
     public string playerName;
     [SyncVar(hook = nameof(OnHealthChanged))]// 血量变化钩子
@@ -223,7 +225,7 @@ public abstract class GamePlayer : NetworkBehaviour
             //硬直或禁锢下禁止移动
             if (isStunned)
             {
-                if (Input.GetKeyDown(KeyCode.Space))
+                if (isTrappedByNet && Input.GetKeyDown(KeyCode.Space))
                 {
                     CmdStruggle(); // 发送挣扎命令
                 }
@@ -520,8 +522,9 @@ public abstract class GamePlayer : NetworkBehaviour
     [Server]
     public void ServerGetTrapped()
     {
-        if (isStunned) return; // 已经被抓了就不重复抓
+        if (isStunned && isTrappedByNet) return; // 已经被抓了就不重复抓
         isStunned = true; // 继承基类的禁止移动
+        isTrappedByNet = true;
         trapTimer = 0f;
         currentClicks = 0;
 
@@ -545,6 +548,7 @@ public abstract class GamePlayer : NetworkBehaviour
     void ServerEscape()
     {
         isStunned = false;
+        isTrappedByNet = false; // 清除网兜标记
         Debug.Log("成功挣脱！");
     }
 

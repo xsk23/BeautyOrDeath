@@ -8,6 +8,10 @@ public class GunWeapon : WeaponBase
     [Header("猎枪特有设置")]
     public float range = 100;// 射程
     public GameObject impactEffectPrefab; // 命中特效预制体
+    private void Awake()
+    {
+        weaponName = "Gun";
+    }
     public override void OnFire(Vector3 origin, Vector3 direction)
     {
 

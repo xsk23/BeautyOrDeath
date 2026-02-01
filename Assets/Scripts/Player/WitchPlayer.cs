@@ -876,6 +876,22 @@ public class WitchPlayer : GamePlayer
                 sceneScript.RunText.gameObject.SetActive(false);
         }
     }
+    [Server]
+    // 服务器端：处决玩家
+    public void ServerGetExecuted(float damage)
+    {
+        // 1. 扣血
+        ServerTakeDamage(damage);
+
+        // 2. 强制解除禁锢 
+        if (isTrappedByNet)
+        {
+            isStunned = false;
+            isTrappedByNet = false;
+            currentClicks = 0; // 重置挣扎次数
+            UnityEngine.Debug.Log($"<color=red>{playerName} 被处决并强制释放！</color>");
+        }
+    }
     // 服务器端无敌协程
     [Server]
     private System.Collections.IEnumerator ServerInvulnerabilityRoutine(float duration)
