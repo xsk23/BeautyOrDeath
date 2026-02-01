@@ -99,6 +99,7 @@ public class LobbySettingsManager : MonoBehaviour
         CreateSlider("ManaRate", "Mana Regen Rate", 1, 20, lobby.syncedManaRegen, false, (v) => localPlayer?.CmdUpdateLobbySettings(7, v, false, 0));
         // 猎人比例：小数 (false) 【这是你刚才报错的地方】
         CreateSlider("HunterRatio", "Hunter Ratio (%)", 0.1f, 0.9f, lobby.syncedHunterRatio, false, (v) => localPlayer?.CmdUpdateLobbySettings(8, v, false, 0));    
+        CreateSlider("AncientRatio", "Ancient Tree Ratio (x)", 1.0f, 3.0f, lobby.syncedAncientRatio, false, (v) => localPlayer?.CmdUpdateLobbySettings(9, v, false, 0));
     }
     private void CreateHeader(string title)
     {
@@ -235,6 +236,7 @@ public class LobbySettingsManager : MonoBehaviour
         UpdateSliderVisual("TrapDiff", lobby.syncedTrapDifficulty);
         UpdateSliderVisual("ManaRate", lobby.syncedManaRegen);
         UpdateSliderVisual("HunterRatio", lobby.syncedHunterRatio);
+        UpdateSliderVisual("AncientRatio", lobby.syncedAncientRatio);
     }
     // 辅助方法减少重复代码
     private void UpdateSliderVisual(string key, float value)

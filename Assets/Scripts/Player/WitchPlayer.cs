@@ -705,6 +705,11 @@ public class WitchPlayer : GamePlayer
                 {
                     tree.ServerSetHidden(true);
                     tree.transform.position = Vector3.down * 1000f; 
+                    // 【核心修改】古树被回收，地图上可用的古树数量减 1
+                    if (GameManager.Instance != null)
+                    {
+                        GameManager.Instance.availableAncientTreesCount--;
+                    }
                 }
             }
             possessedTreeNetId = 0;

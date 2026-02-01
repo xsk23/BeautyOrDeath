@@ -320,6 +320,9 @@ public class PlayerScript : NetworkBehaviour
             case 8:
                 lobby.syncedHunterRatio = floatVal;
                 break;
+            case 9:
+                lobby.syncedAncientRatio = floatVal;
+                break;
             default:
                 UnityEngine.Debug.LogWarning($"Unknown lobby setting type: {type}");
                 break;

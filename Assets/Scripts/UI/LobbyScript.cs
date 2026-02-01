@@ -25,6 +25,7 @@ public class LobbyScript : NetworkBehaviour
     [SyncVar(hook = nameof(OnSettingChanged))] public int syncedTrapDifficulty = 2; // 挣脱点击数
     [SyncVar(hook = nameof(OnSettingChanged))] public float syncedManaRegen = 5f;
     [SyncVar(hook = nameof(OnSettingChanged))] public float syncedHunterRatio = 0.3f; // 默认 30% 猎人
+    [SyncVar(hook = nameof(OnSettingChanged))] public float syncedAncientRatio = 1.5f; // 默认 1.5 倍
 
     [Header("UI References")]
     [SerializeField] private TextMeshProUGUI playerNumberText; // 显示人数
@@ -51,6 +52,9 @@ public class LobbyScript : NetworkBehaviour
     private Coroutine countdownCoroutine; // 【新增】保存协程引用
     private void Start()
     {
+        // 【新增】进入大厅时，强制恢复鼠标显示和解锁
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;        
         // 绑定按钮事件
         if(btnStartGame) btnStartGame.onClick.AddListener(OnClickStartGame);
         // 默认隐藏开始按钮，稍后判断权限开启

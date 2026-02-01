@@ -80,21 +80,28 @@ public class SceneScript : MonoBehaviour
 
         int delivered = GameManager.Instance.deliveredTreesCount;
         int total = GameManager.Instance.totalRequiredTrees;
-        int remaining = Mathf.Max(0, total - delivered);
+        int remainingToWin = Mathf.Max(0, total - delivered);
+        
+        // 获取地图上还没被收回的古树数量
+        int availableOnMap = GameManager.Instance.availableAncientTreesCount;
 
         GamePlayer local = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
         
-        if (remaining <= 0 && total > 0)
+        string statusColor = (availableOnMap < remainingToWin) ? "red" : "white";
+
+        if (remainingToWin <= 0 && total > 0)
         {
             GoalText.text = "<color=green>Requirement met! Survive!</color>";
         }
         else
         {
-            // 显示当前进度，例如 "Progress: 1/2"
-            if (local is WitchPlayer)
-                GoalText.text = $"Trees to collect: <color=yellow>{remaining}</color> (Team Progress: {delivered}/{total})";
-            else
-                GoalText.text = $"Witches need: <color=red>{remaining}</color> more (Progress: {delivered}/{total})";
+            // 拼接字符串：显示“还需带回数”和“地图剩余数”
+            string goalInfo = local is WitchPlayer ? 
+                $"Trees needed: <color=yellow>{remainingToWin}</color>" : 
+                $"Witches need: <color=red>{remainingToWin}</color>";
+
+            // 新增一行显示地图资源情况
+            GoalText.text = $"{goalInfo}\n<color={statusColor}>Ancient Trees on Map: {availableOnMap}</color> (Team: {delivered}/{total})";
         }
     }
 

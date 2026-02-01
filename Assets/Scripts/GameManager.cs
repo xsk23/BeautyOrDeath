@@ -34,6 +34,7 @@ public class GameManager : NetworkBehaviour
     private int animalsToSpawnInternal = 10;
     private bool friendlyFireInternal = false; // 【新增】
     private float hunterRatioInternal = 0.3f; // 猎人比例
+    private float ancientRatioInternal = 1.5f; // 【新增】内部固化变量
     public bool FriendlyFire => friendlyFireInternal; // 提供一个只读访问接口
 
     [SyncVar(hook = nameof(OnWinnerChanged))]
@@ -48,6 +49,26 @@ public class GameManager : NetworkBehaviour
     public int deliveredTreesCount = 0; // 已带回的数量
     [SyncVar]
     public int totalRequiredTrees = 0; // 总共需要的数量（初始女巫人数）
+    [Header("Ancient Tree Stats")]
+    [SyncVar] public int availableAncientTreesCount = 0; // 【新增】地图上剩余可用的古树总数
+
+    private float gameStartTimer = 0f;
+    private const float winConditionGracePeriod = 10f; // 10秒保护期，等待所有玩家加载
+
+    // 提供一个接口供 TreeManager 获取计算后的古树总数
+    [Server]
+    public int GetCalculatedAncientTreeCount()
+    {
+        // 统计初始分配的女巫人数 (pendingRoles 存储了分配结果)
+        int initialWitchCount = 0;
+        foreach(var role in pendingRoles.Values)
+        {
+            if(role == PlayerRole.Witch) initialWitchCount++;
+        }
+        
+        // 计算并取整 (使用 Mathf.RoundToInt 实现 1.5x2=3 的逻辑)
+        return Mathf.Max(1, Mathf.RoundToInt(initialWitchCount * ancientRatioInternal));
+    }
 
     [Server]
     public void RegisterTreeDelivery()
@@ -118,6 +139,14 @@ public class GameManager : NetworkBehaviour
     [Server]
     private void UpdateAliveCountsAndCheckWin()
     {
+        // 如果没有玩家，或者还在加载中，不进行胜负判定
+        if (GamePlayer.AllPlayers.Count == 0) return;
+        if (currentState != GameState.InGame) return;
+        
+        // --- 新增：如果游戏刚开始不到 10 秒，不进行“人数归零”的胜负判定 ---
+        // 这样可以等所有猎人和女巫都加载进场
+        if (Time.time - gameStartTimer < winConditionGracePeriod) return;
+
         int hunters = 0;
         int witchesAlive = 0;
         int witchesFinishedButDead = 0; // 记录那些完成了任务但死掉的女巫
@@ -157,18 +186,33 @@ public class GameManager : NetworkBehaviour
         // 目标数 = 活着的女巫 + 死了但生前完成任务的女巫
         totalRequiredTrees = witchesAlive + witchesFinishedButDead;
 
-        // 判定逻辑：
-        // 1. 猎人胜：全员女巫死亡 且 她们没能在临死前凑齐树
-        if (currentState == GameState.InGame && totalWitchesEver > 0 && aliveWitchesCount == 0 && deliveredTreesCount < totalRequiredTrees)
-        {
-            Debug.Log($"[Server] Hunters Win! Witches are all dead. Delivered: {deliveredTreesCount}/{totalRequiredTrees}");
-            ServerEndGame(PlayerRole.Hunter);
-        }
+        // ==========================================
+        // 修正后的判定逻辑
+        // ==========================================
         
-        // 2. 女巫胜：带回的树 >= 动态目标 (这个逻辑其实已经在 RegisterTreeDelivery 里判断了，但这里加上更稳)
-        if (currentState == GameState.InGame && totalRequiredTrees > 0 && deliveredTreesCount >= totalRequiredTrees)
+        // 1. 女巫胜判定：带回的树 满足了 动态目标（且目标必须 > 0，防止加载瞬间判定）
+        if (totalRequiredTrees > 0 && deliveredTreesCount >= totalRequiredTrees)
         {
             Debug.Log($"[Server] Witches Win! Goal reached: {deliveredTreesCount}/{totalRequiredTrees}");
+            ServerEndGame(PlayerRole.Witch);
+            return; // 胜负已分，跳出
+        }
+
+        // 2. 猎人胜判定：
+        // 条件 A：场上曾经有过女巫 (totalWitchesEver > 0)
+        // 条件 B：当前活着的女巫为 0 (aliveWitchesCount == 0)
+        // 注意：因为上面已经拦截了“女巫胜”，所以运行到这里说明女巫没能在死前交够树
+        if (totalWitchesEver > 0 && aliveWitchesCount == 0)
+        {
+            Debug.Log($"[Server] Hunters Win! All witches eliminated without completing task.");
+            ServerEndGame(PlayerRole.Hunter);
+            return;
+        }
+        
+        // 3. 猎人胜判定（特殊情况）：如果猎人全灭，女巫自动胜利（可选）
+        if (hunters == 0 && totalWitchesEver > 0)
+        {
+            Debug.Log($"[Server] Witches Win! No hunters remain.");
             ServerEndGame(PlayerRole.Witch);
         }
     }
@@ -425,13 +469,26 @@ public class GameManager : NetworkBehaviour
 
     public void ResetGame()
     {
-        // 重置游戏逻辑
+        // 重置基础状态
         currentState = GameState.Lobby;
         gameTimer = 300f;
         gameWinner = PlayerRole.None;
-        aliveHuntersCount = 0; // 重置
-        aliveWitchesCount = 0; // 重置
-        Debug.Log("Game has been reset to Lobby state.");
+        
+        // 重置统计人数
+        aliveHuntersCount = 0;
+        aliveWitchesCount = 0;
+
+        // 【核心修复】重置古树任务相关的所有变量
+        deliveredTreesCount = 0;
+        totalRequiredTrees = 0;
+        availableAncientTreesCount = 0;
+        
+        // 清除待定数据，防止旧数据干扰下一局
+        pendingRoles.Clear();
+        pendingNames.Clear();
+        pendingColors.Clear();
+
+        Debug.Log("[GameManager] Game State and delivery counters have been fully reset.");
     }
     [Server] // 确保只在服务器运行
     public void StartGame()
@@ -451,6 +508,7 @@ public class GameManager : NetworkBehaviour
             this.manaRegenInternal = lobby.syncedManaRegen;
             this.friendlyFireInternal = lobby.syncedFriendlyFire; // 【核心修改】捕获开关状态
             this.hunterRatioInternal = lobby.syncedHunterRatio;
+            this.ancientRatioInternal = lobby.syncedAncientRatio; // 【新增】保存倍率
             Debug.Log($"[Server] Applying Lobby Settings: Timer = {this.gameTimer}, Animals = {this.animalsToSpawnInternal}, WitchHP = {this.witchHPInternal}, WitchMana = {this.witchManaInternal}, HunterSpeed = {this.hunterSpeedInternal}, TrapDifficulty = {this.trapDifficultyInternal}, ManaRegen = {this.manaRegenInternal}, FriendlyFire = {this.friendlyFireInternal}");
         }
         else
@@ -465,6 +523,7 @@ public class GameManager : NetworkBehaviour
             this.manaRegenInternal = 5f;
             this.friendlyFireInternal = false; // 【核心修改】默认关闭
             this.hunterRatioInternal = 0.3f; // 默认猎人比例 30%
+            this.ancientRatioInternal =  1.5f;
             Debug.LogWarning("[Server] LobbyScript not found, using default timer 300s");
         }
 
@@ -473,7 +532,12 @@ public class GameManager : NetworkBehaviour
             animalSpawner = FindObjectOfType<ServerAnimalSpawner>();
         }
 
+        // 【新增】双重保险：确保开始时计数器为 0
+        deliveredTreesCount = 0;
+        totalRequiredTrees = 0;
+
         // 3. 改变游戏状态
+        gameStartTimer = Time.time; // 记录开始时间
         SetGameState(GameState.InGame);
         
         // --- 【删除掉原来的 gameTimer = 300f; 这行】 ---

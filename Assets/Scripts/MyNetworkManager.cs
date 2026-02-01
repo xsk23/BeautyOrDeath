@@ -40,6 +40,25 @@ public class MyNetworkManager : NetworkManager
     }
 
 
+    // 在 MyNetworkManager 类中重写客户端场景切换完成的回调
+    public override void OnClientSceneChanged()
+    {
+        base.OnClientSceneChanged();
+
+        // 获取当前场景名
+        string activeSceneName = SceneManager.GetActiveScene().name;
+        string configNameClean = System.IO.Path.GetFileNameWithoutExtension(gameSceneName);
+
+        // 如果回到了大厅（假设你的在线场景是 Lobby 或 Menu 相关的）
+        // 或者干脆判断：只要不是游戏场景，就解锁鼠标
+        if (activeSceneName != configNameClean)
+        {
+            Debug.Log("[Cursor] Reseting cursor for non-game scene.");
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+    }
+
     // ---------------------------------------------------------
     // 场景切换完成后的回调
     // ---------------------------------------------------------

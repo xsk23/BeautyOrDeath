@@ -12,8 +12,8 @@ public class TreeManager : NetworkBehaviour
 
     private List<PropTarget> allTrees = new List<PropTarget>();
     private List<Vector3> spawnPositions = new List<Vector3>();
-    [Header("Ancient Tree Settings")]
-    public int ancientTreeCount = 3; // 每局产生的古树数量
+    // [Header("Ancient Tree Settings")]
+    // public int ancientTreeCount = 3; // 每局产生的古树数量
     private void Awake()
     {
         Instance = this;
@@ -31,8 +31,10 @@ public class TreeManager : NetworkBehaviour
         {
             if (prop.isStaticTree)
             {
-                // 【新增】重置所有树的古树状态，防止连局游戏状态残留
-                prop.isAncientTree = false;
+                // 【重要】清除所有状态，防止连局游戏状态残留
+                prop.isAncientTree = false; 
+                prop.isHiddenByPossession = false; // 确保被附身的树重新显示
+                prop.ServerSetHidden(false);       // 显式调用服务器同步方法
                 allTrees.Add(prop);
                 spawnPositions.Add(prop.transform.position);
             }
@@ -55,7 +57,12 @@ public class TreeManager : NetworkBehaviour
             spawnPositions[randomIndex] = temp;
         }
 
+        // 【核心修改】从 GameManager 获取基于人数和倍率计算出的古树数量
+        int dynamicAncientCount = GameManager.Instance.GetCalculatedAncientTreeCount();
+        Debug.Log($"[TreeManager] Calculating Ancient Trees: Witches x Ratio = {dynamicAncientCount}");
+
         // 3. 分配位置并标记前 N 棵为古树
+        int actualAncientCount = 0; // 用于实际计数
         for (int i = 0; i < allTrees.Count; i++)
         {
             // 分配位置偏移
@@ -64,11 +71,17 @@ public class TreeManager : NetworkBehaviour
             if (randomYRotation) allTrees[i].transform.rotation = Quaternion.Euler(0, Random.Range(0, 360f), 0);
 
             // 【关键】标记古树
-            if (i < ancientTreeCount)
+            if (i < dynamicAncientCount)
             {
                 allTrees[i].isAncientTree = true;
+                actualAncientCount++;
                 Debug.Log($"[TreeManager] Tree {allTrees[i].name} set as ANCIENT TREE.");
             }
+        }
+        // 【核心修改】告诉 GameManager 地图上一共有多少棵古树
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.availableAncientTreesCount = actualAncientCount;
         }
     }
 }
