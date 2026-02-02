@@ -88,11 +88,20 @@ public class WitchPlayer : GamePlayer
             originalMaterials = myRenderer.sharedMaterials;
             originalScale = myRenderer.transform.localScale;
             
-            myMeshCollider = myRenderer.GetComponent<MeshCollider>();
-            if (myMeshCollider == null)
-                myMeshCollider = myRenderer.gameObject.AddComponent<MeshCollider>();
-            myMeshCollider.enabled = false; 
+            // myMeshCollider = myRenderer.GetComponent<MeshCollider>();
+            // if (myMeshCollider == null)
+            //     myMeshCollider = myRenderer.gameObject.AddComponent<MeshCollider>();
+            // myMeshCollider.enabled = false; 
         }
+
+        // 【修改点 2】确保玩家根物体(Parent)上有一个 MeshCollider 用于变身
+        myMeshCollider = GetComponent<MeshCollider>();
+        if (myMeshCollider == null)
+        {
+            myMeshCollider = gameObject.AddComponent<MeshCollider>();
+        }
+        myMeshCollider.convex = true; // 动态物体必须开启 convex
+        myMeshCollider.enabled = false; // 默认禁用，变身才开
 
         CharacterController cc = GetComponent<CharacterController>();
         if (cc != null)
@@ -532,7 +541,7 @@ public class WitchPlayer : GamePlayer
             // 检查容器是否存在
             if (propContainer == null)
             {
-                UnityEngine.Debug.LogError("Prop Container is null! 请在 Inspector 中拖入一个子物体作为容器。");
+                UnityEngine.Debug.LogError("Prop Container is null!");
                 return;
             }
 
@@ -577,8 +586,8 @@ public class WitchPlayer : GamePlayer
             }
 
             // 禁用所有物理碰撞器，防止动物自身的碰撞器干扰玩家
-            // Collider[] allColliders = currentVisualProp.GetComponentsInChildren<Collider>();
-            // foreach (var c in allColliders) c.enabled = false;
+            Collider[] allColliders = currentVisualProp.GetComponentsInChildren<Collider>();
+            foreach (var c in allColliders) c.enabled = false;
 
             // 5. 获取并设置 Animator
             propAnimator = currentVisualProp.GetComponent<Animator>();
@@ -586,12 +595,24 @@ public class WitchPlayer : GamePlayer
             // 6. 更新玩家自身的 CharacterController 大小
             // 尝试从新模型中找一个渲染器来计算大小
             Mesh targetMesh = null;
-            // 尝试从 MeshFilter (普通物体) 或 SkinnedMeshRenderer (动物/带骨骼物体) 获取 Mesh
-            MeshFilter mf = currentVisualProp.GetComponentInChildren<MeshFilter>();
-            SkinnedMeshRenderer smr = currentVisualProp.GetComponentInChildren<SkinnedMeshRenderer>();
 
-            if (mf != null) targetMesh = mf.sharedMesh;
-            else if (smr != null) targetMesh = smr.sharedMesh;
+            // 优先找 MeshCollider (因为有些物品可能 MeshFilter 是空的或者为了碰撞做了简化 Mesh)
+            MeshCollider propMC = currentVisualProp.GetComponentInChildren<MeshCollider>();
+            if (propMC != null) targetMesh = propMC.sharedMesh;
+
+            // 找不到 MeshCollider 再找 MeshFilter
+            if (targetMesh == null)
+            {
+                MeshFilter mf = currentVisualProp.GetComponentInChildren<MeshFilter>();
+                if (mf != null) targetMesh = mf.sharedMesh;
+            }
+
+            // 还是找不到，试试 SkinnedMeshRenderer (针对动物)
+            if (targetMesh == null)
+            {
+                SkinnedMeshRenderer smr = currentVisualProp.GetComponentInChildren<SkinnedMeshRenderer>();
+                if (smr != null) targetMesh = smr.sharedMesh;
+            }
 
             if (targetMesh != null)
             {
@@ -604,15 +625,19 @@ public class WitchPlayer : GamePlayer
                     if (targetMesh.isReadable)
                     {
                         myMeshCollider.sharedMesh = targetMesh;
-                        myMeshCollider.convex = true;
-                        myMeshCollider.enabled = true;
-                        UnityEngine.Debug.Log($"[Physics] Successfully created MeshCollider for {targetMesh.name}");
+                        myMeshCollider.convex = true; // 必须是凸包才能动
+                        myMeshCollider.isTrigger = false; 
+                        myMeshCollider.enabled = true; // 启用父物体上的 MeshCollider
+                        
+                        UnityEngine.Debug.Log($"[Physics] Copied MeshCollider from {currentVisualProp.name} to Player Root.");
+                        
+                        // 根据 Mesh 大小调整 CharacterController (保留你原有的辅助逻辑)
+                        UpdateCollider(targetMesh, currentVisualProp.transform.localScale);
                     }
                     else
                     {
-                        // 【回退方案】如果 Mesh 不可读，服务器会报错，此时强制切换为 BoxCollider
-                        UnityEngine.Debug.LogError($"[Physics] Mesh '{targetMesh.name}' is NOT readable! Falling back to BoxCollider. 请在 FBX 导入设置中勾选 'Read/Write Enabled'");
-                        
+                        // Mesh 不可读回退方案
+                        UnityEngine.Debug.LogError($"[Physics] Mesh '{targetMesh.name}' is NOT readable!");
                         if (humanBoxCollider != null)
                         {
                             humanBoxCollider.enabled = true;
@@ -621,7 +646,11 @@ public class WitchPlayer : GamePlayer
                         }
                     }
                 }
-                UpdateCollider(targetMesh, currentVisualProp.transform.localScale);
+            }
+            else 
+            {
+                // 实在找不到 Mesh，回退到 BoxCollider
+                if (humanBoxCollider != null) humanBoxCollider.enabled = true;
             }
             // 7. 刷新轮廓
             var outline = GetComponent<PlayerOutline>();
@@ -890,7 +919,14 @@ public class WitchPlayer : GamePlayer
         }
 
         // 恢复视觉
-        if (humanModelGroup != null) humanModelGroup.SetActive(true);
+        if (humanModelGroup != null)
+        {
+            humanModelGroup.SetActive(true);
+            // 修复隐身 BUG：强制开启所有渲染器
+            Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
+            foreach (var r in humanRenderers) r.enabled = true;
+        }
+        
         if (HideGroup != null) HideGroup.SetActive(true);
 
         // 恢复人类 BoxCollider 大小 (假设你有一组默认值)
@@ -1118,6 +1154,16 @@ public class WitchPlayer : GamePlayer
     }
     protected override void HandleDeath()
     {
+        // =================================================================
+        // 【新增修复】当宿主死亡（无论是变青蛙还是彻底死亡）时，必须强制踢出所有乘客
+        // =================================================================
+        if (isServer && passengerNetIds.Count > 0)
+        {
+            // 这会让所有乘客：hostNetId归零、恢复可见、弹射出去
+            ServerKickAllPassengers();
+            UnityEngine.Debug.Log($"[Server] {playerName} died/transformed, ejecting all passengers.");
+        }
+        // =================================================================
         if (!isInSecondChance)
         {
             // --- 第一次死亡：进入复活赛 ---
