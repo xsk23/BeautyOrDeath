@@ -49,6 +49,15 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   gameTimer: 300
+  gameWinner: 0
+  restartCountdown: 5
+  aliveHuntersCount: 0
+  aliveWitchesCount: 0
+  deliveredTreesCount: 0
+  totalRequiredTrees: 0
+  availableAncientTreesCount: 0
+  portalPrefab: {fileID: 5216212801046882302, guid: e8e7cac069975e14fb0f349c98e68e00, type: 3}
+  portalSpawnGroupName: PortalPositions
 --- !u!114 &2205238953590382908
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -55,6 +55,11 @@ public class GameManager : NetworkBehaviour
     private float gameStartTimer = 0f;
     private const float winConditionGracePeriod = 10f; // 10秒保护期，等待所有玩家加载
 
+    [Header("Portal Settings")]
+    public GameObject portalPrefab; // 这里的引用将在 Prefab 中设置
+    public string portalSpawnGroupName = "PortalPositions"; 
+
+
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -464,6 +469,35 @@ public class GameManager : NetworkBehaviour
         else
         {
             Debug.LogError("[Server] Failed to find ServerAnimalSpawner in the new scene!");
+        }
+        // 生成传送门
+        SpawnRandomPortal();
+    }
+
+    [Server]
+    private void SpawnRandomPortal()
+    {
+        if (portalPrefab == null)
+        {
+            Debug.LogError("[Server] Portal Prefab 未赋值！请检查 Project 里的 GameManager Prefab。");
+            return;
+        }
+
+        GameObject spawnGroup = GameObject.Find(portalSpawnGroupName);
+        if (spawnGroup != null && spawnGroup.transform.childCount > 0)
+        {
+            int randomIndex = Random.Range(0, spawnGroup.transform.childCount);
+            Transform targetTransform = spawnGroup.transform.GetChild(randomIndex);
+
+            // 实例化并同步
+            GameObject portalInstance = Instantiate(portalPrefab, targetTransform.position, targetTransform.rotation);
+            NetworkServer.Spawn(portalInstance);
+            
+            Debug.Log($"[Server] Portal spawned at {targetTransform.name}");
+        }
+        else
+        {
+            Debug.LogError($"[Server] 找不到名为 '{portalSpawnGroupName}' 的物体或其没有子物体！");
         }
     }
 
