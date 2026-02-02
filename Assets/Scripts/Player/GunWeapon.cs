@@ -26,14 +26,14 @@ public class GunWeapon : WeaponBase
             if (Physics.Raycast(startPos, direction, out RaycastHit hit, range))
             {
                 // CharacterController 会被识别为 hit.collider
-                // 我们尝试从命中物体或其父级寻找 GamePlayer
-                GamePlayer target = hit.collider.GetComponent<GamePlayer>();
+                // 【核心修复】使用 GetComponentInParent，因为 Collider 可能在模型子节点上
+                GamePlayer target = hit.collider.GetComponentInParent<GamePlayer>();
 
                 if (target != null)
                 {
                     // 获取攻击者（枪是在猎人手里的，所以父级一定是 HunterPlayer）
                     GamePlayer attacker = GetComponentInParent<GamePlayer>();
-
+                    if (target == attacker) return;
                     // --- 【队友伤害检查逻辑】 ---
                     bool isSameTeam = (target.playerRole == attacker.playerRole);
                     bool canDamage = !isSameTeam || GameManager.Instance.FriendlyFire;

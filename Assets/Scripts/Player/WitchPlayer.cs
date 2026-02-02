@@ -69,6 +69,9 @@ public class WitchPlayer : GamePlayer
     [Header("Delivery Progress")]
     [SyncVar(hook = nameof(OnDeliveryStatusChanged))]
     public bool hasDeliveredTree = false; // 是否已经作为驾驶员带回过古树
+    [Header("新层级引用")]
+    public GameObject humanModelGroup; // 将 tripo_node 和 Armature 所在的父物体拖到这里
+    private BoxCollider humanBoxCollider; // 人形时的 BoxCollider
 
     // ========================================================================
 
@@ -103,6 +106,13 @@ public class WitchPlayer : GamePlayer
         if (myPropTarget == null) myPropTarget = gameObject.AddComponent<PropTarget>();
         myPropTarget.enabled = false; // 还没变身，不可被当做道具
 
+        // 获取人形 BoxCollider
+        humanBoxCollider = GetComponent<BoxCollider>();
+        // 如果没有手动指定 HideGroup，默认尝试找子物体
+        if (humanModelGroup == null) {
+            // 假设 tripo_node 是第一个子物体
+            humanModelGroup = transform.Find("tripo_node")?.gameObject;
+        }
     }
 
     public override void OnStartClient()
@@ -384,11 +394,12 @@ public class WitchPlayer : GamePlayer
             // 【注意】乘客不能触发短按变身，必须是非乘客 (!isPassenger)
             if (!isPassenger && lmbHoldTimer > 0.01f && lmbHoldTimer < 0.3f && !isMorphed && currentFocusProp != null)
             {
-                // 检查这个 PropTarget 是否属于另一个 WitchPlayer
-                WitchPlayer otherWitch = currentFocusProp.GetComponent<WitchPlayer>();
+                // 【修改】使用 GetComponentInParent，因为脚本在父物体上
+                WitchPlayer otherWitch = currentFocusProp.GetComponentInParent<WitchPlayer>();
                 if (otherWitch != null && otherWitch != this)
                 {
                     // 加入它！
+                    UnityEngine.Debug.Log($"Detected another witch: {otherWitch.playerName}, joining...");
                     CmdJoinWitch(otherWitch.netId);
                 }
                 else
@@ -472,8 +483,9 @@ public class WitchPlayer : GamePlayer
         hostNetId = 0;
         RpcSetVisible(true);
         
-        // 稍微弹开一点，防止卡住
-        transform.position += Vector3.up + transform.forward;
+        // 3. 【关键】调用 TargetRpc，让客户端自己计算弹射位置
+        // 这样可以确保位置突变平滑，且方向正确
+        TargetForceLeave(connectionToClient);
     }
 
     [Command]
@@ -503,16 +515,16 @@ public class WitchPlayer : GamePlayer
         // // 2. 广播 Rpc 处理视觉
         // RpcMorph(propID);
         morphedPropID = propID; // 修改 SyncVar，自动触发所有人的钩子
+        // 【核心修复】服务器自己也要执行一遍逻辑，否则服务器物理世界里女巫没变
+        ApplyMorph(propID); 
     }
 
     private void ApplyMorph(int propID)
     {
-        // 1. 清理之前的模型
         if (currentVisualProp != null) Destroy(currentVisualProp);
-        
-        // 2. 隐藏人类模型
+        if (humanModelGroup != null) humanModelGroup.SetActive(false);
         if (HideGroup != null) HideGroup.SetActive(false);
-        if (myRenderer != null) myRenderer.enabled = false;
+        if (humanBoxCollider != null) humanBoxCollider.enabled = false;
 
         // 3. 生成新物体
         if (PropDatabase.Instance.GetPropPrefab(propID, out GameObject prefab))
@@ -565,26 +577,52 @@ public class WitchPlayer : GamePlayer
             }
 
             // 禁用所有物理碰撞器，防止动物自身的碰撞器干扰玩家
-            Collider[] allColliders = currentVisualProp.GetComponentsInChildren<Collider>();
-            foreach (var c in allColliders) c.enabled = false;
+            // Collider[] allColliders = currentVisualProp.GetComponentsInChildren<Collider>();
+            // foreach (var c in allColliders) c.enabled = false;
 
             // 5. 获取并设置 Animator
             propAnimator = currentVisualProp.GetComponent<Animator>();
             
             // 6. 更新玩家自身的 CharacterController 大小
             // 尝试从新模型中找一个渲染器来计算大小
-            SkinnedMeshRenderer smr = currentVisualProp.GetComponentInChildren<SkinnedMeshRenderer>();
-            MeshFilter mf = currentVisualProp.GetComponentInChildren<MeshFilter>();
-            
             Mesh targetMesh = null;
-            if (smr != null) targetMesh = smr.sharedMesh;
-            else if (mf != null) targetMesh = mf.sharedMesh;
+            // 尝试从 MeshFilter (普通物体) 或 SkinnedMeshRenderer (动物/带骨骼物体) 获取 Mesh
+            MeshFilter mf = currentVisualProp.GetComponentInChildren<MeshFilter>();
+            SkinnedMeshRenderer smr = currentVisualProp.GetComponentInChildren<SkinnedMeshRenderer>();
+
+            if (mf != null) targetMesh = mf.sharedMesh;
+            else if (smr != null) targetMesh = smr.sharedMesh;
 
             if (targetMesh != null)
             {
+                // 【核心修复】解决 Mesh 不可读导致的报错
+                if (myMeshCollider != null)
+                {
+                    myMeshCollider.enabled = false;
+                    
+                    // 检查网格是否允许读写
+                    if (targetMesh.isReadable)
+                    {
+                        myMeshCollider.sharedMesh = targetMesh;
+                        myMeshCollider.convex = true;
+                        myMeshCollider.enabled = true;
+                        UnityEngine.Debug.Log($"[Physics] Successfully created MeshCollider for {targetMesh.name}");
+                    }
+                    else
+                    {
+                        // 【回退方案】如果 Mesh 不可读，服务器会报错，此时强制切换为 BoxCollider
+                        UnityEngine.Debug.LogError($"[Physics] Mesh '{targetMesh.name}' is NOT readable! Falling back to BoxCollider. 请在 FBX 导入设置中勾选 'Read/Write Enabled'");
+                        
+                        if (humanBoxCollider != null)
+                        {
+                            humanBoxCollider.enabled = true;
+                            humanBoxCollider.center = targetMesh.bounds.center;
+                            humanBoxCollider.size = Vector3.Scale(targetMesh.bounds.size, currentVisualProp.transform.localScale);
+                        }
+                    }
+                }
                 UpdateCollider(targetMesh, currentVisualProp.transform.localScale);
             }
-
             // 7. 刷新轮廓
             var outline = GetComponent<PlayerOutline>();
             if (outline != null) outline.RefreshRenderer(currentVisualProp.GetComponentInChildren<Renderer>());
@@ -594,6 +632,7 @@ public class WitchPlayer : GamePlayer
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
             myPropTarget.ManualInit(propID, currentVisualProp); 
             gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
+
         }
     }
 
@@ -792,6 +831,7 @@ public class WitchPlayer : GamePlayer
     // 重写基类的钩子函数
     protected override void OnMorphedPropIDChanged(int oldID, int newID)
     {
+        if (isServer) return; // 服务器已经在 Cmd 里跑过了，跳过
         if (newID >= 0)
         {
             isMorphed = true;
@@ -833,6 +873,8 @@ public class WitchPlayer : GamePlayer
         ServerKickAllPassengers(); // 踢掉所有同乘的女巫
         isMorphed = false; 
         morphedPropID = -1;
+        // 【核心修复】服务器自己也要恢复
+        ApplyRevert();
     }
 
     private void ApplyRevert()
@@ -840,9 +882,24 @@ public class WitchPlayer : GamePlayer
         if (currentVisualProp != null) Destroy(currentVisualProp);
         propAnimator = null;
 
-        if (HideGroup != null) HideGroup.SetActive(true);
-        if (myRenderer != null) myRenderer.enabled = true;
+        // 1. 关闭 MeshCollider 并清空网格
+        if (myMeshCollider != null)
+        {
+            myMeshCollider.sharedMesh = null;
+            myMeshCollider.enabled = false;
+        }
 
+        // 恢复视觉
+        if (humanModelGroup != null) humanModelGroup.SetActive(true);
+        if (HideGroup != null) HideGroup.SetActive(true);
+
+        // 恢复人类 BoxCollider 大小 (假设你有一组默认值)
+        if (humanBoxCollider != null)
+        {
+            humanBoxCollider.enabled = true;
+            humanBoxCollider.center = new Vector3(0.007072449f, -0.3592024f, 0.03986454f); // 根据你 Inspector 里的值填
+            humanBoxCollider.size = new Vector3(0.7001953f, 1.718405f, 0.7418957f);
+        }
         // 恢复人类的基础移动速度
         moveSpeed = originalHumanSpeed;
         if (isLocalPlayer) CmdUpdateMoveSpeed(originalHumanSpeed);
@@ -924,32 +981,89 @@ public class WitchPlayer : GamePlayer
         // 1. 恢复显示
         SetLocalVisibility(true);
 
-        // 2. 计算一个随机的弹射方向 (水平圆周上随机一点)
-        // Random.insideUnitCircle 返回半径为1的圆内随机点，我们稍微处理一下保证有一定距离
-        Vector2 randomCircle = Random.insideUnitCircle.normalized * 1.5f; // 1.5米半径散开
-        Vector3 ejectOffset = new Vector3(randomCircle.x, 0.5f, randomCircle.y);
+        // 2. 计算弹射方向 
+        // 使用 Random.onUnitSphere 并在平面上归一化，保证是向四周弹开
+        // 【修改】增大半径从 1.5f -> 2.5f，防止卡在体积较大的古树或石头里
+        Vector2 randomCircle = Random.insideUnitCircle.normalized * 2.5f; 
+        
+        // 【修改】增加一点 Y 轴偏移 (Vector3.up * 1.5f)，相当于稍微往天上跳一下，避免卡在地板或树根里
+        Vector3 ejectOffset = new Vector3(randomCircle.x, 1.5f, randomCircle.y);
 
-        // 3. 应用位置偏移 (宿主位置 + 随机水平偏移 + 向上偏移防穿地)
-        // 注意：transform.position 此时已经是宿主的位置了（因为Update里一直在同步）
+        // 3. 应用位置偏移 
+        // 注意：此时 transform.position 还是宿主的位置（因为刚停止 Update 跟随）
         transform.position += ejectOffset;
 
         // 4. 重置摄像机
         UpdateCameraView();
         
-        // 5. [可选] 如果有速度变量，建议重置，防止落地滑行
-        // velocity = Vector3.zero; // 如果 velocity 是 protected/public 的话可以加这行
+        // 5. 【新增】重置速度
+        // 防止下车时继承了奇怪的动量滑行
+        if (controller != null)
+        {
+             // 这里无法直接修改 controller.velocity，但可以重置我们在 Update 里计算的 velocity 变量
+             // 如果你有定义 private Vector3 velocity; 建议在这里重置:
+             // velocity = Vector3.zero; 
+        }
+        
+        UnityEngine.Debug.Log("Exited vehicle via TargetForceLeave");
     }
 
     // 【新增】本地辅助方法：只负责改状态，不涉及网络通信
     private void SetLocalVisibility(bool visible)
     {
-        // 隐藏/显示所有渲染器
-        foreach (var r in GetComponentsInChildren<Renderer>())
-        {
-            r.enabled = visible;
-        }
-        // 如果有 CharacterController 也需要处理，防止隐形碰撞
+        // 1. 处理基础组件
         if (controller != null) controller.enabled = visible;
+        
+        // 获取身上所有的 Renderer (包括子物体)
+        Renderer[] allRenderers = GetComponentsInChildren<Renderer>(true);
+
+        if (!visible)
+        {
+            // 如果是隐藏（上车），全部关掉
+            foreach (var r in allRenderers) r.enabled = false;
+            if (humanModelGroup != null) humanModelGroup.SetActive(false);
+            if (nameText != null) nameText.gameObject.SetActive(false);
+            // 关闭父级碰撞体，防止挡住“驾驶员”
+            if (myMeshCollider != null) myMeshCollider.enabled = false;
+            if (humanBoxCollider != null) humanBoxCollider.enabled = false;
+        }
+        else
+        {
+            // 如果是显示（下车），根据当前状态智能恢复
+            if (isMorphed)
+            {
+                // 如果我还在变身状态，显示变身后的模型，保持人类模型隐藏
+                if (humanModelGroup != null) humanModelGroup.SetActive(false);
+                if (currentVisualProp != null)
+                {
+                    currentVisualProp.SetActive(true);
+                    foreach (var r in currentVisualProp.GetComponentsInChildren<Renderer>()) r.enabled = true;
+                }
+                if (myMeshCollider != null && morphedPropID != -1) myMeshCollider.enabled = true;
+            }
+            else
+            {
+                // 如果我是人类状态，恢复人类模型
+                if (humanModelGroup != null) 
+                {
+                    humanModelGroup.SetActive(true);
+                    
+                    // 【关键修复】必须重新启用 humanModelGroup 下的所有 Renderer 组件
+                    // 因为在上车时我们把它们暴力设为了 enabled = false
+                    Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
+                    foreach (var r in humanRenderers)
+                    {
+                        r.enabled = true;
+                    }
+                }
+
+                // 这一行其实可以保留作为保险，或者有了上面的循环可以删掉
+                if (myRenderer != null) myRenderer.enabled = true;
+                
+                if (humanBoxCollider != null) humanBoxCollider.enabled = true;
+                if (nameText != null) nameText.gameObject.SetActive(true);
+            }
+        }
     }
 
     private void UpdateCollider(Mesh mesh, Vector3 scale)
