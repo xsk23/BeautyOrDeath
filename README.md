@@ -81,3 +81,11 @@
 | **ESC** | 关闭聊天框 / 呼出系统暂停菜单 |
 
 ---
+
+linux系统挂载server方式：
+sudo firewall-cmd --zone=public --add-port=7777/udp --permanent
+sudo firewall-cmd --reload
+killall -9 build_linux.x86_64
+rm -rf build_linux_Data 
+chmod +x build_linux.x86_64   
+nohup ./build_linux.x86_64 -batchmode -nographics > server_log.txt 2>&1 &
