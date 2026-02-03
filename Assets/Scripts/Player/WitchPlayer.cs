@@ -6,9 +6,16 @@ using System.Collections.Generic; // 引用 List
 
 public class WitchPlayer : GamePlayer
 {
+    [Header("Status Effects")]
+    // 【新增】同步隐身状态，带 Hook
+    [SyncVar(hook = nameof(OnStealthChanged))]
+    public bool isStealthed = false;
     [Header("Witch Skill Settings")]
-    public float interactionDistance = 5f; 
-    public LayerMask propLayer; 
+    public GameObject[] witchItems;// 女巫道具数组
+    [SyncVar(hook = nameof(OnItemChanged))]
+    public int currentItemIndex = 0;
+    public float interactionDistance = 5f;
+    public LayerMask propLayer;
     public float revertLongPressTime = 1.5f; // 长按多久恢复原状
 
     private PropTarget currentFocusProp; // 当前聚焦的道具物体
@@ -25,13 +32,13 @@ public class WitchPlayer : GamePlayer
     private float originalCCRadius;
     private Vector3 originalCCCenter;
     private float lmbHoldTimer = 0f; // 左键按住计时器
-    
+
     [Header("Morph Animation Settings")]
     public Transform propContainer; // 玩家预制体下的一个空物体，用于装载变身后的模型
     private GameObject currentVisualProp; // 当前生成的动物模型实例
     private Animator propAnimator; // 变身后获取的动画组件引用
     private string currentVerticalParam = "Speed"; // 默认值
-    private string currentStateParam = "State"; 
+    private string currentStateParam = "State";
     [Header("Morphed Stats")]
     private float morphedWalkSpeed = 5f;
     private float morphedRunSpeed = 8f;
@@ -47,18 +54,18 @@ public class WitchPlayer : GamePlayer
     // ========================================================================
     [Header("Multi-Witch Control")]
     // 自身携带的 PropTarget 组件，用于变身后让别人瞄准
-    private PropTarget myPropTarget; 
-    
+    private PropTarget myPropTarget;
+
     // 当前我是谁的乘客？(0 表示自己是独立的)
     [SyncVar(hook = nameof(OnHostNetIdChanged))]
-    public uint hostNetId = 0; 
-    
+    public uint hostNetId = 0;
+
     // 只有宿主才用这个列表：记录谁在我的车上
     public readonly SyncList<uint> passengerNetIds = new SyncList<uint>();
 
     // 宿主用来同步所有乘客的总输入向量 (X, Z)
     [SyncVar]
-    private Vector2 combinedPassengerInput; 
+    private Vector2 combinedPassengerInput;
 
     [Header("Possession Settings")]
     public float possessLongPressTime = 1.0f; // 右键长按多久附身
@@ -87,7 +94,7 @@ public class WitchPlayer : GamePlayer
         {
             originalMaterials = myRenderer.sharedMaterials;
             originalScale = myRenderer.transform.localScale;
-            
+
             // myMeshCollider = myRenderer.GetComponent<MeshCollider>();
             // if (myMeshCollider == null)
             //     myMeshCollider = myRenderer.gameObject.AddComponent<MeshCollider>();
@@ -118,7 +125,8 @@ public class WitchPlayer : GamePlayer
         // 获取人形 BoxCollider
         humanBoxCollider = GetComponent<BoxCollider>();
         // 如果没有手动指定 HideGroup，默认尝试找子物体
-        if (humanModelGroup == null) {
+        if (humanModelGroup == null)
+        {
             // 假设 tripo_node 是第一个子物体
             humanModelGroup = transform.Find("tripo_node")?.gameObject;
         }
@@ -145,7 +153,7 @@ public class WitchPlayer : GamePlayer
         if (isPermanentDead)
         {
             base.Update(); // 允许观察者移动
-            return; 
+            return;
         }
         // =========================================================
         // 【新增】乘客逻辑：如果我是乘客，我不需要跑物理移动
@@ -155,7 +163,7 @@ public class WitchPlayer : GamePlayer
             HandlePassengerLogic();
             HandleMorphInput();     // 【新增】处理长按左键下车 (复用变身输入的进度条逻辑)
             return; // 乘客不执行后续的 base.Update() (不跑物理移动)
-        }       
+        }
         // =========================================================
         // 【新增】宿主逻辑：更新变身后的 PropTarget 可视状态
         // =========================================================
@@ -210,7 +218,7 @@ public class WitchPlayer : GamePlayer
             // 只要有位移，Vert 就给 1
             float animVert = speedMagnitude > 0.05f ? 1.0f : 0.0f;
             propAnimator.SetFloat(currentVerticalParam, animVert);
-            
+
             // 通过 moveSpeed (SyncVar) 判断远程玩家是否在按 Shift
             bool isRunning = (moveSpeed >= morphedRunSpeed - 0.1f) && speedMagnitude > 0.1f;
             propAnimator.SetFloat(currentStateParam, isRunning ? 1f : 0f);
@@ -223,8 +231,7 @@ public class WitchPlayer : GamePlayer
 
         HandleInteraction(); // 只有非乘客才进行射线检测
         HandleMorphInput();  // 处理变身/还原输入
-
-
+        HandleItemActivation(); // 处理道具使用输入
     }
 
     // =========================================================
@@ -238,9 +245,9 @@ public class WitchPlayer : GamePlayer
         // 2. 如果是宿主，叠加乘客输入
         if (passengerNetIds.Count > 0)
         {
-            finalInput += combinedPassengerInput; 
+            finalInput += combinedPassengerInput;
             // 限制最大合力，防止速度过快
-            finalInput = Vector2.ClampMagnitude(finalInput, 1.2f); 
+            finalInput = Vector2.ClampMagnitude(finalInput, 1.2f);
         }
 
         // 3. 调用基类逻辑，但此时我们要把叠加后的输入传给基类的计算逻辑
@@ -248,7 +255,7 @@ public class WitchPlayer : GamePlayer
         // 这是一个递归设计问题。
         // 修正方案：我们不调用 base.HandleMovementOverride，而是复制其逻辑，或者修改基类结构。
         // 鉴于你的 GamePlayer.cs 实现，base.HandleMovementOverride 只是用传入的参数计算。
-        
+
         // 调用基类，传入修改后的 Input
         base.HandleMovementOverride(finalInput);
     }
@@ -278,7 +285,7 @@ public class WitchPlayer : GamePlayer
         {
             // 强制将我的位置设置在宿主位置（防止网络剔除问题）
             transform.position = hostIdentity.transform.position;
-            
+
             // 相机跟随
             Camera.main.transform.SetParent(null); // 解除父子关系防止跟随旋转晕车
             // 简单的第三人称跟随
@@ -296,9 +303,66 @@ public class WitchPlayer : GamePlayer
 
     public override void HandleInput()
     {
-        
-    }
 
+    }
+    private void HandleItemActivation()
+    {
+        if (isLocalPlayer && !isPermanentDead)
+        {
+            //切换道具
+            if (Input.GetKeyDown(KeyCode.Alpha1))
+            {
+                ChangeItem(0);
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha2))
+            {
+                ChangeItem(1);
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha3))
+            {
+                ChangeItem(2);
+            }
+            if (Input.GetAxis("Mouse ScrollWheel") > 0f)
+            {
+                int nextIndex = (currentItemIndex + 1) % witchItems.Length;
+                ChangeItem(nextIndex);
+
+            }
+            else if (Input.GetAxis("Mouse ScrollWheel") < 0f)
+            {
+                int nextIndex = (currentItemIndex - 1 + witchItems.Length) % witchItems.Length;
+                ChangeItem(nextIndex);
+            }
+            //使用道具
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                WitchItemBase currentItem = witchItems[currentItemIndex].GetComponent<WitchItemBase>();
+                if (currentItem != null && currentItem.CanUse())
+                {
+                    currentItem.UpdateCooldown();
+                    UnityEngine.Debug.Log($"Activating item: {currentItem.itemName}");
+                    currentItem.OnActivate();
+                }
+            }
+
+        }
+    }
+    private void ChangeItem(int itemIndex)
+    {
+        CmdChangeItem(itemIndex);
+        if (sceneScript == null) return;
+
+        string itemName = "None";
+        if (itemIndex >= 0 && itemIndex < witchItems.Length)
+        {
+            WitchItemBase itemBase = witchItems[itemIndex].GetComponent<WitchItemBase>();
+            if (itemBase != null)
+            {
+                itemName = itemBase.itemName;
+            }
+        }
+        sceneScript.WeaponText.text = itemName;
+    }
     // 处理射线检测和高亮
     private void HandleInteraction()
     {
@@ -353,7 +417,7 @@ public class WitchPlayer : GamePlayer
         if (Input.GetMouseButton(0))
         {
             lmbHoldTimer += Time.deltaTime;
-            
+
             // 【修改】如果是 变身状态(Host) 或者 乘客状态(Passenger)，都显示进度条
             if (isHost || isPassenger)
             {
@@ -370,9 +434,9 @@ public class WitchPlayer : GamePlayer
                     {
                         UnityEngine.Debug.Log("Long press complete.");
                         lmbHoldTimer = 0f;
-                        
-                        if (sceneScript != null) sceneScript.UpdateRevertUI(0, false); 
-                        
+
+                        if (sceneScript != null) sceneScript.UpdateRevertUI(0, false);
+
                         // 【核心分支】
                         if (isPassenger)
                         {
@@ -384,7 +448,7 @@ public class WitchPlayer : GamePlayer
                             // 宿主长按 -> 变回人形
                             CmdRevert();
                         }
-                    }                    
+                    }
                 }
 
             }
@@ -418,7 +482,7 @@ public class WitchPlayer : GamePlayer
                 }
             }
 
-            lmbHoldTimer = 0f; 
+            lmbHoldTimer = 0f;
         }
         // --- 【右键逻辑：新增附身检测】 ---
         if (!isPassenger) // 乘客不能主动附身其他东西
@@ -430,7 +494,7 @@ public class WitchPlayer : GamePlayer
                 {
                     rmbHoldTimer += Time.deltaTime;
                     float progress = Mathf.Clamp01(rmbHoldTimer / possessLongPressTime);
-                    
+
                     if (sceneScript != null)
                         sceneScript.UpdateRevertUI(progress, true); // 复用进度条UI
 
@@ -438,13 +502,13 @@ public class WitchPlayer : GamePlayer
                     {
                         rmbHoldTimer = 0f;
                         if (sceneScript != null) sceneScript.UpdateRevertUI(0, false);
-                        
+
                         // 执行附身命令
                         CmdPossessAncientTree(currentFocusProp.netId);
                     }
                 }
             }
-            
+
             if (Input.GetMouseButtonUp(1))
             {
                 rmbHoldTimer = 0f;
@@ -461,13 +525,13 @@ public class WitchPlayer : GamePlayer
     private void CmdJoinWitch(uint targetNetId)
     {
         if (!NetworkServer.spawned.TryGetValue(targetNetId, out NetworkIdentity targetIdentity)) return;
-        
+
         WitchPlayer targetWitch = targetIdentity.GetComponent<WitchPlayer>();
         if (targetWitch == null || !targetWitch.isMorphed) return; // 只能加入已变身的女巫
 
         // 1. 设置状态
         hostNetId = targetNetId;
-        
+
         // 2. 通知宿主添加乘客
         targetWitch.ServerAddPassenger(netId);
 
@@ -491,7 +555,7 @@ public class WitchPlayer : GamePlayer
 
         hostNetId = 0;
         RpcSetVisible(true);
-        
+
         // 3. 【关键】调用 TargetRpc，让客户端自己计算弹射位置
         // 这样可以确保位置突变平滑，且方向正确
         TargetForceLeave(connectionToClient);
@@ -502,7 +566,7 @@ public class WitchPlayer : GamePlayer
     {
         // 只有乘客才能发
         if (hostNetId == 0) return;
-        
+
         // 找到宿主并更新
         if (NetworkServer.spawned.TryGetValue(hostNetId, out NetworkIdentity hostIdentity))
         {
@@ -520,12 +584,12 @@ public class WitchPlayer : GamePlayer
     private void CmdMorph(int propID)
     {
         // // 1. 先在服务器修改同步变量
-        isMorphed = true; 
+        isMorphed = true;
         // // 2. 广播 Rpc 处理视觉
         // RpcMorph(propID);
         morphedPropID = propID; // 修改 SyncVar，自动触发所有人的钩子
         // 【核心修复】服务器自己也要执行一遍逻辑，否则服务器物理世界里女巫没变
-        ApplyMorph(propID); 
+        ApplyMorph(propID);
     }
 
     private void ApplyMorph(int propID)
@@ -570,7 +634,7 @@ public class WitchPlayer : GamePlayer
                 morphedWalkSpeed = originalHumanSpeed;
                 morphedRunSpeed = originalHumanSpeed; // 静态物体通常不提供跑步加成，设为一致
                 // 如果不是动物（是石头等静态物体），重置回默认或空
-                currentVerticalParam = "Speed"; 
+                currentVerticalParam = "Speed";
             }
 
             // 4. 【核心修复】禁用脚本但保留动画
@@ -591,7 +655,7 @@ public class WitchPlayer : GamePlayer
 
             // 5. 获取并设置 Animator
             propAnimator = currentVisualProp.GetComponent<Animator>();
-            
+
             // 6. 更新玩家自身的 CharacterController 大小
             // 尝试从新模型中找一个渲染器来计算大小
             Mesh targetMesh = null;
@@ -620,17 +684,17 @@ public class WitchPlayer : GamePlayer
                 if (myMeshCollider != null)
                 {
                     myMeshCollider.enabled = false;
-                    
+
                     // 检查网格是否允许读写
                     if (targetMesh.isReadable)
                     {
                         myMeshCollider.sharedMesh = targetMesh;
                         myMeshCollider.convex = true; // 必须是凸包才能动
-                        myMeshCollider.isTrigger = false; 
+                        myMeshCollider.isTrigger = false;
                         myMeshCollider.enabled = true; // 启用父物体上的 MeshCollider
-                        
+
                         UnityEngine.Debug.Log($"[Physics] Copied MeshCollider from {currentVisualProp.name} to Player Root.");
-                        
+
                         // 根据 Mesh 大小调整 CharacterController (保留你原有的辅助逻辑)
                         UpdateCollider(targetMesh, currentVisualProp.transform.localScale);
                     }
@@ -647,7 +711,7 @@ public class WitchPlayer : GamePlayer
                     }
                 }
             }
-            else 
+            else
             {
                 // 实在找不到 Mesh，回退到 BoxCollider
                 if (humanBoxCollider != null) humanBoxCollider.enabled = true;
@@ -659,9 +723,16 @@ public class WitchPlayer : GamePlayer
             // 8. 【新增】启用我的 PropTarget，允许别人瞄准我变身后的模型
             myPropTarget.enabled = true;
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
-            myPropTarget.ManualInit(propID, currentVisualProp); 
+            myPropTarget.ManualInit(propID, currentVisualProp);
             gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
+            if (isStealthed)
+            {
+                Renderer[] newRenderers = currentVisualProp.GetComponentsInChildren<Renderer>(true);
+                foreach (var r in newRenderers) r.enabled = false;
 
+                // 本地玩家如果是方案3（自己看得到半透明），这里要做额外处理
+                if (isLocalPlayer) SetLocalVisibility(true); // 让自己可见
+            }
         }
     }
 
@@ -669,7 +740,7 @@ public class WitchPlayer : GamePlayer
     // =========================================================
     // 宿主专用服务器逻辑
     // =========================================================
-    
+
     // 缓存每个乘客的当前帧输入 <netId, input>
     private Dictionary<uint, Vector2> passengerInputs = new Dictionary<uint, Vector2>();
 
@@ -725,7 +796,7 @@ public class WitchPlayer : GamePlayer
         // 调用上面的本地方法
         SetLocalVisibility(visible);
     }
-    
+
     // 钩子：当宿主ID变化时（乘客端执行）
     void OnHostNetIdChanged(uint oldId, uint newId)
     {
@@ -745,9 +816,9 @@ public class WitchPlayer : GamePlayer
                 // 刚下车
                 if (sceneScript != null && sceneScript.RunText != null)
                     sceneScript.RunText.gameObject.SetActive(false);
-                
+
                 // 恢复摄像机
-                UpdateCameraView(); 
+                UpdateCameraView();
             }
         }
     }
@@ -772,7 +843,7 @@ public class WitchPlayer : GamePlayer
                 if (tree != null)
                 {
                     tree.ServerSetHidden(true);
-                    tree.transform.position = Vector3.down * 1000f; 
+                    tree.transform.position = Vector3.down * 1000f;
                     // 【核心修改】古树被回收，地图上可用的古树数量减 1
                     if (GameManager.Instance != null)
                     {
@@ -801,19 +872,38 @@ public class WitchPlayer : GamePlayer
             if (sceneScript != null) sceneScript.GoalText.text = goalText;
         }
     }
-
+    void OnItemChanged(int oldIndex, int newIndex)
+    {
+        // 处理物品变化的逻辑
+        if (oldIndex >= 0 && oldIndex < witchItems.Length)
+        {
+            witchItems[oldIndex].SetActive(false);
+        }
+        if (newIndex >= 0 && newIndex < witchItems.Length)
+        {
+            witchItems[newIndex].SetActive(true);
+        }
+    }
+    [Command]
+    void CmdChangeItem(int itemIndex)
+    {
+        if (itemIndex >= 0 && itemIndex < witchItems.Length)
+        {
+            currentItemIndex = itemIndex;
+        }
+    }
     [Command]
     private void CmdPossessAncientTree(uint treeNetId)
-    { 
+    {
         // 【新增限制】如果已经带回过古树，不能再次成为宿主（驾驶员）
-        if (hasDeliveredTree) 
+        if (hasDeliveredTree)
         {
             UnityEngine.Debug.Log($"[Server] {playerName} has already delivered a tree and cannot drive again.");
-            return; 
+            return;
         }
         if (!NetworkServer.spawned.TryGetValue(treeNetId, out NetworkIdentity treeIdentity)) return;
         PropTarget tree = treeIdentity.GetComponent<PropTarget>();
-        
+
         if (tree == null || !tree.isAncientTree) return;
 
         // --- 核心逻辑：判断树是否已经被别人附身 ---
@@ -831,7 +921,7 @@ public class WitchPlayer : GamePlayer
         {
             // 情况 A: 树已被附身 -> 加入成为乘客 (实现多人附身)
             if (existingHost.netId == this.netId) return; // 不能附身自己
-            
+
             this.hostNetId = existingHost.netId;
             existingHost.ServerAddPassenger(this.netId);
             RpcSetVisible(false); // 隐藏自己
@@ -842,16 +932,16 @@ public class WitchPlayer : GamePlayer
             // 情况 B: 树是空的 -> 我成为宿主
             // 1. 让场景里的树消失
             tree.ServerSetHidden(true);
-            
+
             // 2. 我变身成这棵树
             this.possessedTreeNetId = treeNetId;
             this.isMorphed = true;
             this.morphedPropID = tree.propID; // 使用树的 PropID
-            
+
             // 3. 瞬间移动到树的位置，保证无缝衔接
             this.transform.position = tree.transform.position;
             this.transform.rotation = tree.transform.rotation;
-            
+
             UnityEngine.Debug.Log($"[Server] {playerName} possessed Ancient Tree: {tree.name}");
         }
     }
@@ -875,14 +965,15 @@ public class WitchPlayer : GamePlayer
 
 
     [Command]
-    void CmdUpdateMoveSpeed(float newSpeed)
+    public void CmdUpdateMoveSpeed(float newSpeed)
     {
         // 服务器收到命令，修改 SyncVar，随后会自动同步给所有客户端
         moveSpeed = newSpeed;
     }
 
     [Command]
-    private void CmdRevert() {
+    private void CmdRevert()
+    {
         if (possessedTreeNetId != 0)
         {
             // 如果是附身状态，把树“种”在当前位置
@@ -900,14 +991,14 @@ public class WitchPlayer : GamePlayer
         }
 
         ServerKickAllPassengers(); // 踢掉所有同乘的女巫
-        isMorphed = false; 
+        isMorphed = false;
         morphedPropID = -1;
         // 【核心修复】服务器自己也要恢复
         ApplyRevert();
     }
 
     private void ApplyRevert()
-    {        
+    {
         if (currentVisualProp != null) Destroy(currentVisualProp);
         propAnimator = null;
 
@@ -921,12 +1012,13 @@ public class WitchPlayer : GamePlayer
         // 恢复视觉
         if (humanModelGroup != null)
         {
+            bool shouldShow = !isStealthed || isLocalPlayer;
             humanModelGroup.SetActive(true);
             // 修复隐身 BUG：强制开启所有渲染器
             Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
-            foreach (var r in humanRenderers) r.enabled = true;
+            foreach (var r in humanRenderers) r.enabled = shouldShow;
         }
-        
+
         if (HideGroup != null) HideGroup.SetActive(true);
 
         // 恢复人类 BoxCollider 大小 (假设你有一组默认值)
@@ -960,9 +1052,9 @@ public class WitchPlayer : GamePlayer
         {
             // 方案 A：如果变身后的模型还是同一个 Renderer 挂载点
             // 我们在第一步改了 SetOutline 逻辑，这里甚至不需要手动调用，TeamVision 下一秒会自动补上
-            
+
             // 方案 B：为了立刻生效，不闪烁，手动刷一下
-            outline.RefreshRenderer(myRenderer); 
+            outline.RefreshRenderer(myRenderer);
         }
 
         // 【新增修复】关闭 PropTarget 并踢出所有乘客
@@ -976,16 +1068,30 @@ public class WitchPlayer : GamePlayer
             UnityEngine.Debug.LogWarning("Layer 'Player' not found! Defaulting to layer 0.");
             playerLayer = 0; // 如果找不到 Player 层，就设为 Default (0)
         }
-        gameObject.layer = playerLayer; 
+        gameObject.layer = playerLayer;
+    }
+    // 隐身状态改变时调用
+    void OnStealthChanged(bool oldVal, bool newVal)
+    {
+        // 即使是后加入的玩家，也会自动调用这个 Hook，看到正确的隐身状态
+        UpdateStealthVisuals(newVal);
+
+        // 处理本地 UI 提示
+        if (isLocalPlayer && sceneScript != null && sceneScript.RunText != null)
+        {
+            UnityEngine.Debug.Log($"[Client] Stealth status changed: {newVal}");
+            sceneScript.RunText.gameObject.SetActive(newVal);
+            if (newVal) sceneScript.RunText.text = "INVISIBILITY ACTIVE";
+        }
     }
 
-// 【新增】服务器专用：强制踢出所有乘客
+    // 【新增】服务器专用：强制踢出所有乘客
     [Server]
     private void ServerKickAllPassengers()
     {
         // 1. 复制列表，防止遍历时修改集合报错
         List<uint> passengersToKick = new List<uint>(passengerNetIds);
-        
+
         foreach (uint pid in passengersToKick)
         {
             if (NetworkServer.spawned.TryGetValue(pid, out NetworkIdentity pIdentity))
@@ -994,17 +1100,17 @@ public class WitchPlayer : GamePlayer
                 if (pWitch != null)
                 {
                     // 修改乘客的 SyncVar，让它知道自己下车了
-                    pWitch.hostNetId = 0; 
-                    
+                    pWitch.hostNetId = 0;
+
                     // 恢复乘客的可见性
-                    pWitch.RpcSetVisible(true); 
-                    
+                    pWitch.RpcSetVisible(true);
+
                     // 强制客户端重置状态（位置、摄像机）
-                    pWitch.TargetForceLeave(pIdentity.connectionToClient); 
+                    pWitch.TargetForceLeave(pIdentity.connectionToClient);
                 }
             }
         }
-        
+
         // 2. 清空宿主的乘客列表
         passengerNetIds.Clear();
         combinedPassengerInput = Vector2.zero;
@@ -1020,8 +1126,8 @@ public class WitchPlayer : GamePlayer
         // 2. 计算弹射方向 
         // 使用 Random.onUnitSphere 并在平面上归一化，保证是向四周弹开
         // 【修改】增大半径从 1.5f -> 2.5f，防止卡在体积较大的古树或石头里
-        Vector2 randomCircle = Random.insideUnitCircle.normalized * 2.5f; 
-        
+        Vector2 randomCircle = UnityEngine.Random.insideUnitCircle.normalized * 2.5f;
+
         // 【修改】增加一点 Y 轴偏移 (Vector3.up * 1.5f)，相当于稍微往天上跳一下，避免卡在地板或树根里
         Vector3 ejectOffset = new Vector3(randomCircle.x, 1.5f, randomCircle.y);
 
@@ -1031,16 +1137,16 @@ public class WitchPlayer : GamePlayer
 
         // 4. 重置摄像机
         UpdateCameraView();
-        
+
         // 5. 【新增】重置速度
         // 防止下车时继承了奇怪的动量滑行
         if (controller != null)
         {
-             // 这里无法直接修改 controller.velocity，但可以重置我们在 Update 里计算的 velocity 变量
-             // 如果你有定义 private Vector3 velocity; 建议在这里重置:
-             // velocity = Vector3.zero; 
+            // 这里无法直接修改 controller.velocity，但可以重置我们在 Update 里计算的 velocity 变量
+            // 如果你有定义 private Vector3 velocity; 建议在这里重置:
+            // velocity = Vector3.zero; 
         }
-        
+
         UnityEngine.Debug.Log("Exited vehicle via TargetForceLeave");
     }
 
@@ -1049,7 +1155,7 @@ public class WitchPlayer : GamePlayer
     {
         // 1. 处理基础组件
         if (controller != null) controller.enabled = visible;
-        
+
         // 获取身上所有的 Renderer (包括子物体)
         Renderer[] allRenderers = GetComponentsInChildren<Renderer>(true);
 
@@ -1080,10 +1186,10 @@ public class WitchPlayer : GamePlayer
             else
             {
                 // 如果我是人类状态，恢复人类模型
-                if (humanModelGroup != null) 
+                if (humanModelGroup != null)
                 {
                     humanModelGroup.SetActive(true);
-                    
+
                     // 【关键修复】必须重新启用 humanModelGroup 下的所有 Renderer 组件
                     // 因为在上车时我们把它们暴力设为了 enabled = false
                     Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
@@ -1095,7 +1201,7 @@ public class WitchPlayer : GamePlayer
 
                 // 这一行其实可以保留作为保险，或者有了上面的循环可以删掉
                 if (myRenderer != null) myRenderer.enabled = true;
-                
+
                 if (humanBoxCollider != null) humanBoxCollider.enabled = true;
                 if (nameText != null) nameText.gameObject.SetActive(true);
             }
@@ -1114,7 +1220,7 @@ public class WitchPlayer : GamePlayer
 
         // 2. 将 CharacterController 设为一个“细长柱子”
         // 半径设为极小（比如 0.05），防止它在移动时因为栅栏太长而卡住墙壁
-        cc.radius = 0.05f; 
+        cc.radius = 0.05f;
         cc.height = newHeight;
         cc.center = new Vector3(0, newHeight * 0.5f, 0);
         cc.stepOffset = Mathf.Min(0.3f, cc.height * 0.4f);
@@ -1124,13 +1230,13 @@ public class WitchPlayer : GamePlayer
         {
             myMeshCollider.enabled = false; // 切换 Mesh 时先禁用
             myMeshCollider.sharedMesh = mesh;
-            
+
             // 必须设为 Convex，否则移动物体上的 MeshCollider 不会起作用
-            myMeshCollider.convex = true; 
-            
+            myMeshCollider.convex = true;
+
             // 如果你希望猎人通过 Raycast (射线) 攻击，此项开启
             // 如果你希望猎人通过触发器检测，此项设为 true
-            myMeshCollider.isTrigger = false; 
+            myMeshCollider.isTrigger = false;
 
             myMeshCollider.enabled = true;
         }
@@ -1147,7 +1253,7 @@ public class WitchPlayer : GamePlayer
         // 这里是服务器端运行的代码 (因为被 CmdAttack 调用)
         // Debug.Log($"<color=purple>【女巫】{playerName} 释放了技能：扔毒药！</color>");
         UnityEngine.Debug.Log($"<color=purple>[Witch] {playerName} used skill: Throw Poison!</color>");
-        
+
         // 在这里写具体的实例化药水逻辑...
         // GameObject potion = Instantiate(potionPrefab, ...);
         // NetworkServer.Spawn(potion);
@@ -1169,10 +1275,10 @@ public class WitchPlayer : GamePlayer
             // --- 第一次死亡：进入复活赛 ---
             UnityEngine.Debug.Log($"{playerName} entered second chance mode!");
             isInSecondChance = true;
-            
+
             // 恢复少量血量供逃跑
             currentHealth = frogHealth;
-            
+
             // 强制变身为小动物
             morphedPropID = frogPropID;
             isMorphed = true;
@@ -1215,9 +1321,9 @@ public class WitchPlayer : GamePlayer
     {
         isInvulnerable = true;
         UnityEngine.Debug.Log($"{playerName} is now invulnerable for {duration}s");
-        
+
         yield return new WaitForSeconds(duration);
-        
+
         isInvulnerable = false;
         UnityEngine.Debug.Log($"{playerName} is no longer invulnerable");
     }
@@ -1233,13 +1339,65 @@ public class WitchPlayer : GamePlayer
             }
         }
     }
+    // 隐身斗篷的网络命令
+    [Command]
+    public void CmdUseInvisibilityCloak()
+    {
+        if (currentItemIndex >= 0 && currentItemIndex < witchItems.Length)
+        {
+            var cloak = witchItems[currentItemIndex].GetComponent<InvisibilityCloak>();
 
+            if (cloak != null)
+            {
+                UnityEngine.Debug.Log($"[Server] {playerName} is using Invisibility Cloak via Index {currentItemIndex}");
+                cloak.ServerActivateEffect(this);
+                return;
+            }
+        }
+    }
+
+    private void UpdateStealthVisuals(bool isStealth)
+    {
+        if (isLocalPlayer) return;
+        bool isVisible = !isStealth;
+
+        // 1. 隐藏头顶名字
+        if (nameText != null) nameText.gameObject.SetActive(isVisible);
+
+        // 2. 根据当前形态隐藏对应的模型
+        if (isMorphed)
+        {
+            // 如果是变身状态，隐藏道具模型
+            if (currentVisualProp != null)
+            {
+                Renderer[] renderers = currentVisualProp.GetComponentsInChildren<Renderer>();
+                foreach (var r in renderers) r.enabled = isVisible;
+                UnityEngine.Debug.Log($"[Client] Stealth change: Setting prop renderers to {isVisible} for {playerName}");
+            }
+        }
+        else
+        {
+            // 如果是人类状态
+            if (humanModelGroup != null)
+            {
+                Renderer[] renderers = humanModelGroup.GetComponentsInChildren<Renderer>();
+                foreach (var r in renderers) r.enabled = isVisible;
+                UnityEngine.Debug.Log($"[Client] Stealth change: Setting human renderers to {isVisible} for {playerName}");
+            }
+
+            if (myRenderer != null) myRenderer.enabled = isVisible;
+        }
+
+        // 3. 隐藏描边
+        var outline = GetComponent<PlayerOutline>();
+        if (outline != null) outline.enabled = isVisible;
+    }
     // 服务器端：由传送门调用
     [Server]
     public void ServerRevive()
     {
         if (!isInSecondChance || isPermanentDead) return;
-        
+
         isInSecondChance = false;
         currentHealth = maxHealth;
         morphedPropID = -1; // 变回人类
@@ -1267,7 +1425,7 @@ public class WitchPlayer : GamePlayer
             // 提示玩家他是观察者（Spectator）用英文写text
             sceneScript.RunText.text = "<color=yellow>You are now a spectator!</color>";
         }
-        
+
 
         // 所有人不可见：禁用所有渲染器
         // 隐藏人类模型
@@ -1281,7 +1439,7 @@ public class WitchPlayer : GamePlayer
 
         // 2. 禁用交互：修改物理层级
         // 建议在 Unity 中创建一个 Layer 叫 "Spectator"，并在 Physics Matrix 中设置它不与 Player 碰撞
-        gameObject.layer = LayerMask.NameToLayer("Ignore Raycast"); 
+        gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
 
         // 3. 禁用碰撞体（针对非本地玩家直接禁用 CC）
         if (!isLocalPlayer)
@@ -1295,7 +1453,7 @@ public class WitchPlayer : GamePlayer
             // 或者你可以将 CC 的半径设为 0
             if (controller != null)
             {
-                controller.radius = 0.01f; 
+                controller.radius = 0.01f;
             }
 
             // 提示 UI
@@ -1305,7 +1463,7 @@ public class WitchPlayer : GamePlayer
                 // sceneScript.GoalText.text = "<color=red>YOU ARE ELIMINATED (SPECTATING)</color>";
             }
         }
-        
+
         // 5. 确保不再触发变身或还原
         isMorphed = false;
         isMorphedIntoAnimal = false;
