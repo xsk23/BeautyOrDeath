@@ -79,7 +79,7 @@ public abstract class GamePlayer : NetworkBehaviour
     float xRotation = 0f;
 
     public GameObject crosshairUI;
-    private Vector3 velocity;
+    protected Vector3 velocity;
     // 场景脚本引用
     public SceneScript sceneScript;
     // 【修改】这里定义一次，子类直接使用，不要在子类重复定义
@@ -605,7 +605,7 @@ public abstract class GamePlayer : NetworkBehaviour
 
     // 受伤函数
     [Server]
-    public void ServerTakeDamage(float amount)
+    public virtual void ServerTakeDamage(float amount)
     {
         // 如果无敌或永久死亡，不处理伤害
         if (isInvulnerable || isPermanentDead) return;

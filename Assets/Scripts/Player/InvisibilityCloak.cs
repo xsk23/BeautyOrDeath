@@ -11,6 +11,7 @@ public class InvisibilityCloak : WitchItemBase
 
     private void Awake()
     {
+        isActive = true;
         itemName = "Invisibility Cloak";
         cooldown = 15f;
     }
@@ -48,7 +49,6 @@ public class InvisibilityCloak : WitchItemBase
 
         // 2. 加速
         player.moveSpeed *= speedMultiplier;
-        player.CmdUpdateMoveSpeed(player.moveSpeed);
 
         Debug.Log($"{player.playerName} used Cloak (Stealth ON)");
 
@@ -59,7 +59,6 @@ public class InvisibilityCloak : WitchItemBase
         {
             player.isStealthed = false;
             player.moveSpeed = originalSpeed;
-            player.CmdUpdateMoveSpeed(originalSpeed);
             Debug.Log($"{player.playerName} Stealth OFF");
         }
     }

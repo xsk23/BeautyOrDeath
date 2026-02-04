@@ -4,6 +4,7 @@ using Mirror;
 public abstract class WitchItemBase : NetworkBehaviour
 {
     [Header("道具通用设置")]
+    public bool isActive;
     public string itemName;
     public float cooldown = 0f; // 冷却时间 (对于被动道具可能为0或无限)
     // 内部冷却计时
