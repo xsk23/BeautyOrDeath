@@ -3,6 +3,7 @@ using Mirror;
 using System.Diagnostics;
 using Controller; // 确保引用了动物控制器的命名空间
 using System.Collections.Generic; // 引用 List
+using System.Collections;
 
 public class WitchPlayer : GamePlayer
 {
@@ -10,6 +11,13 @@ public class WitchPlayer : GamePlayer
     // 【新增】同步隐身状态，带 Hook
     [SyncVar(hook = nameof(OnStealthChanged))]
     public bool isStealthed = false;
+    //生命护符保护状态
+    [SyncVar(hook = nameof(OnAmuletProtectionChanged))]
+    public bool isProtectedByAmulet = false; // 是否处于30秒保护期
+    public float amuletSpeedMultiplier = 1.5f; // 护符加速倍率
+    // 【新增】二段跳标记
+    private bool doubleJumpUsed = false;
+
     [Header("Witch Skill Settings")]
     public GameObject[] witchItems;// 女巫道具数组
     [SyncVar(hook = nameof(OnItemChanged))]
@@ -249,13 +257,43 @@ public class WitchPlayer : GamePlayer
             // 限制最大合力，防止速度过快
             finalInput = Vector2.ClampMagnitude(finalInput, 1.2f);
         }
+        // 先检查是否着地，如果着地则重置二段跳
+        if (controller.isGrounded)
+        {
+            doubleJumpUsed = false;
+        }
+        float rayLength = (controller.height * 0.5f) + 0.3f;
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f;
+        bool isLikelyOnGround = Physics.Raycast(rayOrigin, Vector3.down, rayLength, groundLayer);
 
-        // 3. 调用基类逻辑，但此时我们要把叠加后的输入传给基类的计算逻辑
-        // 【注意】因为基类的 HandleMovementOverride 内部是拿不到我们这里的 finalInput 的
-        // 这是一个递归设计问题。
-        // 修正方案：我们不调用 base.HandleMovementOverride，而是复制其逻辑，或者修改基类结构。
-        // 鉴于你的 GamePlayer.cs 实现，base.HandleMovementOverride 只是用传入的参数计算。
+        if (!controller.isGrounded && !isLikelyOnGround && Input.GetButtonDown("Jump") && !doubleJumpUsed && !isStunned && !isPermanentDead)
+        {
+            MagicBroom broom = null;
+            if (currentItemIndex == 1)
+            {
+                broom = witchItems[1].GetComponent<MagicBroom>();
+            }
+            // 检查道具、形态和冷却
+            if (broom != null && !isMorphed && broom.CanUse())
+            {
+                // 计算二段跳向上的速度
+                float jumpVel = Mathf.Sqrt(jumpHeight * broom.doubleJumpForceMultiplier * -2f * gravity);
 
+                // 直接覆盖 Y 轴速度
+                velocity.y = jumpVel;
+
+                // 标记状态并进入冷却
+                doubleJumpUsed = true;
+                broom.UpdateCooldown();
+
+                UnityEngine.Debug.Log($"<color=cyan>Double Jump Triggered! Velocity Y set to: {velocity.y}</color>");
+            }
+            else if (broom != null && !broom.CanUse())
+            {
+                // 冷却中
+                UnityEngine.Debug.Log("Broom Cooldown...");
+            }
+        }
         // 调用基类，传入修改后的 Input
         base.HandleMovementOverride(finalInput);
     }
@@ -337,7 +375,7 @@ public class WitchPlayer : GamePlayer
             if (Input.GetKeyDown(KeyCode.F))
             {
                 WitchItemBase currentItem = witchItems[currentItemIndex].GetComponent<WitchItemBase>();
-                if (currentItem != null && currentItem.CanUse())
+                if (currentItem != null && currentItem.CanUse() && currentItem.isActive)
                 {
                     currentItem.UpdateCooldown();
                     UnityEngine.Debug.Log($"Activating item: {currentItem.itemName}");
@@ -1084,6 +1122,84 @@ public class WitchPlayer : GamePlayer
             if (newVal) sceneScript.RunText.text = "INVISIBILITY ACTIVE";
         }
     }
+    //激活生命护符
+    [Command]
+    public void CmdActivateAmulet(float duration)
+    {
+        if (isProtectedByAmulet) return;
+
+        isProtectedByAmulet = true;
+        // 开启30秒倒计时
+        StartCoroutine(AmuletTimerRoutine(duration));
+    }
+
+    [Server]
+    private IEnumerator AmuletTimerRoutine(float duration)
+    {
+        yield return new WaitForSeconds(duration);
+
+        // 时间到，且没有被消耗掉（消耗掉时会设为false）
+        if (isProtectedByAmulet)
+        {
+            isProtectedByAmulet = false;
+        }
+    }
+    //生命护符状态改变时调用的
+    void OnAmuletProtectionChanged(bool oldVal, bool newVal)
+    {
+        if (isLocalPlayer && sceneScript != null && sceneScript.RunText != null)
+        {
+            if (newVal)
+            {
+                sceneScript.RunText.gameObject.SetActive(true);
+                sceneScript.RunText.text = "LIFE AMULET ACTIVE";
+            }
+            else
+            {
+                sceneScript.RunText.gameObject.SetActive(false);
+            }
+        }
+    }
+    [Server]
+    public override void ServerTakeDamage(float amount)
+    {
+        // 如果有护符保护，且伤害足以致死
+        if (isProtectedByAmulet && (currentHealth - amount) <= 0)
+        {
+            TriggerAmuletSave(); // 触发救命逻辑
+            return; // 关键：直接返回，不扣血，不死亡
+        }
+
+        // 否则正常受伤
+        base.ServerTakeDamage(amount);
+    }
+    [Server]
+    private void TriggerAmuletSave()
+    {
+        UnityEngine.Debug.Log($"<color=green>[Server] {playerName} saved by Life Amulet!</color>");
+
+        // 1. 消耗保护状态
+        isProtectedByAmulet = false;
+
+        // 2. 锁血为 1
+        currentHealth = 1f;
+
+        // 3. 开启 Buff (无敌 + 加速)
+        StartCoroutine(AmuletBuffRoutine());
+    }
+    [Server]
+    private IEnumerator AmuletBuffRoutine()
+    {
+        float originalSpeed = moveSpeed;
+        isInvulnerable = true; // 开启基类无敌
+        UnityEngine.Debug.Log("Buff Activate!");
+        moveSpeed *= amuletSpeedMultiplier;
+        yield return new WaitForSeconds(3.0f); // 持续3秒
+        isInvulnerable = false;
+        moveSpeed = originalSpeed;
+        UnityEngine.Debug.Log("Buff End!");
+    }
+
 
     // 【新增】服务器专用：强制踢出所有乘客
     [Server]
@@ -1315,6 +1431,7 @@ public class WitchPlayer : GamePlayer
             UnityEngine.Debug.Log($"<color=red>{playerName} 被处决并强制释放！</color>");
         }
     }
+
     // 服务器端无敌协程
     [Server]
     private System.Collections.IEnumerator ServerInvulnerabilityRoutine(float duration)
