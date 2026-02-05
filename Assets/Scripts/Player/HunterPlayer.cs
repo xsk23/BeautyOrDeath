@@ -270,4 +270,21 @@ public class HunterPlayer : GamePlayer
         yield return new WaitForSeconds(executionRecoveryTime);
         isStunned = false;
     }
+    // 致盲效果的 TargetRpc 方法
+    [TargetRpc]
+    public void TargetBlindEffect(NetworkConnection target, float duration)
+    {
+        StartCoroutine(BlindRoutine(duration));
+    }
+
+    private System.Collections.IEnumerator BlindRoutine(float duration)
+    {
+        // 假设 SceneScript 里有个全黑的 Image 叫 BlindPanel
+        if (sceneScript != null && sceneScript.blindPanel != null)
+        {
+            sceneScript.blindPanel.SetActive(true);
+            yield return new WaitForSeconds(duration);
+            sceneScript.blindPanel.SetActive(false);
+        }
+    }
 }
