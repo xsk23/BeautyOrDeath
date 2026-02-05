@@ -31,9 +31,37 @@ public class SceneScript : MonoBehaviour
     public GameObject gameResultPanel;     // 结算面板根物体
     public TextMeshProUGUI gameResultText; // 显示 "Hunters Win!"
     public TextMeshProUGUI gameRestartText;// 显示 "Restarting in 5..."
+    [Header("Skill UI")]
+    // 将原本的单个变量改为数组，方便扩展
+    public SkillSlotUI[] skillSlots; // 在 Inspector 中把你的 Q, E, R, F 对应的 UI 拖进去
+
+    public GameObject blindPanel; //致盲面板
     private void Awake()
     {
+        // 1. 单例赋值
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
         Instance = this;
+
+        // 2. 自动寻找子物体里的技能槽
+        // 这样就不怕 Inspector 里的引用丢失了
+        if (skillSlots == null || skillSlots.Length == 0 || skillSlots[0] == null)
+        {
+            //Debug.LogWarning("[SceneScript] Skill Slots references missing, auto-finding in children...");
+            
+            // 查找所有子物体里的 SkillSlotUI 组件
+            // includeInactive = true 确保即使物体是隐藏的也能找到
+            skillSlots = GetComponentsInChildren<SkillSlotUI>(true);
+            
+            // 可选：为了确保顺序是 Q, E, R, F，可以按名字排个序
+            // 这一步不是必须的，但如果你的物体名字是 Skill Q, Skill E... 这样会更稳
+            System.Array.Sort(skillSlots, (a, b) => string.Compare(a.name, b.name));
+            
+            //Debug.Log($"[SceneScript] Auto-found {skillSlots.Length} skill slots.");
+        }
     }
     private void Start()
     {
@@ -56,6 +84,7 @@ public class SceneScript : MonoBehaviour
         {
             ExecutionText.gameObject.SetActive(false);
         }
+
     }
 
     private void Update()

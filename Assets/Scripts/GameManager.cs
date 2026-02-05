@@ -59,6 +59,8 @@ public class GameManager : NetworkBehaviour
     public GameObject portalPrefab; // 这里的引用将在 Prefab 中设置
     public string portalSpawnGroupName = "PortalPositions"; 
 
+    [Header("Physics Settings")]
+    public LayerMask propLayer; // 用于检测树木/道具的层级
 
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
@@ -340,10 +342,37 @@ public class GameManager : NetworkBehaviour
             }
         }
 
+        // 1. 确保位置在地面上（向上发射射线再向下测，或者直接稍微抬高）
+        spawnPos += Vector3.up * 0.5f; 
+
+        // 2. 实例化
+        GameObject characterInstance = Instantiate(prefabToUse, spawnPos, spawnRot);
+
+        // 3. 物理纠偏：检查是否出生在树里
+        CharacterController cc = characterInstance.GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            // 定义胶囊体检测的上下球心
+            // 如果出生在树里，通过移动逻辑将其“挤”出去
+            Vector3 p1 = spawnPos + Vector3.up * cc.radius;
+            Vector3 p2 = spawnPos + Vector3.up * (cc.height - cc.radius);
+            
+            // 如果该区域已经有碰撞体（LayerMask 排除玩家自身层级，包含树木层级）
+            if (Physics.CheckCapsule(p1, p2, cc.radius, propLayer)) 
+            {
+                // 暂时关掉一下，强行位移后再开
+                cc.enabled = false;
+                Vector3 pushDir = Random.onUnitSphere;
+                pushDir.y = 0;
+                characterInstance.transform.position += pushDir.normalized * 1.5f;
+                cc.enabled = true;
+                Debug.Log($"[Spawn] Fixed player {id} spawn collision.");
+            }
+        }
 
 
         // 4. 生成实例
-        GameObject characterInstance = Instantiate(prefabToUse, spawnPos, spawnRot);
+        // GameObject characterInstance = Instantiate(prefabToUse, spawnPos, spawnRot);
 
         // 5. 初始化数据
         LobbyScript lobby = FindObjectOfType<LobbyScript>();

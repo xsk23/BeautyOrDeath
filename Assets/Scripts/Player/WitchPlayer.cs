@@ -102,11 +102,6 @@ public class WitchPlayer : GamePlayer
         {
             originalMaterials = myRenderer.sharedMaterials;
             originalScale = myRenderer.transform.localScale;
-
-            // myMeshCollider = myRenderer.GetComponent<MeshCollider>();
-            // if (myMeshCollider == null)
-            //     myMeshCollider = myRenderer.gameObject.AddComponent<MeshCollider>();
-            // myMeshCollider.enabled = false; 
         }
 
         // 【修改点 2】确保玩家根物体(Parent)上有一个 MeshCollider 用于变身
@@ -130,8 +125,6 @@ public class WitchPlayer : GamePlayer
         if (myPropTarget == null) myPropTarget = gameObject.AddComponent<PropTarget>();
         myPropTarget.enabled = false; // 还没变身，不可被当做道具
 
-        // 获取人形 BoxCollider
-        humanBoxCollider = GetComponent<BoxCollider>();
         // 如果没有手动指定 HideGroup，默认尝试找子物体
         if (humanModelGroup == null)
         {
@@ -1040,73 +1033,59 @@ public class WitchPlayer : GamePlayer
         if (currentVisualProp != null) Destroy(currentVisualProp);
         propAnimator = null;
 
-        // 1. 关闭 MeshCollider 并清空网格
+        // 1. 暂时禁用 CC 以便安全修改位置和参数
+        controller.enabled = false;
+
+        // 2. 【核心修复】解决掉下地板问题
+        // 在恢复人形前，将坐标向上抬升（通常抬升人类高度的一半，防止下半身卡进地里）
+        // 如果是从很矮的物体恢复，这个位移是必须的
+        transform.position += Vector3.up * (originalCCHeight * 0.5f);
+        // 3. 检查头顶是否有东西，如果有，尝试向后退一点
+        if (Physics.Raycast(transform.position, Vector3.up, out RaycastHit headHit, originalCCHeight)) {
+            // 如果头顶有树枝等碰撞体，将人稍微推离
+            transform.position -= transform.forward * 0.5f;
+        }
+
+
+        // 3. 关闭变身用的 MeshCollider
         if (myMeshCollider != null)
         {
             myMeshCollider.sharedMesh = null;
             myMeshCollider.enabled = false;
         }
 
-        // 恢复视觉
+        // 4. 视觉恢复
         if (humanModelGroup != null)
         {
             bool shouldShow = !isStealthed || isLocalPlayer;
             humanModelGroup.SetActive(true);
-            // 修复隐身 BUG：强制开启所有渲染器
             Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
             foreach (var r in humanRenderers) r.enabled = shouldShow;
         }
-
         if (HideGroup != null) HideGroup.SetActive(true);
 
-        // 恢复人类 BoxCollider 大小 (假设你有一组默认值)
-        if (humanBoxCollider != null)
-        {
-            humanBoxCollider.enabled = true;
-            humanBoxCollider.center = new Vector3(0.007072449f, -0.3592024f, 0.03986454f); // 根据你 Inspector 里的值填
-            humanBoxCollider.size = new Vector3(0.7001953f, 1.718405f, 0.7418957f);
-        }
-        // 恢复人类的基础移动速度
+        // 5. 【核心修复】恢复 CC 原始参数
+        controller.height = originalCCHeight;
+        controller.radius = originalCCRadius;
+        controller.center = originalCCCenter;
+
+        // 6. 重置重力速度，防止累积的重力瞬间把人拍进地底
+        velocity.y = 0;
+
+        // 7. 重新启用 CC
+        controller.enabled = true;
+
+        // 8. 恢复速度逻辑
         moveSpeed = originalHumanSpeed;
         if (isLocalPlayer) CmdUpdateMoveSpeed(originalHumanSpeed);
 
-        // 3. 恢复 CharacterController 参数
-        CharacterController cc = GetComponent<CharacterController>();
-        if (cc != null)
-        {
-            cc.enabled = false;
-            cc.height = originalCCHeight;
-            cc.radius = originalCCRadius;
-            cc.center = originalCCCenter;
-            cc.enabled = true;
-        }
-
-        // 4. 禁用精准 MeshCollider (人类形态通常用 CC)
-        if (myMeshCollider != null) myMeshCollider.enabled = false;
-
-        // 关键：如果你变身时没有更换 Renderer 节点，只需要调用这个
+        // 刷新轮廓和层级
         var outline = GetComponent<PlayerOutline>();
-        if (outline != null)
-        {
-            // 方案 A：如果变身后的模型还是同一个 Renderer 挂载点
-            // 我们在第一步改了 SetOutline 逻辑，这里甚至不需要手动调用，TeamVision 下一秒会自动补上
-
-            // 方案 B：为了立刻生效，不闪烁，手动刷一下
-            outline.RefreshRenderer(myRenderer);
-        }
-
-        // 【新增修复】关闭 PropTarget 并踢出所有乘客
+        if (outline != null) outline.RefreshRenderer(myRenderer);
         if (myPropTarget != null) myPropTarget.enabled = false;
-        // =========================================================
-        // 【修复层级报错】安全地设置 Layer
-        // =========================================================
+
         int playerLayer = LayerMask.NameToLayer("Player");
-        if (playerLayer == -1)
-        {
-            UnityEngine.Debug.LogWarning("Layer 'Player' not found! Defaulting to layer 0.");
-            playerLayer = 0; // 如果找不到 Player 层，就设为 Default (0)
-        }
-        gameObject.layer = playerLayer;
+        gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
     }
     // 隐身状态改变时调用
     void OnStealthChanged(bool oldVal, bool newVal)
@@ -1329,39 +1308,62 @@ public class WitchPlayer : GamePlayer
         CharacterController cc = GetComponent<CharacterController>();
         if (cc == null) return;
 
-        // 1. 暂时禁用 CC 以便安全修改属性
+        // 1. 暂时禁用以安全修改参数
         cc.enabled = false;
 
-        float newHeight = mesh.bounds.size.y * scale.y;
+        float meshHeight = mesh.bounds.size.y * scale.y;
+        float meshWidth = Mathf.Max(mesh.bounds.size.x * scale.x, mesh.bounds.size.z * scale.z);
 
-        // 2. 将 CharacterController 设为一个“细长柱子”
-        // 半径设为极小（比如 0.05），防止它在移动时因为栅栏太长而卡住墙壁
-        cc.radius = 0.05f;
+        // 稍微收缩半径，防止变身后变成“推土机”
+        float newRadius = Mathf.Clamp(meshWidth * 0.35f, 0.15f, 0.45f);
+        float newHeight = meshHeight;
+
+        // 2. 应用参数
         cc.height = newHeight;
+        cc.radius = newRadius;
         cc.center = new Vector3(0, newHeight * 0.5f, 0);
         cc.stepOffset = Mathf.Min(0.3f, cc.height * 0.4f);
 
-        // 3. 更新 MeshCollider
-        if (myMeshCollider != null)
-        {
-            myMeshCollider.enabled = false; // 切换 Mesh 时先禁用
-            myMeshCollider.sharedMesh = mesh;
+        // 3. 执行简单的位移补偿（后退弹开）
+        ResolveOverlapSimple(cc);
 
-            // 必须设为 Convex，否则移动物体上的 MeshCollider 不会起作用
-            myMeshCollider.convex = true;
-
-            // 如果你希望猎人通过 Raycast (射线) 攻击，此项开启
-            // 如果你希望猎人通过触发器检测，此项设为 true
-            myMeshCollider.isTrigger = false;
-
-            myMeshCollider.enabled = true;
-        }
-
-        // 4. 微调位置防止入地
-        transform.position += Vector3.up * 0.1f;
+        // 4. 重新启用
         cc.enabled = true;
+
+        // 强制刷新物理状态
+        cc.Move(Vector3.down * 0.01f); 
     }
 
+    /// 检测变身后是否与环境重叠，并将其强制弹开
+    // 修改函数签名，接受 CharacterController 作为参数
+    private void ResolveOverlapSimple(CharacterController cc)
+    {
+        // 检测范围定义（稍微比 CC 大一点点，预留容错）
+        Vector3 p1 = transform.position + Vector3.up * cc.radius;
+        Vector3 p2 = transform.position + Vector3.up * (cc.height - cc.radius);
+
+        // 如果检测到当前位置会和树木或地面重叠
+        if (Physics.CheckCapsule(p1, p2, cc.radius * 0.9f, propLayer | groundLayer))
+        {
+            // 方案：直接向玩家当前的后方弹开 0.8米，并向上微调 0.2米防止陷入地表
+            // 这样可以有效跳出树叶的覆盖范围
+            Vector3 escapeVector = (-transform.forward * 0.8f) + (Vector3.up * 0.2f);
+            
+            // 检查后方是否有空间，如果后方也是死路（比如背靠墙），则只往上弹
+            if (Physics.Raycast(transform.position + Vector3.up * 0.5f, -transform.forward, 1.0f, propLayer | groundLayer))
+            {
+                // 后方有墙，改为垂直向上弹
+                transform.position += Vector3.up * 0.5f;
+                UnityEngine.Debug.Log($"[Witch] Morph stuck! Backwards blocked, popping UP.");
+            }
+            else
+            {
+                // 正常向后弹
+                transform.position += escapeVector;
+                UnityEngine.Debug.Log($"[Witch] Morph stuck! Popping BACKWARDS.");
+            }
+        }
+    }
 
     // 重写基类的抽象方法
     protected override void Attack()

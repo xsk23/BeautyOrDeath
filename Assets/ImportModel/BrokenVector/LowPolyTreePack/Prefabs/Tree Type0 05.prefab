@@ -107,7 +107,7 @@ MonoBehaviour:
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 1
-  outlineMaterialSource: {fileID: 0}
+  outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &-4181319387007876787
 MonoBehaviour:
   m_ObjectHideFlags: 0

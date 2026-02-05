@@ -6,82 +6,141 @@ public class TreeManager : NetworkBehaviour
 {
     public static TreeManager Instance;
 
+    [Header("Spawn Protection")]
+    public float spawnSafeRadius = 4.0f; // 出生点周围保护半径
+
+    [Header("Forest Density & Spacing")]
+    public float minTreeSpacing = 2.5f; // 树与树之间的最小间距
+    [Tooltip("当位置冲突时，最大尝试偏移寻找新位置的次数")]
+    public int maxAdjustmentAttempts = 5; 
+    [Tooltip("每次尝试偏移的距离步长")]
+    public float adjustmentStep = 1.5f;
+
     [Header("Settings")]
-    public float positionOffsetRange = 0.5f; // 随机偏移范围
-    public bool randomYRotation = true;    // 是否允许随机旋转（让森林看起来更自然）
+    public float positionOffsetRange = 0.5f; // 最终分布时的微小随机抖动
+    public bool randomYRotation = true;    // 随机旋转
 
     private List<PropTarget> allTrees = new List<PropTarget>();
-    private List<Vector3> spawnPositions = new List<Vector3>();
-    // [Header("Ancient Tree Settings")]
-    // public int ancientTreeCount = 3; // 每局产生的古树数量
+
     private void Awake()
     {
         Instance = this;
     }
 
-    [Server] // 仅在服务器运行位置分配
+    [Server]
     public void ShuffleTrees()
     {
-        // 1. 获取场景中所有标记为树的 PropTarget
+        // 1. 获取所有出生点
+        List<Vector3> spawnPoints = new List<Vector3>();
+        var nss = Object.FindObjectsOfType<Mirror.NetworkStartPosition>();
+        foreach (var sp in nss) spawnPoints.Add(sp.transform.position);
+        
+        if (spawnPoints.Count == 0) {
+            GameObject[] groups = { GameObject.Find("WitchSpawnPoints"), GameObject.Find("HunterSpawnPoints") };
+            foreach(var g in groups) if(g != null) foreach(Transform t in g.transform) spawnPoints.Add(t.position);
+        }
+
+        // 2. 初始化树木状态并收集所有原始坐标
         allTrees.Clear();
-        spawnPositions.Clear();
+        List<Vector3> rawCandidatePositions = new List<Vector3>();
 
         PropTarget[] sceneProps = Object.FindObjectsOfType<PropTarget>();
         foreach (var prop in sceneProps)
         {
             if (prop.isStaticTree)
             {
-                // 【重要】清除所有状态，防止连局游戏状态残留
                 prop.isAncientTree = false; 
-                prop.isHiddenByPossession = false; // 确保被附身的树重新显示
-                prop.ServerSetHidden(false);       // 显式调用服务器同步方法
+                prop.isHiddenByPossession = false;
+                prop.ServerSetHidden(false);
                 allTrees.Add(prop);
-                spawnPositions.Add(prop.transform.position);
+                rawCandidatePositions.Add(prop.transform.position);
             }
         }
 
-        if (allTrees.Count == 0)
-        {
-            Debug.LogWarning("[TreeManager] No objects marked as isStaticTree were found.");
-            return;
+        if (allTrees.Count == 0) return;
+
+        // 3. 打乱候选坐标顺序
+        for (int i = 0; i < rawCandidatePositions.Count; i++) {
+            Vector3 temp = rawCandidatePositions[i];
+            int randomIndex = Random.Range(i, rawCandidatePositions.Count);
+            rawCandidatePositions[i] = rawCandidatePositions[randomIndex];
+            rawCandidatePositions[randomIndex] = temp;
         }
 
-        Debug.Log($"[TreeManager] Shuffling positions of {allTrees.Count} trees...");
+        // 4. 【核心逻辑修改】筛选并尝试偏移坐标
+        List<Vector3> finalFilteredPositions = new List<Vector3>();
+        
+        foreach (Vector3 originalPos in rawCandidatePositions) {
+            Vector3 currentTestPos = originalPos;
+            bool successfullyPlaced = false;
 
-        // 2. 洗牌算法 (Fisher-Yates Shuffle) 打乱位置列表
-        for (int i = 0; i < spawnPositions.Count; i++)
-        {
-            Vector3 temp = spawnPositions[i];
-            int randomIndex = Random.Range(i, spawnPositions.Count);
-            spawnPositions[i] = spawnPositions[randomIndex];
-            spawnPositions[randomIndex] = temp;
+            // 尝试多次偏移以寻找合法位置
+            for (int attempt = 0; attempt <= maxAdjustmentAttempts; attempt++) {
+                if (IsPositionValid(currentTestPos, finalFilteredPositions, spawnPoints)) {
+                    finalFilteredPositions.Add(currentTestPos);
+                    successfullyPlaced = true;
+                    break;
+                }
+
+                // 如果不合法，计算一个随机偏移量尝试推开
+                // 随着尝试次数增加，偏移半径逐渐扩大
+                Vector2 randomNudge = Random.insideUnitCircle.normalized * (adjustmentStep * (attempt + 1));
+                currentTestPos = new Vector3(originalPos.x + randomNudge.x, originalPos.y, originalPos.z + randomNudge.y);
+            }
+            
+            // 如果经过多次偏移还是找不到位置，该树将在后续步骤被隐藏（防止重叠卡死）
         }
 
-        // 【核心修改】从 GameManager 获取基于人数和倍率计算出的古树数量
+        Debug.Log($"[TreeManager] {allTrees.Count} trees total. Successfully spaced {finalFilteredPositions.Count} positions.");
+
+        // 5. 分配最终坐标
         int dynamicAncientCount = GameManager.Instance.GetCalculatedAncientTreeCount();
-        Debug.Log($"[TreeManager] Calculating Ancient Trees: Witches x Ratio = {dynamicAncientCount}");
+        int actualAncientCount = 0;
 
-        // 3. 分配位置并标记前 N 棵为古树
-        int actualAncientCount = 0; // 用于实际计数
         for (int i = 0; i < allTrees.Count; i++)
         {
-            // 分配位置偏移
-            Vector3 offset = new Vector3(Random.Range(-positionOffsetRange, positionOffsetRange), 0, Random.Range(-positionOffsetRange, positionOffsetRange));
-            allTrees[i].transform.position = spawnPositions[i] + offset;
+            if (i >= finalFilteredPositions.Count) {
+                // 如果偏移重试后依然无法满足间距限制，将多余的树移除地图
+                allTrees[i].transform.position = Vector3.down * 100f; 
+                allTrees[i].ServerSetHidden(true);
+                continue;
+            }
+
+            Vector3 targetBasePos = finalFilteredPositions[i];
+            
+            // 最后的微小随机抖动（不破坏整体间距）
+            float jitter = Mathf.Min(positionOffsetRange, minTreeSpacing * 0.1f);
+            Vector3 finalPos = targetBasePos + new Vector3(Random.Range(-jitter, jitter), 0, Random.Range(-jitter, jitter));
+            
+            allTrees[i].transform.position = finalPos;
             if (randomYRotation) allTrees[i].transform.rotation = Quaternion.Euler(0, Random.Range(0, 360f), 0);
 
-            // 【关键】标记古树
-            if (i < dynamicAncientCount)
-            {
+            if (i < dynamicAncientCount) {
                 allTrees[i].isAncientTree = true;
                 actualAncientCount++;
-                Debug.Log($"[TreeManager] Tree {allTrees[i].name} set as ANCIENT TREE.");
             }
         }
-        // 【核心修改】告诉 GameManager 地图上一共有多少棵古树
-        if (GameManager.Instance != null)
-        {
+
+        if (GameManager.Instance != null) {
             GameManager.Instance.availableAncientTreesCount = actualAncientCount;
         }
+    }
+
+    // 辅助判定函数：检查坐标是否同时远离已选中的树和出生点
+    private bool IsPositionValid(Vector3 pos, List<Vector3> acceptedPositions, List<Vector3> spawnPoints)
+    {
+        // 检查与出生点的距离
+        foreach (Vector3 spPos in spawnPoints) {
+            if (Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(spPos.x, spPos.z)) < spawnSafeRadius)
+                return false;
+        }
+
+        // 检查与其他树的距离
+        foreach (Vector3 acceptedPos in acceptedPositions) {
+            if (Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(acceptedPos.x, acceptedPos.z)) < minTreeSpacing)
+                return false;
+        }
+
+        return true;
     }
 }
