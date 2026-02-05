@@ -964,7 +964,7 @@ Transform:
   m_GameObject: {fileID: 4279300064572829465}
   serializedVersion: 2
   m_LocalRotation: {x: -0.5, y: 0.5, z: 0.5, w: 0.5}
-  m_LocalPosition: {x: 0, y: -1.208, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1.8, y: 1.8, z: 1.8}
   m_ConstrainProportionsScale: 1
   m_Children:
@@ -1841,7 +1841,10 @@ GameObject:
   - component: {fileID: 2028329878162307689}
   - component: {fileID: 273187763104958596}
   - component: {fileID: 1498090036183238577}
-  - component: {fileID: 5409084800183423130}
+  - component: {fileID: -1062724434511070360}
+  - component: {fileID: -497868076920289864}
+  - component: {fileID: 1307720245990462372}
+  - component: {fileID: 1962078256799744433}
   m_Layer: 0
   m_Name: Witch (1)
   m_TagString: Untagged
@@ -1858,9 +1861,9 @@ Transform:
   m_GameObject: {fileID: 7364481315165733279}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 80.110504, y: 22.967, z: 27.448}
+  m_LocalPosition: {x: 0, y: 1.466, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 1
+  m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2274757498219364136}
   - {fileID: 1313373853460186127}
@@ -1905,7 +1908,7 @@ MonoBehaviour:
   target: {fileID: 2894362989644179724}
   syncPosition: 1
   syncRotation: 1
-  syncScale: 0
+  syncScale: 1
   onlySyncOnChange: 1
   compressRotation: 1
   interpolatePosition: 1
@@ -1940,13 +1943,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2.67
-  m_Radius: 0.5
+  m_Height: 1.86
+  m_Radius: 0.32
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.0001
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.85, z: 0}
 --- !u!114 &2028329878162307689
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1999,6 +2002,7 @@ MonoBehaviour:
   sphereRadius: 20
   isStealthed: 0
   isProtectedByAmulet: 0
+  amuletSpeedMultiplier: 1.5
   witchItems:
   - {fileID: 8662503824625256742}
   - {fileID: 4195865155964937013}
@@ -2051,27 +2055,89 @@ MonoBehaviour:
   hunterColor: {r: 0, g: 1, b: 1, a: 1}
   enemyColor: {r: 1, g: 0, b: 0, a: 1}
   checkInterval: 0.5
---- !u!65 &5409084800183423130
-BoxCollider:
+--- !u!114 &-1062724434511070360
+MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7364481315165733279}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
   m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 0.7001953, y: 1.7184048, z: 0.7418957}
-  m_Center: {x: 0.0070724487, y: -0.35920238, z: 0.03986454}
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ce196ebed63794d4cb5d9d184f282837, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  skills:
+  - {fileID: -497868076920289864}
+  - {fileID: 1307720245990462372}
+  - {fileID: 1962078256799744433}
+--- !u!114 &-497868076920289864
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7364481315165733279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3dd3ec2ba863144ea002f62d3d538c1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  skillName: 
+  icon: {fileID: 21300000, guid: fd895c1418453a746bd92e5aa89df7d4, type: 3}
+  cooldownTime: 5
+  triggerKey: 113
+  radius: 15
+  duration: 5
+--- !u!114 &1307720245990462372
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7364481315165733279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2379d7a20f8a169449487ddfbea04b02, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  skillName: 
+  icon: {fileID: 21300000, guid: fd895c1418453a746bd92e5aa89df7d4, type: 3}
+  cooldownTime: 5
+  triggerKey: 101
+  range: 10
+  treeLayer:
+    serializedVersion: 2
+    m_Bits: 0
+--- !u!114 &1962078256799744433
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7364481315165733279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 71567a0997406e045bb7736b60da19ec, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  skillName: 
+  icon: {fileID: 21300000, guid: fd895c1418453a746bd92e5aa89df7d4, type: 3}
+  cooldownTime: 5
+  triggerKey: 114
+  decoyPrefab: {fileID: 7437291211915263204, guid: 634b8befe1a028a4589d4215135a37c1, type: 3}
 --- !u!1 &7507711080541761029
 GameObject:
   m_ObjectHideFlags: 0
@@ -2349,6 +2415,10 @@ PrefabInstance:
     - target: {fileID: 5128789261052258260, guid: b39d2bc88952acc4284d73dcd7df66b1, type: 3}
       propertyPath: m_Name
       value: itemHolder
+      objectReference: {fileID: 0}
+    - target: {fileID: 5128789261052258260, guid: b39d2bc88952acc4284d73dcd7df66b1, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8331450777150584183, guid: b39d2bc88952acc4284d73dcd7df66b1, type: 3}
       propertyPath: m_LocalPosition.x

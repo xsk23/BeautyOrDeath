@@ -18,6 +18,11 @@ public class WitchSkill_Decoy : SkillBase
 
         // 在玩家前方一個身位的位置生成
         Vector3 spawnPosition = witch.transform.position + witch.transform.forward * 1.0f;
+        // 2. 地面探测：从上方发射射线，确保分身生成在地面高度
+        if (Physics.Raycast(spawnPosition + Vector3.up * 2f, Vector3.down, out RaycastHit hit, 5f, witch.groundLayer))
+        {
+            spawnPosition = hit.point + Vector3.up * 0.05f; // 贴地并微抬防止卡入
+        }
         GameObject decoy = Instantiate(decoyPrefab, spawnPosition, witch.transform.rotation);
         DecoyBehavior db = decoy.GetComponent<DecoyBehavior>();
         db.propID = idToCopy;

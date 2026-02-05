@@ -89,7 +89,7 @@ Transform:
   m_GameObject: {fileID: 330233368441706190}
   serializedVersion: 2
   m_LocalRotation: {x: -0.5, y: 0.5, z: 0.5, w: 0.5}
-  m_LocalPosition: {x: 0, y: -1.208, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1.8, y: 1.8, z: 1.8}
   m_ConstrainProportionsScale: 1
   m_Children:
@@ -1703,7 +1703,7 @@ Transform:
   m_GameObject: {fileID: 7437291211915263204}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 80.110504, y: 22.967, z: 27.448}
+  m_LocalPosition: {x: 0, y: 1.466, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 1
   m_Children:
@@ -1728,7 +1728,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sceneId: 0
-  _assetId: 1126399738
+  _assetId: 2677714180
   serverOnly: 0
   visibility: 0
   hasSpawned: 0
@@ -1750,7 +1750,7 @@ MonoBehaviour:
   target: {fileID: 5062679553027161702}
   syncPosition: 1
   syncRotation: 1
-  syncScale: 0
+  syncScale: 1
   onlySyncOnChange: 1
   compressRotation: 1
   interpolatePosition: 1
@@ -1785,13 +1785,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2.67
-  m_Radius: 0.5
+  m_Height: 1.86
+  m_Radius: 0.32
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.0001
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.85, z: 0}
 --- !u!114 &886197649251273181
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1811,6 +1811,7 @@ MonoBehaviour:
   moveSpeed: 4
   gravity: -9.81
   propID: -1
+  humanVisualRoot: {fileID: 0}
 --- !u!114 &3752878843984436959
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2348,6 +2349,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isActive: 0
   itemName: 
   cooldown: 0
   nextUseTime: 0

@@ -12,7 +12,8 @@ public class DecoyBehavior : NetworkBehaviour
     [Header("Sync Settings")]
     [SyncVar(hook = nameof(OnPropIDChanged))]
     public int propID = -1;
-
+    [Header("Visual References")]
+    public GameObject humanVisualRoot; // 在 Inspector 中拖入预制体的人形模型根物体
     // 内部变量
     private CharacterController cc;
     private Vector3 moveDir;
@@ -32,6 +33,11 @@ public class DecoyBehavior : NetworkBehaviour
         
         // 销毁计时
         Destroy(gameObject, lifeTime);
+        // 服务器端初始化：如果是人形态，立即校准一次物理中心
+        if (propID == -1 && humanVisualRoot != null)
+        {
+            UpdateColliderDimensions(humanVisualRoot);
+        }
     }
 
     [ServerCallback]
@@ -82,27 +88,39 @@ public class DecoyBehavior : NetworkBehaviour
     // --- 视觉同步逻辑 (保持不变) ---
     void OnPropIDChanged(int oldID, int newID)
     {
-        // 先清空旧模型 (如果有)
+        // 1. 清理旧的变身模型 (保留人形根物体和FX)
         foreach (Transform child in transform) {
-            Destroy(child.gameObject);
+            if (child.gameObject != humanVisualRoot && child.name != "FX")
+                Destroy(child.gameObject);
         }
 
-        if (PropDatabase.Instance != null && PropDatabase.Instance.GetPropPrefab(newID, out GameObject prefab))
+        if (newID == -1)
         {
-            GameObject visual = Instantiate(prefab, transform);
-            visual.transform.localPosition = Vector3.zero;
-            visual.transform.localRotation = Quaternion.identity;
-            
-            // 禁用碰撞体，防止分身卡住自己
-            foreach(var c in visual.GetComponentsInChildren<Collider>()) c.enabled = false;
+            // --- 恢复人形态 ---
+            if (humanVisualRoot != null)
+            {
+                humanVisualRoot.SetActive(true);
+                UpdateColliderDimensions(humanVisualRoot);
+            }
+        }
+        else
+        {
+            // --- 变身形态 ---
+            if (humanVisualRoot != null) humanVisualRoot.SetActive(false);
 
-            // 初始化 PropTarget 用于被猎人选中
-            // 这里的 propID 和 visual 传进去，确保猎人射线打中分身能高亮
-            var pt = GetComponent<PropTarget>();
-            if (pt != null) pt.ManualInit(newID, visual);
+            if (PropDatabase.Instance != null && PropDatabase.Instance.GetPropPrefab(newID, out GameObject prefab))
+            {
+                GameObject visual = Instantiate(prefab, transform);
+                visual.transform.localPosition = Vector3.zero;
+                visual.transform.localRotation = Quaternion.identity;
+                
+                foreach(var c in visual.GetComponentsInChildren<Collider>()) c.enabled = false;
 
-            UpdateColliderDimensions(visual);
-             
+                var pt = GetComponent<PropTarget>();
+                if (pt != null) pt.ManualInit(newID, visual);
+
+                UpdateColliderDimensions(visual);
+            }
         }
     }
 
@@ -110,26 +128,58 @@ public class DecoyBehavior : NetworkBehaviour
     private void UpdateColliderDimensions(GameObject visualModel)
     {
         if (cc == null) cc = GetComponent<CharacterController>();
-        
-        // 尝试获取渲染器边界
-        Renderer r = visualModel.GetComponentInChildren<Renderer>();
-        if (r != null)
+
+        // 1. 获取模型下所有的渲染器（包括人形态和变身形态）
+        Renderer[] rs = visualModel.GetComponentsInChildren<Renderer>();
+        if (rs.Length == 0) return;
+
+        // 2. 关键：计算本地坐标系的包围盒
+        // 我们要找到模型相对于分身根节点(Pivot)的最高点和最低点
+        float minY = float.MaxValue;
+        float maxY = float.MinValue;
+        float maxSide = 0f;
+
+        bool foundRenderer = false;
+        foreach (var r in rs)
         {
-            Bounds bounds = r.bounds;
-            // 将世界坐标的 Bounds 转为相对于自身的高度
-            float objectHeight = bounds.size.y;
+            if (r is ParticleSystemRenderer) continue; // 忽略粒子
             
-            // 调整 CC 参数
-            cc.height = objectHeight;
-            cc.radius = Mathf.Min(bounds.size.x, bounds.size.z) * 0.4f; // 半径取宽度的40%
-            cc.center = new Vector3(0, objectHeight * 0.5f, 0); // 中心上移一半高度
+            // 将世界空间的 Bounds 转为本地空间的相对坐标
+            // 使用 transform.InverseTransformPoint 确保不受生成位置影响
+            Bounds b = r.bounds;
+            Vector3 localMin = transform.InverseTransformPoint(b.min);
+            Vector3 localMax = transform.InverseTransformPoint(b.max);
+
+            minY = Mathf.Min(minY, localMin.y);
+            maxY = Mathf.Max(maxY, localMax.y);
+            
+            // 计算半径
+            float sideX = Mathf.Max(Mathf.Abs(localMin.x), Mathf.Abs(localMax.x));
+            float sideZ = Mathf.Max(Mathf.Abs(localMin.z), Mathf.Abs(localMax.z));
+            maxSide = Mathf.Max(maxSide, sideX, sideZ);
+            
+            foundRenderer = true;
         }
-        else
-        {
-            // 如果没变身（人形态），恢复默认值
-            cc.height = 2.0f;
-            cc.radius = 0.5f;
-            cc.center = new Vector3(0, 1f, 0);
-        }
+
+        if (!foundRenderer) return;
+
+        // 3. 计算物理参数
+        float height = maxY - minY;
+        // 中心点应该在 minY 和 maxY 的正中间
+        float centerY = (minY + maxY) / 2f;
+
+        // 4. 安全应用参数
+        cc.enabled = false; // 修改前必须禁用
+        
+        cc.height = height;
+        cc.center = new Vector3(0, centerY, 0);
+        cc.radius = Mathf.Clamp(maxSide, 0.2f, 0.5f); // 限制半径范围
+        
+        // 自动调整踏步高度，防止小动物卡在小石子上
+        cc.stepOffset = Mathf.Min(0.3f, height * 0.3f);
+
+        cc.enabled = true;
+        
+        Debug.Log($"[Decoy] Adjusting CC: Height={height}, CenterY={centerY}, Morphed={propID != -1}");
     }
 }
