@@ -10,6 +10,8 @@ using System.Diagnostics; // 必须引用
 
 public class PlayerScript : NetworkBehaviour
 {
+    [SyncVar(hook = nameof(OnPingChanged))] 
+    public int ping = 0; // 【新增】同步 Ping 值
     private LobbyScript lobbyScript;//大厅脚本引用
     // 不再需要手动设置 isInGame，改为只读属性或自动判断
     public bool IsInGameScene => SceneManager.GetActiveScene().name == "MyScene"; // 假设你的游戏场景叫 GameScene
@@ -21,19 +23,6 @@ public class PlayerScript : NetworkBehaviour
     // public GameObject floatingInfo;//悬浮信息
     private  Material playerMaterialClone;//玩家材质克隆体
 
-    // public GameObject[] weaponArray;//武器数组 
-
-    // [SyncVar(hook = nameof(OnWeaponChanged))]
-    // private int currentWeaponSynced;//当前武器索引:1和2
-
-    // private Weapon activeWeapon;//当前武器引用
-    // private int currentWeaponIndex;//当前武器下标
-    // private float cooldownTime;//冷却计时器
-
-
-    // private SceneScript sceneScript;//场景脚本引用
-
-
     [SyncVar(hook = nameof(OnPlayerNameChanged))]
     public string playerName = "Unknown"; // 给个默认值
 
@@ -44,7 +33,11 @@ public class PlayerScript : NetworkBehaviour
     [SyncVar(hook = nameof(OnRoleChanged))]
     public PlayerRole role; // 角色类型
 
-    // private PlayerBase playerBase; // 引用角色组件
+    private void OnPingChanged(int oldPing, int newPing)
+    {
+        // 当延迟变化时，刷新 UI 行
+        if (lobbyScript != null) lobbyScript.UpdatePlayerRow(this);
+    }
 
     //玩家名字同步变量
     private void OnPlayerNameChanged(string oldName, string newName)
@@ -90,11 +83,7 @@ public class PlayerScript : NetworkBehaviour
     override public void OnStartLocalPlayer()
     {
         base.OnStartClient();
-        // 1. 尝试查找游戏场景脚本
-        // sceneScript = FindObjectOfType<SceneScript>();
-        // if (sceneScript != null) sceneScript.playerScript = this;
-
-        // 2. 如果在大厅，尝试查找大厅脚本 (OnStartClient可能没找到)
+        // 如果在大厅，尝试查找大厅脚本 (OnStartClient可能没找到)
         if (!IsInGameScene && lobbyScript == null)
         {
             lobbyScript = FindObjectOfType<LobbyScript>();
@@ -122,6 +111,29 @@ public class PlayerScript : NetworkBehaviour
         {
             PlayerSettings.Instance.Clear();
         }
+        // 【新增】开始定期更新 Ping
+        StartCoroutine(UpdatePingRoutine());
+    }
+
+    // 【新增】协程：每 2 秒更新一次延迟（不需要太频繁，节省带宽）
+    private IEnumerator UpdatePingRoutine()
+    {
+        while (true)
+        {
+            if (isLocalPlayer && NetworkClient.active)
+            {
+                // NetworkTime.rtt 是往返时延（秒），乘以 1000 得到毫秒
+                int currentPing = (int)(NetworkTime.rtt * 1000);
+                CmdUpdatePing(currentPing);
+            }
+            yield return new WaitForSeconds(2f);
+        }
+    }
+
+    [Command]
+    private void CmdUpdatePing(int newPing)
+    {
+        ping = newPing;
     }
 
     [Command]//客户端给服务器发送命令

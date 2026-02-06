@@ -115,8 +115,8 @@ public class LobbyScript : NetworkBehaviour
             rowScript.actionButton.gameObject.SetActive(false); 
         }
 
-        // 3. 初始化显示 (文字等)
-        rowScript.UpdateInfo(player.playerName, player.isReady, player.isLocalPlayer);
+        // 【修改】初始化显示时也传入 ping
+        rowScript.UpdateInfo(player.playerName, player.isReady, player.isLocalPlayer, player.ping);
 
         // 4. 存入字典
         playerRows.Add(player, rowScript);
@@ -139,7 +139,7 @@ public class LobbyScript : NetworkBehaviour
     {
         if (playerRows.ContainsKey(player))
         {
-            playerRows[player].UpdateInfo(player.playerName, player.isReady, player.isLocalPlayer);
+            playerRows[player].UpdateInfo(player.playerName, player.isReady, player.isLocalPlayer,player.ping);
         }
     }
     

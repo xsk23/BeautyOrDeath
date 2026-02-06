@@ -1,6 +1,7 @@
 using UnityEngine;
 using Mirror;
 using TMPro;
+using System.Collections;          
 using System.Collections.Generic;
 using kcp2k;
 
@@ -31,6 +32,8 @@ public abstract class GamePlayer : NetworkBehaviour
     private float trapTimer = 0f;// 计时器
 
     [Header("同步属性")]
+    [SyncVar]
+    public int ping;
     [SyncVar(hook = nameof(OnStunChanged))]
     public bool isStunned = false; // 是否被禁锢
     [SyncVar]
@@ -190,6 +193,7 @@ public abstract class GamePlayer : NetworkBehaviour
         // 【修改】初始锁定鼠标
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+        StartCoroutine(UpdatePingRoutine());
     }
 
 
@@ -515,6 +519,26 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 网络同步与命令
     // --------------------------------------------------------
+
+    private IEnumerator UpdatePingRoutine()
+    {
+        while (true)
+        {
+            if (isLocalPlayer && NetworkClient.active)
+            {
+                // 获取 RTT 转换为毫秒并发送给服务器
+                int currentPing = (int)(NetworkTime.rtt * 1000);
+                CmdUpdatePing(currentPing);
+            }
+            yield return new WaitForSeconds(1.5f); // 每1.5秒更新一次，节省带宽
+        }
+    }
+
+    [Command]
+    private void CmdUpdatePing(int newPing)
+    {
+        ping = newPing;
+    }
 
     // 【新增】命令：更新名字
     [Command]

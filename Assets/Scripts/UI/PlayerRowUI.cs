@@ -6,6 +6,7 @@ public class PlayerRowUI : MonoBehaviour
 {
     public TextMeshProUGUI nameText;
     public TextMeshProUGUI statusText;
+    public TextMeshProUGUI pingText; // 【新增】拖入显示 Ping 的 TMP 文本
     public Button actionButton;       // 对应 Prefab 里的按钮
     public TextMeshProUGUI actionButtonText;     // 对应按钮里面的文字 (用于显示 Ready / Cancel)
 
@@ -33,14 +34,23 @@ public class PlayerRowUI : MonoBehaviour
     }
 
     // 更新这一行的显示内容
-    public void UpdateInfo(string playerName, bool isReady, bool isLocalPlayer)
+    public void UpdateInfo(string playerName, bool isReady, bool isLocalPlayer,int ping) // 【修改】增加 ping 参数
     {
         // 名字显示
         nameText.text = playerName + (isLocalPlayer ? " (You)" : "");
         // nameText.color = isLocalPlayer ? Color.green : Color.white;
 
         // 状态显示
-        statusText.text = isReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";
+        statusText.text = isReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";   
+        // 【新增】显示延迟逻辑
+        if (pingText != null)
+        {
+            pingText.text = ping + "ms";
+            // 根据延迟改变颜色
+            if (ping < 80) pingText.color = Color.green;
+            else if (ping < 150) pingText.color = Color.yellow;
+            else pingText.color = Color.red;
+        }        
         // 如果这行是本地玩家，我们需要更新按钮上的文字
         if (isLocalPlayer && actionButtonText != null)
         {
