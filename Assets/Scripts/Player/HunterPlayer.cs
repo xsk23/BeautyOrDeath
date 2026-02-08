@@ -275,6 +275,7 @@ public class HunterPlayer : GamePlayer
     public void TargetBlindEffect(NetworkConnection target, float duration)
     {
         StartCoroutine(BlindRoutine(duration));
+        Debug.Log($"[Hunter] {playerName} is Blinded for {duration} seconds.");
     }
 
     private System.Collections.IEnumerator BlindRoutine(float duration)
