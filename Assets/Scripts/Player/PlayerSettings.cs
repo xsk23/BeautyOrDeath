@@ -1,19 +1,18 @@
 using UnityEngine;
 
+using System.Collections.Generic;
+
 public class PlayerSettings : MonoBehaviour
 {
     public static PlayerSettings Instance { get; private set; }
+    public string PlayerName { get; set; } = "";
 
-    public string PlayerName { get; set; } = "";  // 預設值
+    // 存储选中的技能名称（或者 ID）
+    public List<string> selectedWitchSkillNames = new List<string>();
+    public List<string> selectedHunterSkillNames = new List<string>();
 
-    private void Awake()
-    {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
+    private void Awake() {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
     }

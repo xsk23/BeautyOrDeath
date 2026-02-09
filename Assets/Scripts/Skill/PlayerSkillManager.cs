@@ -1,43 +1,66 @@
 using UnityEngine;
 using Mirror;
+using System.Collections.Generic;
 
 
 public class PlayerSkillManager : NetworkBehaviour
 {
-    [Header("Skills Configuration")]
-    public SkillBase[] skills; // 在 Inspector 中把具体的技能组件拖进去
-
+    // 为了显示图标，我们还是需要数据库，但不涉及预制体
+    public List<SkillData> skillDatabase; 
+    public SkillBase[] skills; 
     private GamePlayer player;
 
     public override void OnStartLocalPlayer()
     {
         player = GetComponent<GamePlayer>();
         
-        // 检查 UI 数组
-        //if (SceneScript.Instance.skillSlots == null) Debug.LogError("SceneScript.Instance.skillSlots is NULL!");
-        //else Debug.Log($"UI Slots Count: {SceneScript.Instance.skillSlots.Length}");
+        // 1. 获取选中的脚本名称
+        List<string> selectedClasses = (player is WitchPlayer) 
+            ? PlayerSettings.Instance.selectedWitchSkillNames 
+            : PlayerSettings.Instance.selectedHunterSkillNames;
 
-        for (int i = 0; i < skills.Length; i++)
+        List<SkillBase> activeSkills = new List<SkillBase>();
+
+        // 2. 遍历选中的两个名称
+        for (int i = 0; i < selectedClasses.Count; i++)
         {
+            string className = selectedClasses[i];
+            
+            // 【核心：直接通过字符串类名获取挂在自己身上的组件】
+            SkillBase skillComp = GetComponent(className) as SkillBase;
 
-            //Debug.Log($"Processing Skill {i}: {skills[i].GetType().Name}, Icon: {skills[i].icon?.name ?? "NULL"}");
+            if (skillComp != null)
+            {
+                // 激活组件
+                skillComp.enabled = true;
+                skillComp.Init(player);
+                
+                // 分配按键 Q 和 E
+                skillComp.triggerKey = (i == 0) ? KeyCode.Q : KeyCode.E;
+                
+                activeSkills.Add(skillComp);
 
-            if (i < SceneScript.Instance.skillSlots.Length)
-            {   
-                skills[i].Init(player);
-                SceneScript.Instance.skillSlots[i].Setup(skills[i].icon, skills[i].triggerKey.ToString());
-                SceneScript.Instance.skillSlots[i].gameObject.SetActive(true);
+                // 更新 UI 图标 (从数据库找图标)
+                var data = skillDatabase.Find(d => d.scriptClassName == className);
+                if (data != null && i < SceneScript.Instance.skillSlots.Length)
+                {
+                    SceneScript.Instance.skillSlots[i].Setup(data.icon, skillComp.triggerKey.ToString());
+                    SceneScript.Instance.skillSlots[i].gameObject.SetActive(true);
+                }
             }
         }
+        
+        // 覆盖 skills 数组供 Update 使用
+        this.skills = activeSkills.ToArray();
     }
 
     public override void OnStartServer()
     {
-        // 服务器端初始化拥有者引用
         player = GetComponent<GamePlayer>();
-        foreach (var skill in skills)
+        // 服务器需要初始化身上所有的技能组件，以响应客户端的 Command
+        foreach (var s in GetComponents<SkillBase>())
         {
-            if(skill != null) skill.Init(player);
+            s.Init(player);
         }
     }
 

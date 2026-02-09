@@ -819,6 +819,7 @@ MonoBehaviour:
   requiredClicks: 2
   maxTrapTime: 6
   currentClicks: 0
+  ping: 0
   isStunned: 0
   isTrappedByNet: 0
   playerName: 
@@ -1015,6 +1016,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  skillDatabase: []
   skills:
   - {fileID: -2214929788951733327}
   - {fileID: 3439203615201911615}

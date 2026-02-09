@@ -2072,6 +2072,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  skillDatabase: []
   skills:
   - {fileID: -497868076920289864}
   - {fileID: 1307720245990462372}
