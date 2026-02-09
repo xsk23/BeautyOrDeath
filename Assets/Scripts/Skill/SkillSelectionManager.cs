@@ -9,7 +9,8 @@ public class SkillSelectionManager : MonoBehaviour
     public List<SkillData> allSkills;
     public Transform contentFolder; // SkillButtonContainer
     public GameObject buttonPrefab;
-
+    [Header("Description UI")]
+    public TextMeshProUGUI skillExplainText; // 【新增】拖入你的 SkillText 物体
     public Color hunterColor = new Color(0.3f, 0f, 0f); // 暗红
     public Color witchColor = new Color(0.2f, 0f, 0.3f);  // 暗紫
 
@@ -19,7 +20,7 @@ public class SkillSelectionManager : MonoBehaviour
 
     private void Start()
     {
-        // 默认选择每个阵营的前两个
+        // 默认选择初始化
         currentWitchSelection = allSkills.Where(s => s.role == PlayerRole.Witch).Take(2).ToList();
         currentHunterSelection = allSkills.Where(s => s.role == PlayerRole.Hunter).Take(2).ToList();
 
@@ -31,17 +32,45 @@ public class SkillSelectionManager : MonoBehaviour
             Image btnImg = go.GetComponent<Image>();
             btnImg.color = (skill.role == PlayerRole.Hunter) ? hunterColor : witchColor;
             
+            // --- 【关键修改】 ---
+            // 1. 获取新脚本并初始化
+            SkillButtonUI hoverScript = go.GetComponent<SkillButtonUI>() ?? go.AddComponent<SkillButtonUI>();
+            hoverScript.Setup(skill, this);
+
+            // 2. 保持原有的点击逻辑
             go.GetComponent<Button>().onClick.AddListener(() => OnSkillClicked(skill));
+            
             skillButtons.Add(skill, btnImg);
         }
+        
+        if (skillExplainText != null) skillExplainText.text = "Hover over a skill to see details.";
+        
         UpdateVisuals();
         Save();
+    }
+    // 统一显示逻辑：无论是 Hover 还是 Click 都会调用这里
+    public void ShowDescription(SkillData skill)
+    {
+        if (skillExplainText != null)
+        {
+            string colorHex = (skill.role == PlayerRole.Hunter) ? "#FF4444" : "#BB88FF";
+            // 统一格式化：[技能名] - [角色描述] 换行 [详细介绍]
+            skillExplainText.text = $"<color={colorHex}><b>{skill.skillName}</b></color> ({skill.role})\n{skill.description}";
+        }
+    }
+
+    public void ClearDescription()
+    {
+        if (skillExplainText != null)
+        {
+            // 鼠标移开时，可以清空，或者显示提示文字
+            skillExplainText.text = "Hover over a skill to see details.";
+        }
     }
 
     private void OnSkillClicked(SkillData skill)
     {
         Debug.Log($"Skill button clicked: {skill.skillName}");
-
         var selection = (skill.role == PlayerRole.Witch) ? currentWitchSelection : currentHunterSelection;
         
         // 如果点击的是已经选中的，不操作

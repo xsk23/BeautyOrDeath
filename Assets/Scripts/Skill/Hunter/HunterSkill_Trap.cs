@@ -8,10 +8,6 @@ public class HunterSkill_Trap : SkillBase
 
     protected override void OnCast()
     {
-        //find trapprefab 
-        //todo
-
-
         HunterPlayer hunter = ownerPlayer as HunterPlayer;
         Debug.Log($"<color=green>[Hunter] {ownerPlayer.playerName} used skill: Place Trap!</color>");
         if (trapPrefab == null)
@@ -25,24 +21,14 @@ public class HunterSkill_Trap : SkillBase
         {
             spawnPos = hit.point;
         }
-
         try
         {
-            GameObject trap = Instantiate(trapPrefab, spawnPos, Quaternion.identity);
+            GameObject trap = Instantiate(trapPrefab, spawnPos, trapPrefab.transform.rotation);
             NetworkServer.Spawn(trap);
-            // if (trap == null)
-            // {
-            //     Debug.LogError("Instantiate failed to return an object!");
-            //     return;
-            // }
         }
         catch (System.Exception e)
         {
             Debug.LogError($"Exception during Instantiate: {e.Message}");
         }
-
-
-        
-        
     }
 }

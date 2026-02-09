@@ -1425,13 +1425,18 @@ public class WitchPlayer : GamePlayer
         ServerTakeDamage(damage);
 
         // 2. 强制解除禁锢 
+        // 处决也会导致陷阱销毁
         if (isTrappedByNet)
         {
-            isStunned = false;
-            isTrappedByNet = false;
-            currentClicks = 0; // 重置挣扎次数
-            UnityEngine.Debug.Log($"<color=red>{playerName} 被处决并强制释放！</color>");
+            ServerReleaseAndDestroyTrap();
         }
+        // if (isTrappedByNet)
+        // {
+        //     isStunned = false;
+        //     isTrappedByNet = false;
+        //     currentClicks = 0; // 重置挣扎次数
+        //     UnityEngine.Debug.Log($"<color=red>{playerName} 被处决并强制释放！</color>");
+        // }
     }
 
     // 服务器端无敌协程

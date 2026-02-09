@@ -1062,7 +1062,7 @@ MonoBehaviour:
   cooldownTime: 5
   triggerKey: 114
   radius: 8
-  vfxPrefab: {fileID: 0}
+  vfxPrefab: {fileID: 178152044478350897, guid: 0406ac7feb4695842b6f8f41616cf86e, type: 3}
   hitAnyWitch: 0
 --- !u!114 &-7488479657767331540
 MonoBehaviour:
@@ -1083,7 +1083,7 @@ MonoBehaviour:
   icon: {fileID: 21300000, guid: fd895c1418453a746bd92e5aa89df7d4, type: 3}
   cooldownTime: 5
   triggerKey: 101
-  trapPrefab: {fileID: 3650691871401806780, guid: 59c67f2eba8e4034e81dd83923ce4485, type: 3}
+  trapPrefab: {fileID: 1288303555106897353, guid: dd57c30e0b0f17441826758f36e34972, type: 3}
 --- !u!1 &4565058604513354316
 GameObject:
   m_ObjectHideFlags: 0

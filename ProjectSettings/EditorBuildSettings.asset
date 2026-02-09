@@ -20,10 +20,10 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/MyOtherScene.unity
     guid: 85d387722cc56644695e443c8791d56f
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/MyScene1-1.unity
     guid: 8360706459c4aaf45ab2792c25994f7f
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/MyScene2.unity
     guid: 1383cc28a05c89e458758eec2aa73f28
   - enabled: 0

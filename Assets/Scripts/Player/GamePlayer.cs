@@ -32,8 +32,8 @@ public abstract class GamePlayer : NetworkBehaviour
     private float trapTimer = 0f;// 计时器
 
     [Header("同步属性")]
-    [SyncVar]
-    public int ping;
+    [SyncVar] public uint caughtInTrapNetId = 0; // 记录当前是被哪个陷阱抓住了
+    [SyncVar] public int ping;
     [SyncVar(hook = nameof(OnStunChanged))]
     public bool isStunned = false; // 是否被禁锢
     [SyncVar]
@@ -211,35 +211,16 @@ public abstract class GamePlayer : NetworkBehaviour
             if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
             if (gameChatUI == null) gameChatUI = FindObjectOfType<GameChatUI>();
 
-            // 【修改】按下 Esc 呼叫 UI，而不是自己改鼠标状态
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                // 优先级 1: 如果聊天正在进行，按 Esc 只是关闭聊天
-                if (isChatting)
-                {
-                    if (gameChatUI != null) gameChatUI.SetChatState(false);
-                }
-                // 优先级 2: 如果没在聊天，按 Esc 打开暂停菜单
-                else
-                {
-                    if (sceneScript != null) sceneScript.TogglePauseMenu();
-                }
-                // 只要按了 Esc，本帧剩下的逻辑（移动等）就不跑了
+                if (isChatting) { if (gameChatUI != null) gameChatUI.SetChatState(false); }
+                else { if (sceneScript != null) sceneScript.TogglePauseMenu(); }
                 return;
             }
-            // 1. 如果正在聊天，阻止移动
-            if (isChatting)
+            // --- 处理挣扎逻辑 ---
+            if (isStunned && isTrappedByNet && Input.GetKeyDown(KeyCode.Space))
             {
-                return;
-            }
-            //硬直或禁锢下禁止移动
-            if (isStunned)
-            {
-                if (isTrappedByNet && Input.GetKeyDown(KeyCode.Space))
-                {
-                    CmdStruggle(); // 发送挣扎命令
-                }
-                return; // 阻止移动
+                CmdStruggle();
             }
 
             // 按 T 切换第一人称 / 第三人称
@@ -251,21 +232,26 @@ public abstract class GamePlayer : NetworkBehaviour
 
             // 【修改】始终调用 HandleMovement，在方法内部判断是否处理输入
             // 这样即使 Cursor 解锁了，重力代码依然会运行
-            // HandleMovement();
-            Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+            // --- 处理输入向量 ---
+            Vector2 input = Vector2.zero;
+            // 只有在没被控制、没在聊天、且鼠标锁定的情况下才获取 WASD 输入
+            if (!isStunned && !isChatting && Cursor.lockState == CursorLockMode.Locked)
+            {
+                input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+            }
             HandleMovementOverride(input);
             // 执行边界约束
             ApplySphereBoundary();
 
 
             // 攻击输入还是只有锁定时才允许
-            if (Cursor.lockState == CursorLockMode.Locked)
+            if (Cursor.lockState == CursorLockMode.Locked && !isStunned) // 只有不被晕时才能攻击
             {
                 HandleInput();
             }
-            // 测试用输入
-            if (Input.GetKeyDown(KeyCode.K)) CmdTakeDamage(10f); // 测试用
-            if (Input.GetKeyDown(KeyCode.J)) CmdUseMana(15f);    // 测试用
+            // // 测试用输入
+            // if (Input.GetKeyDown(KeyCode.K)) CmdTakeDamage(10f); // 测试用
+            // if (Input.GetKeyDown(KeyCode.J)) CmdUseMana(15f);    // 测试用
 
         }
         if (isServer)
@@ -319,94 +305,53 @@ public abstract class GamePlayer : NetworkBehaviour
     // 将原来的 HandleMovement 改名为 HandleMovementOverride 并接受参数
     protected virtual void HandleMovementOverride(Vector2 inputOverride)
     {
-        // ... 原有代码 ...
-        // 唯一的区别是：把里面所有的 Input.GetAxis("Horizontal") 替换为 inputOverride.x
-        // 把 Input.GetAxis("Vertical") 替换为 inputOverride.y
-
-
-        // 1. 更加精准的状态检测
-        // 射线起点稍微高一点（从膝盖位置发射），长度稍微长一点
+        // 1. 地面检测
         float rayLength = (controller.height * 0.5f) + 0.3f;
         Vector3 rayOrigin = transform.position + Vector3.up * 0.1f;
         bool isHit = Physics.Raycast(rayOrigin, Vector3.down, rayLength, groundLayer);
-
-        // 结合 Controller 的状态，防止在斜坡上判定丢失
         bool actuallyOnGround = isHit || controller.isGrounded;
 
-        // 2. 输入锁定
-        bool isInputLocked = isChatting || (sceneScript != null && Cursor.lockState != CursorLockMode.Locked);
+        // 2. 这里的 isInputLocked 只决定是否可以进行【旋转视角】
+        // 只有在聊天或者打开菜单时才锁定视角
+        bool isViewLocked = isChatting || (sceneScript != null && sceneScript.pauseMenuPanel.activeSelf);
 
-        // 3. 获取输入方向
-        float x = 0f; float z = 0f;
-        x = inputOverride.x;
-        z = inputOverride.y;
-
-        // if (!isInputLocked) { x = Input.GetAxis("Horizontal"); z = Input.GetAxis("Vertical"); }
-        Vector3 inputDir = (transform.right * x + transform.forward * z);
+        // 3. 移动计算 (inputOverride 如果是 zero，这里会自动处理减速)
+        Vector3 inputDir = (transform.right * inputOverride.x + transform.forward * inputOverride.y);
         if (inputDir.magnitude > 1f) inputDir.Normalize();
 
-        // 4. 计算目标水平速度
         Vector3 targetVelocity = inputDir * moveSpeed;
-
-        // 5. 【核心修改】找回惯性的速度计算
-        // 这里的参数决定了惯性的强弱：
-        // groundAccel: 地面启动速度 (越大启动越快)
-        // groundDecel: 地面摩擦力 (越大停得越快，设置小一点就有溜冰感)
         float groundAccel = 8f;
         float groundDecel = 12f;
 
-        // 选择当前的加速度
-        float currentAccel;
-        if (actuallyOnGround)
-        {
-            // 如果有输入，用加速度；没输入（想停下来），用摩擦力
-            currentAccel = (inputDir.magnitude > 0) ? groundAccel : groundDecel;
-        }
-        else
-        {
-            // 空中加速度（airControl），通常很小，产生巨大的惯性
-            currentAccel = airControl;
-        }
+        float currentAccel = actuallyOnGround ? (inputDir.magnitude > 0 ? groundAccel : groundDecel) : airControl;
 
-        // 平滑改变速度 (不再乘以 10f，让变化过程肉眼可见)
         velocity.x = Mathf.MoveTowards(velocity.x, targetVelocity.x, currentAccel * Time.deltaTime * moveSpeed);
         velocity.z = Mathf.MoveTowards(velocity.z, targetVelocity.z, currentAccel * Time.deltaTime * moveSpeed);
 
-        // 6. 重力处理 (修复出生漂浮)
-        if (actuallyOnGround && velocity.y < 0)
-        {
-            // 已经在地面时，保持一个小小的下压力
-            velocity.y = -2f;
-        }
-        else
-        {
-            // 只要不在地面，重力就会一直累加，确保哪怕出生在 0.1米高度也会掉下去
-            velocity.y += gravity * Time.deltaTime;
-        }
+        // 4. 重力和跳跃
+        if (actuallyOnGround && velocity.y < 0) velocity.y = -2f;
+        else velocity.y += gravity * Time.deltaTime;
 
-        // 7. 跳跃逻辑
-        if (actuallyOnGround && !isInputLocked && Input.GetButtonDown("Jump"))
+        // 注意：跳跃也需要判断 !isStunned
+        if (actuallyOnGround && !isStunned && !isViewLocked && Input.GetButtonDown("Jump"))
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
-            actuallyOnGround = false; // 瞬间起跳，脱离地面判定
         }
 
-        // 8. 执行最终移动
         controller.Move(velocity * Time.deltaTime);
 
-        // 9. 旋转视角 (保持不变)
-        if (!isInputLocked)
+        // 5. 【核心修改】旋转视角逻辑
+        // 只要视角没被锁定（聊天/菜单），即使处于 stunned 状态，也可以转头
+        if (!isViewLocked)
         {
             float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * 100f * Time.deltaTime;
             float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * 100f * Time.deltaTime;
+            
             xRotation -= mouseY;
             xRotation = Mathf.Clamp(xRotation, -80f, 80f);
             Camera.main.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
             transform.Rotate(Vector3.up * mouseX);
         }
-
-        // 调试射线：绿色代表判定为地面，红色代表空中
-        Debug.DrawRay(rayOrigin, Vector3.down * rayLength, actuallyOnGround ? Color.green : Color.red);
     }
 
     protected virtual void HandleMovement()
@@ -519,7 +464,42 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 网络同步与命令
     // --------------------------------------------------------
+    // 【核心方法】释放玩家并立即销毁陷阱
+    [Server]
+    public void ServerReleaseAndDestroyTrap()
+    {
+        // 1. 找到对应的陷阱并销毁
+        if (caughtInTrapNetId != 0)
+        {
+            if (NetworkServer.spawned.TryGetValue(caughtInTrapNetId, out NetworkIdentity trapIdentity))
+            {
+                Debug.Log($"destroy trap: {trapIdentity.name}");
+                NetworkServer.Destroy(trapIdentity.gameObject);
+            }
+        }
 
+        // 2. 重置玩家状态
+        isStunned = false;
+        isTrappedByNet = false;
+        caughtInTrapNetId = 0;
+        currentClicks = 0;
+        trapTimer = 0f;
+        
+        Debug.Log($"{playerName} is released");
+    }
+    // 修改捕获方法
+    [Server]
+    public void ServerGetTrappedByTrap(uint trapId)
+    {
+        if (isTrappedByNet) return; 
+
+        isStunned = true;
+        isTrappedByNet = true;
+        caughtInTrapNetId = trapId; // 记录陷阱ID
+        trapTimer = 0f;
+        currentClicks = 0;
+        Debug.Log($"{playerName} get trapped by trap:{trapId}   ！");
+    }
     private IEnumerator UpdatePingRoutine()
     {
         while (true)
@@ -566,7 +546,7 @@ public abstract class GamePlayer : NetworkBehaviour
             // ★ 修改点：超时 = 自动释放 (而不是处决)
             if (trapTimer >= maxTrapTime)
             {
-                ServerEscape();
+                ServerReleaseAndDestroyTrap();
             }
         }
     }
@@ -592,7 +572,7 @@ public abstract class GamePlayer : NetworkBehaviour
         // 判定：点击次数够了 -> 成功挣脱
         if (currentClicks >= requiredClicks)
         {
-            ServerEscape();
+            ServerReleaseAndDestroyTrap();
         }
     }
 

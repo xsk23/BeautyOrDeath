@@ -1,13 +1,9 @@
 using UnityEngine;
 using System.Collections.Generic;
-using System.Linq;
 
 public class PlayerOutline : MonoBehaviour
 {
-    [Header("设置")]
-    // 拖入你的模型渲染器 (SkinnedMeshRenderer)
     [SerializeField] private Renderer targetRenderer; 
-    // 拖入刚才创建的 Mat_Outline
     [SerializeField] private Material outlineMaterialSource; 
 
     private Material outlineInstance;
@@ -15,30 +11,20 @@ public class PlayerOutline : MonoBehaviour
 
     void Awake()
     {
-        // 自动查找渲染器（如果没拖的话）
-        if (targetRenderer == null) 
-            targetRenderer = GetComponentInChildren<SkinnedMeshRenderer>();
-        if (targetRenderer == null) 
-            targetRenderer = GetComponentInChildren<MeshRenderer>();
+        if (targetRenderer == null) targetRenderer = GetComponent<Renderer>();
 
         if (outlineMaterialSource != null)
         {
-            // 创建材质实例，防止所有玩家共用一个颜色
             outlineInstance = new Material(outlineMaterialSource);
         }
     }
 
-    // 外部调用的唯一接口
     public void SetOutline(bool active, Color color)
     {
         if (targetRenderer == null || outlineInstance == null) return;
 
-        // 检查高亮材质是否还在（防止被 WitchPlayer.ApplyMorph 覆盖掉）
-        bool materialLost = active && !targetRenderer.sharedMaterials.Contains(outlineInstance);
-        bool colorChanged = (active && outlineInstance.GetColor("_OutlineColor") != color);
-
-        // 如果状态、颜色都没变，且材质也没丢，才返回
-        if (isVisible == active && !colorChanged && !materialLost) return;
+        bool materialLost = active && !System.Array.Exists(targetRenderer.sharedMaterials, m => m == outlineInstance);
+        if (isVisible == active && !materialLost) return;
 
         isVisible = active;
 
@@ -52,39 +38,39 @@ public class PlayerOutline : MonoBehaviour
             RemoveMaterial(outlineInstance);
         }
     }
-    // 建议增加一个方法，允许 WitchPlayer 在变身后手动调用
-    public void RefreshRenderer(Renderer newRenderer)
-    {
-        // 如果变身换了 GameObject，需要更新引用
-        if(newRenderer != null) targetRenderer = newRenderer;
-        
-        // 强制重新触发一次材质添加
-        if (isVisible) 
-        {
-            AddMaterial(outlineInstance);
-        }
-    }
 
-    // 给材质数组追加一个轮廓材质
     private void AddMaterial(Material mat)
     {
-        var mats = targetRenderer.materials.ToList();
-        if (!mats.Contains(mat))
+        if (targetRenderer == null || mat == null) return;
+        
+        // 使用 sharedMaterials 避开 Prefab 访问限制
+        Material[] currentShared = targetRenderer.sharedMaterials;
+        List<Material> matsList = new List<Material>(currentShared);
+
+        if (!matsList.Contains(mat))
         {
-            mats.Add(mat);
-            targetRenderer.materials = mats.ToArray();
+            matsList.Add(mat);
+            targetRenderer.materials = matsList.ToArray(); // 赋值给 .materials 会处理实例化
         }
     }
 
-    // 从材质数组移除轮廓材质
     private void RemoveMaterial(Material mat)
     {
-        var mats = targetRenderer.materials.ToList();
-        if (mats.Contains(mat))
+        if (targetRenderer == null) return;
+        Material[] currentShared = targetRenderer.sharedMaterials;
+        List<Material> matsList = new List<Material>(currentShared);
+
+        if (matsList.Contains(mat))
         {
-            mats.Remove(mat);
-            targetRenderer.materials = mats.ToArray();
+            matsList.Remove(mat);
+            targetRenderer.materials = matsList.ToArray();
         }
+    }
+
+    public void RefreshRenderer(Renderer newRenderer)
+    {
+        if(newRenderer != null) targetRenderer = newRenderer;
+        if (isVisible) AddMaterial(outlineInstance);
     }
 
     void OnDestroy()
