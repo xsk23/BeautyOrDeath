@@ -36,6 +36,8 @@ public class SceneScript : MonoBehaviour
     public SkillSlotUI[] skillSlots; // 在 Inspector 中把你的 Q, E, R, F 对应的 UI 拖进去
 
     public GameObject blindPanel; //致盲面板
+    [Header("Item UI")]
+    public SkillSlotUI itemSlot; // 【新增】用于显示 F 键道具的 UI 槽位
     private void Awake()
     {
         // 1. 单例赋值

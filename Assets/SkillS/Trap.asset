@@ -15,5 +15,5 @@ MonoBehaviour:
   skillName: Trap
   scriptClassName: HunterSkill_Trap
   role: 2
-  icon: {fileID: 21300000, guid: 4fb9eb81819aa77498878f347a5d4c9a, type: 3}
+  icon: {fileID: 21300000, guid: 29a3f38e9ff2c1f4ca125688044a1de5, type: 3}
   description: TrapTrapTrapTrapTrap

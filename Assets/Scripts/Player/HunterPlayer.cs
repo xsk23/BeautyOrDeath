@@ -39,6 +39,11 @@ public class HunterPlayer : GamePlayer
     {
         base.OnStartLocalPlayer();
         ChangeWeapon(currentWeaponIndex);
+        // 【新增】确保猎人看到的是隐藏的道具槽
+        if (SceneScript.Instance != null && SceneScript.Instance.itemSlot != null)
+        {
+            SceneScript.Instance.itemSlot.gameObject.SetActive(false);
+        }
     }
     public override void OnStartServer()
     {

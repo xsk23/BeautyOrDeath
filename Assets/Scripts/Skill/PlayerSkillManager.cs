@@ -1,63 +1,92 @@
 using UnityEngine;
 using Mirror;
+using System.Collections; // 必须引用协程
 using System.Collections.Generic;
-
 
 public class PlayerSkillManager : NetworkBehaviour
 {
-    // 为了显示图标，我们还是需要数据库，但不涉及预制体
-    public List<SkillData> skillDatabase; 
-    public SkillBase[] skills; 
+    [Header("Skill Configuration")]
+    public List<SkillData> skillDatabase; // 在预制体里把 7 个 SkillData 资产拖进去
+    
+    private SkillBase[] activeSkillsArray; 
     private GamePlayer player;
 
     public override void OnStartLocalPlayer()
     {
         player = GetComponent<GamePlayer>();
         
-        // 1. 获取选中的脚本名称
+        // 使用协程确保 SceneScript 已经初始化完成
+        StartCoroutine(InitSkillsAndUIRoutine());
+    }
+
+    private IEnumerator InitSkillsAndUIRoutine()
+    {
+        // 1. 等待场景中的 SceneScript 准备就绪
+        while (SceneScript.Instance == null || SceneScript.Instance.skillSlots == null)
+        {
+            yield return null;
+        }
+
+        // 2. 获取选中的脚本名称列表（从持久化单例读取）
         List<string> selectedClasses = (player is WitchPlayer) 
             ? PlayerSettings.Instance.selectedWitchSkillNames 
             : PlayerSettings.Instance.selectedHunterSkillNames;
 
-        List<SkillBase> activeSkills = new List<SkillBase>();
+        // --- 【新增：同步给其他玩家】 ---
+        if (selectedClasses != null && selectedClasses.Count >= 2)
+        {
+            player.CmdSyncSkillNames(selectedClasses[0], selectedClasses[1]);
+        }
 
-        // 2. 遍历选中的两个名称
+        // 如果是大厅直接进游戏测试，列表可能为空，做一个保底逻辑
+        if (selectedClasses == null || selectedClasses.Count == 0)
+        {
+            Debug.LogWarning("[PlayerSkillManager] 选中的技能列表为空，请检查 Lobby 选择逻辑。");
+            yield break;
+        }
+
+        List<SkillBase> runtimeSkills = new List<SkillBase>();
+
+        // 3. 激活并映射技能
         for (int i = 0; i < selectedClasses.Count; i++)
         {
             string className = selectedClasses[i];
             
-            // 【核心：直接通过字符串类名获取挂在自己身上的组件】
+            // 获取挂在玩家预制体身上的对应脚本组件
             SkillBase skillComp = GetComponent(className) as SkillBase;
 
             if (skillComp != null)
             {
-                // 激活组件
+                // 激活脚本逻辑
                 skillComp.enabled = true;
                 skillComp.Init(player);
                 
-                // 分配按键 Q 和 E
+                // 强制分配按键：第一个选中的是 Q，第二个选中的是 E
                 skillComp.triggerKey = (i == 0) ? KeyCode.Q : KeyCode.E;
                 
-                activeSkills.Add(skillComp);
+                runtimeSkills.Add(skillComp);
 
-                // 更新 UI 图标 (从数据库找图标)
+                // --- 【核心修改：更新游戏内 UI】 ---
+                // 从数据库中根据脚本类名找到对应的图标资产
                 var data = skillDatabase.Find(d => d.scriptClassName == className);
-                if (data != null && i < SceneScript.Instance.skillSlots.Length)
+                if (data != null)
                 {
-                    SceneScript.Instance.skillSlots[i].Setup(data.icon, skillComp.triggerKey.ToString());
-                    SceneScript.Instance.skillSlots[i].gameObject.SetActive(true);
+                    // 将图标和分配的按键名称（"Q" 或 "E"）传给 SceneScript 的 UI 槽位
+                    if (i < SceneScript.Instance.skillSlots.Length)
+                    {
+                        SceneScript.Instance.skillSlots[i].Setup(data.icon, skillComp.triggerKey.ToString());
+                        SceneScript.Instance.skillSlots[i].gameObject.SetActive(true);
+                    }
                 }
             }
         }
         
-        // 覆盖 skills 数组供 Update 使用
-        this.skills = activeSkills.ToArray();
+        activeSkillsArray = runtimeSkills.ToArray();
     }
 
     public override void OnStartServer()
     {
         player = GetComponent<GamePlayer>();
-        // 服务器需要初始化身上所有的技能组件，以响应客户端的 Command
         foreach (var s in GetComponents<SkillBase>())
         {
             s.Init(player);
@@ -66,12 +95,12 @@ public class PlayerSkillManager : NetworkBehaviour
 
     private void Update()
     {
-        if (!isLocalPlayer) return;
+        if (!isLocalPlayer || activeSkillsArray == null) return;
 
-        // 1. 处理输入
+        // 处理技能按键触发
         if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned)
         {
-            foreach (var skill in skills)
+            foreach (var skill in activeSkillsArray)
             {
                 if (skill != null && Input.GetKeyDown(skill.triggerKey))
                 {
@@ -80,20 +109,16 @@ public class PlayerSkillManager : NetworkBehaviour
             }
         }
 
-        // 2. 更新 UI 冷却遮罩
+        // 更新 UI 冷却进度条
         if (SceneScript.Instance != null && SceneScript.Instance.skillSlots != null)
+        {
+            for (int i = 0; i < activeSkillsArray.Length; i++)
             {
-                for (int i = 0; i < skills.Length; i++)
+                if (i < SceneScript.Instance.skillSlots.Length && activeSkillsArray[i] != null)
                 {
-                    
-                    // 如果技能本身为空，或者越界，或者对应的 UI 槽位没配置，就跳过
-                    if (skills[i] == null) continue;
-                    if (i >= SceneScript.Instance.skillSlots.Length) continue;
-                    if (SceneScript.Instance.skillSlots[i] == null) continue;
-                    
-
-                    SceneScript.Instance.skillSlots[i].UpdateCooldown(skills[i].CooldownRatio);
+                    SceneScript.Instance.skillSlots[i].UpdateCooldown(activeSkillsArray[i].CooldownRatio);
                 }
             }
+        }
     }
 }

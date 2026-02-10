@@ -5,7 +5,7 @@ public abstract class SkillBase : NetworkBehaviour
 {
     [Header("Skill Settings")]
     public string skillName;
-    public Sprite icon;
+    // public Sprite icon;
     public float cooldownTime = 5f;
     public KeyCode triggerKey;
     

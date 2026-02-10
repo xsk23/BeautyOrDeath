@@ -341,44 +341,49 @@ public class WitchPlayer : GamePlayer
         if (isLocalPlayer && !isPermanentDead)
         {
             //切换道具
-            if (Input.GetKeyDown(KeyCode.Alpha1))
-            {
-                ChangeItem(0);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha2))
-            {
-                ChangeItem(1);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha3))
-            {
-                ChangeItem(2);
-            }
-            if (Input.GetAxis("Mouse ScrollWheel") > 0f)
-            {
-                int nextIndex = (currentItemIndex + 1) % witchItems.Length;
-                ChangeItem(nextIndex);
+            // if (Input.GetKeyDown(KeyCode.Alpha1))
+            // {
+            //     ChangeItem(0);
+            // }
+            // else if (Input.GetKeyDown(KeyCode.Alpha2))
+            // {
+            //     ChangeItem(1);
+            // }
+            // else if (Input.GetKeyDown(KeyCode.Alpha3))
+            // {
+            //     ChangeItem(2);
+            // }
+            // if (Input.GetAxis("Mouse ScrollWheel") > 0f)
+            // {
+            //     int nextIndex = (currentItemIndex + 1) % witchItems.Length;
+            //     ChangeItem(nextIndex);
 
-            }
-            else if (Input.GetAxis("Mouse ScrollWheel") < 0f)
-            {
-                int nextIndex = (currentItemIndex - 1 + witchItems.Length) % witchItems.Length;
-                ChangeItem(nextIndex);
-            }
+            // }
+            // else if (Input.GetAxis("Mouse ScrollWheel") < 0f)
+            // {
+            //     int nextIndex = (currentItemIndex - 1 + witchItems.Length) % witchItems.Length;
+            //     ChangeItem(nextIndex);
+            // }
             //使用道具
+            // --- 【保留】 使用道具的逻辑 ---
             if (Input.GetKeyDown(KeyCode.F))
             {
-                WitchItemBase currentItem = witchItems[currentItemIndex].GetComponent<WitchItemBase>();
-                if (currentItem != null && currentItem.CanUse() && currentItem.isActive)
+                // 确保索引在范围内
+                if (currentItemIndex >= 0 && currentItemIndex < witchItems.Length)
                 {
-                    currentItem.UpdateCooldown();
-                    UnityEngine.Debug.Log($"Activating item: {currentItem.itemName}");
-                    currentItem.OnActivate();
+                    WitchItemBase currentItem = witchItems[currentItemIndex].GetComponent<WitchItemBase>();
+                    if (currentItem != null && currentItem.CanUse() && currentItem.isActive)
+                    {
+                        currentItem.UpdateCooldown();
+                        UnityEngine.Debug.Log($"Activating item: {currentItem.itemName}");
+                        currentItem.OnActivate();
+                    }
                 }
             }
 
         }
     }
-    private void ChangeItem(int itemIndex)
+    public void ChangeItem(int itemIndex)
     {
         CmdChangeItem(itemIndex);
         if (sceneScript == null) return;
@@ -916,7 +921,7 @@ public class WitchPlayer : GamePlayer
         }
     }
     [Command]
-    void CmdChangeItem(int itemIndex)
+    public void CmdChangeItem(int itemIndex)
     {
         if (itemIndex >= 0 && itemIndex < witchItems.Length)
         {

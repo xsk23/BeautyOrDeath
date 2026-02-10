@@ -1,15 +1,18 @@
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
+using System.Collections.Generic;
 
 public class TabRowUI : MonoBehaviour
 {
     public TextMeshProUGUI playerNameText;
     public TextMeshProUGUI playerRoleText;
     public TextMeshProUGUI playerPingText;
-    public Transform skillContainer; // 暂时保留，后续扩展使用
+    [Header("Skill UI")]
+    public Image skill1Image; // 拖入子物体 Skill1
+    public Image skill2Image; // 拖入子物体 Skill2
 
-    public void UpdateRow(GamePlayer player)
+    public void UpdateRow(GamePlayer player, List<SkillData> database)
     {
         // 更新名字
         playerNameText.text = player.playerName;
@@ -20,7 +23,9 @@ public class TabRowUI : MonoBehaviour
 
         // 更新 Ping
         playerPingText.text = player.ping + "ms";
-        
+        // --- 【核心修改：设置技能图标】 ---
+        SetSkillIcon(skill1Image, player.syncedSkill1Name, database);
+        SetSkillIcon(skill2Image, player.syncedSkill2Name, database);
         // Ping 颜色反馈
         if (player.ping < 80) playerPingText.color = Color.green;
         else if (player.ping < 150) playerPingText.color = Color.yellow;
@@ -31,6 +36,28 @@ public class TabRowUI : MonoBehaviour
         {
             playerNameText.text += " (Dead)";
             playerNameText.alpha = 0.5f;
+        }
+    }
+    private void SetSkillIcon(Image targetImg, string className, List<SkillData> database)
+    {
+        if (targetImg == null) return;
+
+        if (string.IsNullOrEmpty(className))
+        {
+            targetImg.gameObject.SetActive(false);
+            return;
+        }
+
+        // 从数据库中查找匹配类名的 SkillData
+        SkillData data = database.Find(d => d.scriptClassName == className);
+        if (data != null && data.icon != null)
+        {
+            targetImg.sprite = data.icon;
+            targetImg.gameObject.SetActive(true);
+        }
+        else
+        {
+            targetImg.gameObject.SetActive(false);
         }
     }
 }

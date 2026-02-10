@@ -6,82 +6,89 @@ using System.Linq;
 
 public class SkillSelectionManager : MonoBehaviour
 {
+    [Header("Skill Data")]
     public List<SkillData> allSkills;
-    public Transform contentFolder; // SkillButtonContainer
     public GameObject buttonPrefab;
-    [Header("Description UI")]
-    public TextMeshProUGUI skillExplainText; // 【新增】拖入你的 SkillText 物体
-    public Color hunterColor = new Color(0.3f, 0f, 0f); // 暗红
-    public Color witchColor = new Color(0.2f, 0f, 0.3f);  // 暗紫
+
+    [Header("Witch UI References")]
+    public Transform witchButtonContainer;
+    public TextMeshProUGUI witchExplainText;
+
+    [Header("Hunter UI References")]
+    public Transform hunterButtonContainer;
+    public TextMeshProUGUI hunterExplainText;
+
+    [Header("Frame Colors (Base Border)")]
+    public Color hunterFrameColor = new Color(0.3f, 0f, 0f); // 深暗红
+    public Color witchFrameColor = new Color(0.2f, 0f, 0.3f);  // 深暗紫
+
+    [Header("Highlight Colors (Selected Outline)")]
+    public Color hunterSelectedColor = Color.red;         // 鲜红
+    public Color witchSelectedColor = new Color(0.7f, 0f, 1f); // 亮紫
 
     private List<SkillData> currentWitchSelection = new List<SkillData>();
     private List<SkillData> currentHunterSelection = new List<SkillData>();
-    private Dictionary<SkillData, Image> skillButtons = new Dictionary<SkillData, Image>();
+    private Dictionary<SkillData, Image> skillFrameImages = new Dictionary<SkillData, Image>();
 
     private void Start()
     {
-        // 默认选择初始化
         currentWitchSelection = allSkills.Where(s => s.role == PlayerRole.Witch).Take(2).ToList();
         currentHunterSelection = allSkills.Where(s => s.role == PlayerRole.Hunter).Take(2).ToList();
 
         foreach (var skill in allSkills)
         {
-            GameObject go = Instantiate(buttonPrefab, contentFolder);
+            Transform targetContainer = (skill.role == PlayerRole.Witch) ? witchButtonContainer : hunterButtonContainer;
+            if (targetContainer == null) continue;
+
+            GameObject go = Instantiate(buttonPrefab, targetContainer);
             go.GetComponentInChildren<TextMeshProUGUI>().text = skill.skillName;
             
-            Image btnImg = go.GetComponent<Image>();
-            btnImg.color = (skill.role == PlayerRole.Hunter) ? hunterColor : witchColor;
+            // --- 核心逻辑修改：设置图标到子物体上 ---
+            // 假设你的子物体叫 "Icon"
+            Transform iconTrans = go.transform.Find("Icon");
+            if (iconTrans != null)
+            {
+                Image iconImg = iconTrans.GetComponent<Image>();
+                iconImg.sprite = skill.icon;
+                iconImg.preserveAspect = true;
+            }
+
+            // 获取根物体的 Image (作为边框)
+            Image frameImg = go.GetComponent<Image>();
+            frameImg.color = (skill.role == PlayerRole.Hunter) ? hunterFrameColor : witchFrameColor;
             
-            // --- 【关键修改】 ---
-            // 1. 获取新脚本并初始化
             SkillButtonUI hoverScript = go.GetComponent<SkillButtonUI>() ?? go.AddComponent<SkillButtonUI>();
             hoverScript.Setup(skill, this);
 
-            // 2. 保持原有的点击逻辑
             go.GetComponent<Button>().onClick.AddListener(() => OnSkillClicked(skill));
             
-            skillButtons.Add(skill, btnImg);
+            skillFrameImages.Add(skill, frameImg);
         }
-        
-        if (skillExplainText != null) skillExplainText.text = "Hover over a skill to see details.";
         
         UpdateVisuals();
         Save();
     }
-    // 统一显示逻辑：无论是 Hover 还是 Click 都会调用这里
+
+    // 统一显示逻辑：自动识别角色并更新对应的 Text
     public void ShowDescription(SkillData skill)
     {
-        if (skillExplainText != null)
+        TextMeshProUGUI targetText = (skill.role == PlayerRole.Witch) ? witchExplainText : hunterExplainText;
+        
+        if (targetText != null)
         {
             string colorHex = (skill.role == PlayerRole.Hunter) ? "#FF4444" : "#BB88FF";
-            // 统一格式化：[技能名] - [角色描述] 换行 [详细介绍]
-            skillExplainText.text = $"<color={colorHex}><b>{skill.skillName}</b></color> ({skill.role})\n{skill.description}";
-        }
-    }
-
-    public void ClearDescription()
-    {
-        if (skillExplainText != null)
-        {
-            // 鼠标移开时，可以清空，或者显示提示文字
-            skillExplainText.text = "Hover over a skill to see details.";
+            targetText.text = $"<color={colorHex}><b>{skill.skillName}</b></color>\n{skill.description}";
         }
     }
 
     private void OnSkillClicked(SkillData skill)
     {
-        Debug.Log($"Skill button clicked: {skill.skillName}");
         var selection = (skill.role == PlayerRole.Witch) ? currentWitchSelection : currentHunterSelection;
-        
-        // 如果点击的是已经选中的，不操作
-        if (selection.Contains(skill)) 
-        {
-            Debug.Log($"{skill.skillName} is already in the selection list");
-            return;
-        }
+        if (selection.Contains(skill)) return;
 
-        selection.RemoveAt(0); // 移除第一个
-        selection.Add(skill);  // 添加新的
+        ShowDescription(skill);
+        selection.RemoveAt(0); 
+        selection.Add(skill);  
         
         UpdateVisuals();
         Save();
@@ -89,46 +96,45 @@ public class SkillSelectionManager : MonoBehaviour
 
     private void UpdateVisuals()
     {
-        foreach (var kvp in skillButtons)
+        foreach (var kvp in skillFrameImages)
         {
             SkillData skill = kvp.Key;
-            Image img = kvp.Value;
-            GameObject btnGo = img.gameObject;
+            Image frameImg = kvp.Value; // 根物体的边框图
+            GameObject btnGo = frameImg.gameObject;
 
-            // 判断是否被选中
             bool isSelected = currentWitchSelection.Contains(skill) || currentHunterSelection.Contains(skill);
 
-            // 1. 描边处理 (Outline)
+            // 1. 处理描边 (Outline)
             var outline = btnGo.GetComponent<Outline>() ?? btnGo.AddComponent<Outline>();
             outline.enabled = isSelected;
-            outline.effectColor = Color.yellow;
-            // 【关键】增加描边粗细 (默认是 1, -1，这里改为 4, -4 或更大)
-            outline.effectDistance = new Vector2(4, -4);
-
-            // 2. 缩放处理 (Scale)
-            // 选中时放大到 1.15 倍，未选中恢复 1.0 倍
-            btnGo.transform.localScale = isSelected ? new Vector3(1.1f, 1.1f, 1f) : Vector3.one;
-
-            // 3. 颜色微调 (亮度)
-            // 选中时让原有的暗色调稍微亮一点
+            
+            // 选中时，描边颜色使用亮色系的红/紫
             if (isSelected)
             {
-                // 如果是暗红，变亮红；如果是暗紫，变亮紫
-                img.color = (skill.role == PlayerRole.Hunter) ? new Color(0.6f, 0f, 0f) : new Color(0.5f, 0f, 0.6f);
+                outline.effectColor = (skill.role == PlayerRole.Hunter) ? hunterSelectedColor : witchSelectedColor;
+                outline.effectDistance = new Vector2(5, -5); // 加厚描边
+                btnGo.transform.localScale = new Vector3(1.06f, 1.06f, 1f); // 稍微变大
             }
             else
             {
-                // 恢复暗色
-                img.color = (skill.role == PlayerRole.Hunter) ? hunterColor : witchColor;
+                btnGo.transform.localScale = Vector3.one;
+            }
+
+            // 2. 处理边框颜色 (选中时边框也可以稍微亮一点点，或者保持暗色)
+            if (isSelected)
+            {
+                frameImg.color = (skill.role == PlayerRole.Hunter) ? hunterFrameColor * 1.5f : witchFrameColor * 1.5f;
+            }
+            else
+            {
+                frameImg.color = (skill.role == PlayerRole.Hunter) ? hunterFrameColor : witchFrameColor;
             }
         }
     }
 
     private void Save()
     {
-        // 存入持久化的脚本类名，方便后续加载
         PlayerSettings.Instance.selectedWitchSkillNames = currentWitchSelection.Select(s => s.scriptClassName).ToList();
         PlayerSettings.Instance.selectedHunterSkillNames = currentHunterSelection.Select(s => s.scriptClassName).ToList();
-        Debug.Log("Saved to PlayerSettings. Current Witch Skills: " + string.Join(", ", PlayerSettings.Instance.selectedWitchSkillNames));
     }
 }

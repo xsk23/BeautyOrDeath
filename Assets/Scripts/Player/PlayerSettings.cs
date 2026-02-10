@@ -10,6 +10,7 @@ public class PlayerSettings : MonoBehaviour
     // 存储选中的技能名称（或者 ID）
     public List<string> selectedWitchSkillNames = new List<string>();
     public List<string> selectedHunterSkillNames = new List<string>();
+    public string selectedWitchItemName = ""; // 存储选中的道具类名
 
     private void Awake() {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }

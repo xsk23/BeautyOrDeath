@@ -5,7 +5,8 @@ using Mirror;
 public class HunterSkill_Trap : SkillBase
 {
     public GameObject trapPrefab;
-
+    [Header("放置设置")]
+    public float yOffset = 0.05f; // 【新增】用于微调模型高度，防止没入地面
     protected override void OnCast()
     {
         HunterPlayer hunter = ownerPlayer as HunterPlayer;
@@ -19,7 +20,8 @@ public class HunterSkill_Trap : SkillBase
         // 贴地
         if (Physics.Raycast(spawnPos + Vector3.up, Vector3.down, out RaycastHit hit, 5f))
         {
-            spawnPos = hit.point;
+            // 【关键修改】在碰撞点的高度基础上，向上抬升 yOffset
+            spawnPos = hit.point + Vector3.up * yOffset;
         }
         try
         {

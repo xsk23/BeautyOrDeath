@@ -9,13 +9,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b6f57d5900d54a3499ddf87dc808fb6f, type: 3}
-  m_Name: Chaos
+  m_Script: {fileID: 11500000, guid: e50f7d6e81b0a70469889316b927a8d4, type: 3}
+  m_Name: InvisibilityCloak
   m_EditorClassIdentifier: 
-  skillName: Chaos
-  scriptClassName: WitchSkill_Chaos
-  role: 1
+  itemName: Cloak
+  scriptClassName: InvisibilityCloak
   icon: {fileID: 21300000, guid: 23ffb80fdc898484b84de5cf7629e8da, type: 3}
-  description: 'ChaosChaosChaosChaosChaos
-
-'
+  description: InvisibilityCloakInvisibilityCloakInvisibilityCloak

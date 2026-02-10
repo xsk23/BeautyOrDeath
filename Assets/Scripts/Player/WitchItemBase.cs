@@ -22,7 +22,16 @@ public abstract class WitchItemBase : NetworkBehaviour
     {
         nextUseTime = Time.time + cooldown;
     }
-
+    // 【新增】获取冷却比例 (1为刚开始冷却，0为就绪)
+    public float CooldownRatio
+    {
+        get
+        {
+            float timeLeft = nextUseTime - Time.time;
+            if (timeLeft <= 0 || cooldown <= 0) return 0f;
+            return Mathf.Clamp01(timeLeft / cooldown);
+        }
+    }
 
     // 道具激活入口 (主动道具用)
     public virtual void OnActivate() { }

@@ -32,6 +32,8 @@ public abstract class GamePlayer : NetworkBehaviour
     private float trapTimer = 0f;// 计时器
 
     [Header("同步属性")]
+    [SyncVar] public string syncedSkill1Name = "";
+    [SyncVar] public string syncedSkill2Name = "";
     [SyncVar] public uint caughtInTrapNetId = 0; // 记录当前是被哪个陷阱抓住了
     [SyncVar] public int ping;
     [SyncVar(hook = nameof(OnStunChanged))]
@@ -464,6 +466,12 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 网络同步与命令
     // --------------------------------------------------------
+    [Command]
+    public void CmdSyncSkillNames(string s1, string s2)
+    {
+        syncedSkill1Name = s1;
+        syncedSkill2Name = s2;
+    }
     // 【核心方法】释放玩家并立即销毁陷阱
     [Server]
     public void ServerReleaseAndDestroyTrap()

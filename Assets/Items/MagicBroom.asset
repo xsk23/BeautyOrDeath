@@ -9,11 +9,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b6f57d5900d54a3499ddf87dc808fb6f, type: 3}
-  m_Name: Decoy
+  m_Script: {fileID: 11500000, guid: e50f7d6e81b0a70469889316b927a8d4, type: 3}
+  m_Name: MagicBroom
   m_EditorClassIdentifier: 
-  skillName: Decoy
-  scriptClassName: WitchSkill_Decoy
-  role: 1
-  icon: {fileID: 21300000, guid: d72da55cb2d16de4eb11b73dd985eaf5, type: 3}
-  description: DecoyDecoyDecoyDecoyDecoy
+  itemName: MagicBroom
+  scriptClassName: MagicBroom
+  icon: {fileID: 21300000, guid: 4fb9eb81819aa77498878f347a5d4c9a, type: 3}
+  description: MagicBroomMagicBroomMagicBroomMagicBroom

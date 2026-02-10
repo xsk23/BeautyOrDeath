@@ -9,7 +9,8 @@ public class TabInfoManager : MonoBehaviour
     public GameObject tabRowPrefab;      // 你的 TabInfoGroup 预制体
 
     private Dictionary<GamePlayer, TabRowUI> activeRows = new Dictionary<GamePlayer, TabRowUI>();
-
+    [Header("Data")]
+    public List<SkillData> skillDatabase; // 在 Inspector 中拖入所有技能的 ScriptableObject
     private void Start()
     {
         // 初始关闭
@@ -71,8 +72,8 @@ public class TabInfoManager : MonoBehaviour
                 activeRows.Add(player, script);
             }
 
-            // 更新数据
-            activeRows[player].UpdateRow(player);
+            // 【关键修改】传递数据库引用
+            activeRows[player].UpdateRow(player, skillDatabase);
         }
     }
 }

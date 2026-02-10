@@ -15,5 +15,5 @@ MonoBehaviour:
   skillName: Dog
   scriptClassName: HunterSkill_Dog
   role: 2
-  icon: {fileID: 21300000, guid: 23ffb80fdc898484b84de5cf7629e8da, type: 3}
+  icon: {fileID: 21300000, guid: 795ed5e67a1b0b34f87777d01e52e3d0, type: 3}
   description: BruceBruceBruceBruceBruce
