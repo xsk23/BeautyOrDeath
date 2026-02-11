@@ -24,6 +24,21 @@ public class HunterPlayer : GamePlayer
     {
         goalText = "Hunt Down The Witch Until the Time Runs Out!";
     }
+    public override void UpdateCameraView()
+    {
+        if (isFirstPerson)
+        {
+            Camera.main.transform.SetParent(transform);
+            Camera.main.transform.localPosition = new Vector3(0, 1.31f, 0.304f);
+            Camera.main.transform.localRotation = Quaternion.identity;  
+        }
+        else
+        {
+            Camera.main.transform.SetParent(transform);
+            Camera.main.transform.localPosition = new Vector3(0, 3.09f, -3.74f);
+            Camera.main.transform.localRotation = Quaternion.Euler(20f, 0f, 0f);
+        }
+    }
 
     // 重写基类的抽象方法
     protected override void Attack()

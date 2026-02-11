@@ -91,7 +91,7 @@ public abstract class GamePlayer : NetworkBehaviour
     [HideInInspector] // 可选：不在Inspector显示，防止乱改
     public string goalText;
     // 在类字段区域新增或修改
-    private bool isFirstPerson = true;           // 默认第一人称
+    public bool isFirstPerson = true;           // 默认第一人称
 
 
     [Header("Chat State")]
@@ -288,18 +288,18 @@ public abstract class GamePlayer : NetworkBehaviour
     }
 
     // 新增方法：根据视角更新相机位置
-    public void UpdateCameraView()
+    public virtual void UpdateCameraView()
     {
         if (isFirstPerson)
         {
             Camera.main.transform.SetParent(transform);
-            Camera.main.transform.localPosition = new Vector3(0, 0.53f, 0.17f);
-            Camera.main.transform.localRotation = Quaternion.identity;
+            Camera.main.transform.localPosition = new Vector3(0, 1.055f, 0.278f);
+            Camera.main.transform.localRotation = Quaternion.identity;  
         }
         else
         {
             Camera.main.transform.SetParent(transform);
-            Camera.main.transform.localPosition = new Vector3(0, 2f, -3.27f);
+            Camera.main.transform.localPosition = new Vector3(0, 2.405f, -3.631f);
             Camera.main.transform.localRotation = Quaternion.Euler(20f, 0f, 0f);
         }
     }

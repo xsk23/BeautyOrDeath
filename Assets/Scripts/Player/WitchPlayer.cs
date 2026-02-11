@@ -88,6 +88,9 @@ public class WitchPlayer : GamePlayer
     public GameObject humanModelGroup; // 将 tripo_node 和 Armature 所在的父物体拖到这里
     private BoxCollider humanBoxCollider; // 人形时的 BoxCollider
 
+    [Header("Camera Smoothing")]
+    private Vector3 targetCamPos = new Vector3(0, 1.055f, 0.278f); 
+    private bool isCamInitialized = false; // 用于初始化第一帧位置
     // ========================================================================
 
     private void Awake()
@@ -233,6 +236,17 @@ public class WitchPlayer : GamePlayer
         HandleInteraction(); // 只有非乘客才进行射线检测
         HandleMorphInput();  // 处理变身/还原输入
         HandleItemActivation(); // 处理道具使用输入
+
+        // --- 在 Update 的最后添加平滑移动逻辑 ---
+        if (isLocalPlayer && Camera.main != null)
+        {
+            // 使用 Lerp 插值实现平滑过渡，Time.deltaTime * 5f 是平滑速度
+            Camera.main.transform.localPosition = Vector3.Lerp(
+                Camera.main.transform.localPosition, 
+                targetCamPos, 
+                Time.deltaTime * 5f
+            );
+        }
     }
 
     // =========================================================
@@ -770,6 +784,12 @@ public class WitchPlayer : GamePlayer
                 if (isLocalPlayer) SetLocalVisibility(true); // 让自己可见
             }
         }
+        // 确保这段代码在 UpdateCollider 之后执行
+        if (isLocalPlayer)
+        {
+            // 强制刷新一次目标位置
+            UpdateCameraView(); 
+        }
     }
 
 
@@ -1091,6 +1111,11 @@ public class WitchPlayer : GamePlayer
 
         int playerLayer = LayerMask.NameToLayer("Player");
         gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
+        // 【新增】恢复人形相机目标
+        if (isLocalPlayer)
+        {
+            UpdateCameraView();
+        }
     }
     // 隐身状态改变时调用
     void OnStealthChanged(bool oldVal, bool newVal)
@@ -1597,5 +1622,44 @@ public class WitchPlayer : GamePlayer
         isMorphed = false;
         isMorphedIntoAnimal = false;
     }
+    public override void UpdateCameraView()
+    {
+        // 只有本地玩家才计算相机
+        if (!isLocalPlayer) return;
+        Camera.main.transform.SetParent(transform);
+        if (isMorphed)
+        {
+            if (isFirstPerson)
+            {
+                // --- 变身状态：动态计算 ---
+                // Y轴：高度的 0.9 倍
+                float targetY = controller.height * 0.9f;
+                // Z轴：半径距离（设为负数即在身后）。
+                // 建议 * 2.5f 以防相机卡在模型内部，如果你严格想要 "radius" 距离，去掉 "* 2.5f" 即可
+                float targetZ = controller.radius * 2.5f; 
+                targetCamPos = new Vector3(0, targetY, targetZ);   
+            }
+            else
+            {
+                float targetY = controller.height * 1.3f;
+                float targetZ = -controller.radius * 6f; 
+                targetCamPos = new Vector3(0, targetY, targetZ);   
+            } 
+        }
+        else
+        {
+            // --- 人类状态：恢复默认 ---
+            if (isFirstPerson)
+                targetCamPos = new Vector3(0, 1.055f, 0.278f);
+            else
+                targetCamPos = new Vector3(0, 2.405f, -3.631f);
+        }
 
+        // 如果是第一次运行，直接瞬移，不要平滑（防止出生时相机乱飞）
+        if (!isCamInitialized && Camera.main != null)
+        {
+            Camera.main.transform.localPosition = targetCamPos;
+            isCamInitialized = true;
+        }
+    }
 }
