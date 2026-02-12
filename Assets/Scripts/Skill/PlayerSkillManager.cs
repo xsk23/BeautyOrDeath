@@ -57,6 +57,7 @@ public class PlayerSkillManager : NetworkBehaviour
 
             if (skillComp != null)
             {
+                //Debug.Log($"[SkillDebug] 成功找到组件: {className}");
                 // 激活脚本逻辑
                 skillComp.enabled = true;
                 skillComp.Init(player);
@@ -79,6 +80,10 @@ public class PlayerSkillManager : NetworkBehaviour
                     }
                 }
             }
+            else
+            {
+                Debug.LogError($"[SkillDebug] 未找到组件: {className}，请确保已挂载在玩家预制体上。(可能是skillData那里有空格！！！！！！！！！！！！！！！！)");
+            }
         }
         
         activeSkillsArray = runtimeSkills.ToArray();
@@ -92,6 +97,19 @@ public class PlayerSkillManager : NetworkBehaviour
             s.Init(player);
         }
     }
+
+    // public override void OnStartClient()
+    // {
+    //     base.OnStartClient();
+    //     // 如果是本地玩家，OnStartLocalPlayer 已经处理过了，这里跳过避免重复
+    //     if (isLocalPlayer) return;
+
+    //     player = GetComponent<GamePlayer>();
+    //     foreach (var s in GetComponents<SkillBase>())
+    //     {
+    //         s.Init(player);
+    //     }
+    // }
 
     private void Update()
     {

@@ -1225,6 +1225,14 @@ PrefabInstance:
       propertyPath: m_AnchoredPosition.y
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3932282275808839991, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
+      propertyPath: allSkills.Array.size
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 3932282275808839991, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
+      propertyPath: allSkills.Array.data[7]
+      value: 
+      objectReference: {fileID: 11400000, guid: f043d5bdba7d9414cbf11400eaca70ba, type: 2}
     - target: {fileID: 4017732648578287377, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchorMax.x
       value: 0
@@ -1607,7 +1615,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6010596174791527500, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -0.00045776367
+      value: -0.00010681152
       objectReference: {fileID: 0}
     - target: {fileID: 6010596174791527500, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.y
