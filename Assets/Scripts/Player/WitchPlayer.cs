@@ -768,7 +768,11 @@ public class WitchPlayer : GamePlayer
             }
             // 7. 刷新轮廓
             var outline = GetComponent<PlayerOutline>();
-            if (outline != null) outline.RefreshRenderer(currentVisualProp.GetComponentInChildren<Renderer>());
+            if (outline != null && currentVisualProp != null) 
+            {
+                Renderer r = currentVisualProp.GetComponentInChildren<Renderer>();
+                outline.RefreshRenderer(r); 
+            }
 
             // 8. 【新增】启用我的 PropTarget，允许别人瞄准我变身后的模型
             myPropTarget.enabled = true;
@@ -1105,8 +1109,7 @@ public class WitchPlayer : GamePlayer
         if (isLocalPlayer) CmdUpdateMoveSpeed(originalHumanSpeed);
 
         // 刷新轮廓和层级
-        var outline = GetComponent<PlayerOutline>();
-        if (outline != null) outline.RefreshRenderer(myRenderer);
+
         if (myPropTarget != null) myPropTarget.enabled = false;
 
         int playerLayer = LayerMask.NameToLayer("Player");
@@ -1115,6 +1118,21 @@ public class WitchPlayer : GamePlayer
         if (isLocalPlayer)
         {
             UpdateCameraView();
+        }
+        // 确保描边脚本重新指向人类的 Renderer (myRenderer 是tripo_node上的)
+        var outline = GetComponent<PlayerOutline>();
+        if (outline != null)
+        {
+            outline.RefreshRenderer(myRenderer); 
+        }
+
+        // 强制刷新本地所有玩家的视觉状态
+        if (isLocalPlayer) {
+            GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        }
+        else {
+            // 如果是远程玩家，本地控制权在 NetworkClient.localPlayer 身上
+            NetworkClient.localPlayer?.GetComponent<TeamVision>()?.ForceUpdateVisuals();
         }
     }
     // 隐身状态改变时调用

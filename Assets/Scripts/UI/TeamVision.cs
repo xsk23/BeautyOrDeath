@@ -17,6 +17,11 @@ public class TeamVision : NetworkBehaviour
     public override void OnStartLocalPlayer()
     {
         localPlayer = GetComponent<GamePlayer>();
+        // --- 修复：本地玩家不应该看到自己的名字标签 ---
+        if (localPlayer.nameText != null)
+        {
+            localPlayer.nameText.gameObject.SetActive(false);
+        }
         StartCoroutine(VisionRoutine());
     }
 
@@ -32,56 +37,54 @@ public class TeamVision : NetworkBehaviour
     private void UpdateAllOutlines()
     {
         if (localPlayer == null) return;
-        localPlayer.nameText.gameObject.SetActive(false); // 本人名字隐藏
-        // 遍历全局玩家列表 (需要在 GamePlayer 里维护这个静态列表)
+        
         foreach (var targetPlayer in GamePlayer.AllPlayers)
         {
             if (targetPlayer == null || targetPlayer == localPlayer) continue;
 
-            // 获取目标身上的视觉组件
             var outline = targetPlayer.GetComponent<PlayerOutline>();
             if (outline == null) continue;
 
-            // --- 核心逻辑 ---
-            
-            // 1. 判断阵营
+            // 获取同步变量
+            bool isTrapped = targetPlayer.isTrappedByNet;
+            bool IAmHunter = (localPlayer.playerRole == PlayerRole.Hunter);
             bool isTeammate = (targetPlayer.playerRole == localPlayer.playerRole);
-            bool isRoleAssigned = (localPlayer.playerRole != PlayerRole.None);
 
-            // 2. 决定是否高亮
-            // 规则：只要我有身份，我就能看到队友的轮廓
-            if (isRoleAssigned && isTeammate)
+            // --- 核心逻辑优先级：被抓状态高于一切 ---
+            if (isTrapped)
+            {
+                // 只要被抓了，不管是猎人看她，还是女巫队友看她，全部显示红色
+                // 这样队友也能意识到“糟糕，她被抓了，需要掩护/解救”
+                outline.SetOutline(true, Color.red);
+                // if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(false);
+                continue; 
+            }
+
+            // --- 正常的队友显示逻辑 ---
+            if (localPlayer.playerRole != PlayerRole.None && isTeammate)
             {
                 Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
                 outline.SetOutline(true, c);
                 
-                // 队友显示名字 (绿色)
                 if (targetPlayer.nameText != null)
                 {
-                    if(targetPlayer.playerRole == PlayerRole.Witch && targetPlayer.isMorphed)
-                    {
-                        targetPlayer.nameText.gameObject.SetActive(false); 
-                    }
-                    else
-                    {
-                        targetPlayer.nameText.gameObject.SetActive(true);
-                        targetPlayer.nameText.color = Color.green;                        
-                    }
+                    bool shouldShowName = !(targetPlayer is WitchPlayer w && w.isMorphed);
+                    targetPlayer.nameText.gameObject.SetActive(shouldShowName);
+                    targetPlayer.nameText.color = Color.green;
                 }
             }
+            // --- 正常的敌对显示逻辑 ---
             else
             {
-                // 非队友：关闭轮廓 (或者你可以开启它并设为红色)
                 outline.SetOutline(false, Color.white);
-
-                // 敌人处理名字 (红色)
-                if (targetPlayer.nameText != null)
-                {
-                    // 这里选择一直显示名字但标红，或者你可以 .SetActive(false) 隐藏
-                    targetPlayer.nameText.gameObject.SetActive(false); 
-                    // targetPlayer.nameText.color = Color.red;
-                }
+                if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(false);
             }
         }
     }
+
+    public void ForceUpdateVisuals()
+    {
+        UpdateAllOutlines();
+    }
+
 }

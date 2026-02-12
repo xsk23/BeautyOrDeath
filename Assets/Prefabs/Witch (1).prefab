@@ -932,7 +932,7 @@ Transform:
   m_GameObject: {fileID: 4011204739602242028}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.53, z: 0.032}
+  m_LocalPosition: {x: 0, y: 0.62, z: 0.032}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1996,12 +1996,13 @@ MonoBehaviour:
   groundCheckDistance: 1.1
   groundLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 1
   airControl: 2
   mouseSensitivity: 2
   crosshairUI: {fileID: 0}
   sceneScript: {fileID: 0}
   goalText: 
+  isFirstPerson: 1
   isChatting: 0
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
@@ -2040,7 +2041,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: db296b91de1d68b4ca659f8cd0b2bbe8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetRenderer: {fileID: 0}
+  targetRenderer: {fileID: 8585125870714818998}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &1498090036183238577
 MonoBehaviour:

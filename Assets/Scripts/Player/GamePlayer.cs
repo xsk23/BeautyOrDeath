@@ -38,8 +38,8 @@ public abstract class GamePlayer : NetworkBehaviour
     [SyncVar] public int ping;
     [SyncVar(hook = nameof(OnStunChanged))]
     public bool isStunned = false; // 是否被禁锢
-    [SyncVar]
-    public bool isTrappedByNet = false; // 是否被网住
+    [SyncVar(hook = nameof(OnTrappedStatusChanged))]
+    public bool isTrappedByNet = false;
     [SyncVar(hook = nameof(OnNameChanged))]
     public string playerName;
     [SyncVar(hook = nameof(OnHealthChanged))]// 血量变化钩子
@@ -783,6 +783,20 @@ public abstract class GamePlayer : NetworkBehaviour
 
                 chatUI.AppendMessage(senderName, msg, channel, roleColor);
             }
+        }
+    }
+    void OnTrappedStatusChanged(bool oldVal, bool newVal)
+    {
+        // 获取本地玩家（那个正在看屏幕的人）
+        GamePlayer localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        if (localPlayer == null) return;
+
+        // 获取本地玩家身上的 TeamVision 脚本并强制刷新一次
+        TeamVision tv = localPlayer.GetComponent<TeamVision>();
+        if (tv != null)
+        {
+            // 我们在 TeamVision 里增加一个 Public 方法
+            tv.ForceUpdateVisuals(); 
         }
     }
 }
