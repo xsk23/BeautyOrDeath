@@ -81,7 +81,7 @@ public class HunterSkill_Shockwave : SkillBase
     [ClientRpc]
     void RpcPlayVFX()
     {
-        if (vfxPrefab) Instantiate(vfxPrefab, ownerPlayer.transform.position, Quaternion.identity);
+        if (vfxPrefab) Instantiate(vfxPrefab, transform.position, Quaternion.identity);
         else Debug.LogWarning("[HunterSkill_Shockwave] VFX Prefab is not assigned!");
     }
 
