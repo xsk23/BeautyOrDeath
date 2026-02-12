@@ -57,6 +57,7 @@ public class PlayerSkillManager : NetworkBehaviour
 
             if (skillComp != null)
             {
+                //Debug.Log($"[SkillDebug] 成功找到组件: {className}");
                 // 激活脚本逻辑
                 skillComp.enabled = true;
                 skillComp.Init(player);
@@ -78,6 +79,10 @@ public class PlayerSkillManager : NetworkBehaviour
                         SceneScript.Instance.skillSlots[i].gameObject.SetActive(true);
                     }
                 }
+            }
+            else
+            {
+                Debug.LogError($"[SkillDebug] 未找到组件: {className}，请确保已挂载在玩家预制体上。(可能是skillData那里有空格！！！！！！！！！！！！！！！！)");
             }
         }
         

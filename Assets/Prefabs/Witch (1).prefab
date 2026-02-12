@@ -1847,6 +1847,7 @@ GameObject:
   - component: {fileID: 1962078256799744433}
   - component: {fileID: -923618323626910566}
   - component: {fileID: 4400558386609022622}
+  - component: {fileID: -5514747262804474299}
   m_Layer: 6
   m_Name: Witch (1)
   m_TagString: Untagged
@@ -2002,6 +2003,7 @@ MonoBehaviour:
   crosshairUI: {fileID: 0}
   sceneScript: {fileID: 0}
   goalText: 
+  isFirstPerson: 1
   isChatting: 0
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
@@ -2181,6 +2183,23 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 32b50cc02b7ffc143b60ab5bb3eeee26, type: 2}
   - {fileID: 11400000, guid: 1a8aa510b2c90044c9fcef3c60cc51e1, type: 2}
   - {fileID: 11400000, guid: 3ee44f5ee813ecb49bca878dc3f3822f, type: 2}
+--- !u!114 &-5514747262804474299
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7364481315165733279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f32d1cfa9c1f1f44b593bd8d87acb21, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  recordTimeWindow: 20
+  recordInterval: 0.5
 --- !u!1 &7507711080541761029
 GameObject:
   m_ObjectHideFlags: 0

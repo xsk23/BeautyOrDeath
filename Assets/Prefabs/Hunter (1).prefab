@@ -695,6 +695,7 @@ GameObject:
   - component: {fileID: -2214929788951733327}
   - component: {fileID: 3439203615201911615}
   - component: {fileID: -7488479657767331540}
+  - component: {fileID: 4066982934861334799}
   m_Layer: 6
   m_Name: Hunter (1)
   m_TagString: Untagged
@@ -849,6 +850,7 @@ MonoBehaviour:
   crosshairUI: {fileID: 0}
   sceneScript: {fileID: 0}
   goalText: 
+  isFirstPerson: 1
   isChatting: 0
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
@@ -1023,6 +1025,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 2888778110e0e254695c9001c67d77e2, type: 2}
   - {fileID: 11400000, guid: 7cc41fa50194006478dad9e4822662df, type: 2}
   - {fileID: 11400000, guid: 5f046ba1ce9ca92449d288de855186d4, type: 2}
+  - {fileID: 11400000, guid: f043d5bdba7d9414cbf11400eaca70ba, type: 2}
 --- !u!114 &-2214929788951733327
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1084,6 +1087,32 @@ MonoBehaviour:
   triggerKey: 101
   trapPrefab: {fileID: 1288303555106897353, guid: dd57c30e0b0f17441826758f36e34972, type: 3}
   yOffset: 0.1
+--- !u!114 &4066982934861334799
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4516135911683214189}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a80d0ddc652e8fa42b0b9f788ade1308, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  skillName: Scan
+  cooldownTime: 2
+  triggerKey: 118
+  scanRadius: 30
+  visualDuration: 5
+  currentMode: 1
+  minAlpha: 0.1
+  maxAlpha: 0.8
+  footprintPrefab: {fileID: 47214768639774771, guid: 462e210f4e68b4e408b552c649416761, type: 3}
+  humanGhostPrefab: {fileID: 7437291211915263204, guid: 0e987d9859f20a94f8c16cbf77f20518, type: 3}
+  ghostMaterial: {fileID: 2100000, guid: de9e38de9d9275543a9cb0807fe7ad1f, type: 2}
 --- !u!1 &4565058604513354316
 GameObject:
   m_ObjectHideFlags: 0
