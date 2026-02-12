@@ -695,7 +695,7 @@ GameObject:
   - component: {fileID: -2214929788951733327}
   - component: {fileID: 3439203615201911615}
   - component: {fileID: -7488479657767331540}
-  - component: {fileID: 3684472165130412370}
+  - component: {fileID: 4066982934861334799}
   m_Layer: 6
   m_Name: Hunter (1)
   m_TagString: Untagged
@@ -844,7 +844,7 @@ MonoBehaviour:
   groundCheckDistance: 1.1
   groundLayer:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 0
   airControl: 2
   mouseSensitivity: 2
   crosshairUI: {fileID: 0}
@@ -875,9 +875,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: db296b91de1d68b4ca659f8cd0b2bbe8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetRenderer: {fileID: 2361297916985016705}
+  targetRenderer: {fileID: 0}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
-  nameTextObject: {fileID: 8273956418131515984}
 --- !u!114 &4556006175349872115
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1086,11 +1085,9 @@ MonoBehaviour:
   skillName: Trap
   cooldownTime: 5
   triggerKey: 101
-  trapPrefab: {fileID: 3650691871401806780, guid: 59c67f2eba8e4034e81dd83923ce4485, type: 3}
+  trapPrefab: {fileID: 1288303555106897353, guid: dd57c30e0b0f17441826758f36e34972, type: 3}
   yOffset: 0.1
-  placeDistance: 1.5
-  maxGroundCheckDistance: 10
---- !u!114 &3684472165130412370
+--- !u!114 &4066982934861334799
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -2170,7 +2167,7 @@ Transform:
   m_GameObject: {fileID: 8898380944955569208}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.585, z: 0}
+  m_LocalPosition: {x: 0, y: -0.307, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:

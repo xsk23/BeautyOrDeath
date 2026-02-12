@@ -2044,6 +2044,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetRenderer: {fileID: 8585125870714818998}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
+  nameTextObject: {fileID: 1515058495162728281}
 --- !u!114 &1498090036183238577
 MonoBehaviour:
   m_ObjectHideFlags: 0
