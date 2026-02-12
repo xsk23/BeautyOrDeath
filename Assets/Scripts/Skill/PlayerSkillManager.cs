@@ -98,6 +98,19 @@ public class PlayerSkillManager : NetworkBehaviour
         }
     }
 
+    // public override void OnStartClient()
+    // {
+    //     base.OnStartClient();
+    //     // 如果是本地玩家，OnStartLocalPlayer 已经处理过了，这里跳过避免重复
+    //     if (isLocalPlayer) return;
+
+    //     player = GetComponent<GamePlayer>();
+    //     foreach (var s in GetComponents<SkillBase>())
+    //     {
+    //         s.Init(player);
+    //     }
+    // }
+
     private void Update()
     {
         if (!isLocalPlayer || activeSkillsArray == null) return;
