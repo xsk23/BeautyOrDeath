@@ -89,3 +89,6 @@ killall -9 build_linux.x86_64
 rm -rf build_linux_Data 
 chmod +x build_linux.x86_64   
 nohup ./build_linux.x86_64 -batchmode -nographics > server_log.txt 2>&1 &
+
+---
+[本地开发启动方式](游戏启动方法.md)
