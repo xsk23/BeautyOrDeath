@@ -58,6 +58,14 @@ public class TreeManager : NetworkBehaviour
         }
 
         if (allTrees.Count == 0) return;
+   
+        // ================= 【核心修复：打乱树木对象列表】 =================
+        for (int i = 0; i < allTrees.Count; i++) {
+            PropTarget tempProp = allTrees[i];
+            int randomIndex = Random.Range(i, allTrees.Count);
+            allTrees[i] = allTrees[randomIndex];
+            allTrees[randomIndex] = tempProp;
+        }
 
         // 3. 打乱候选坐标顺序
         for (int i = 0; i < rawCandidatePositions.Count; i++) {

@@ -16,6 +16,8 @@ public class PropTarget : NetworkBehaviour
     public bool isHiddenByPossession = false; // 树是否因为被附身而隐藏
     [Header("Tree Manager Settings")]
     public bool isStaticTree = false; // 在 Inspector 中勾选此项
+    [SyncVar(hook = nameof(OnScoutedChanged))]
+    public bool isScouted = false; // 是否已被女巫发现
     [Header("Visuals")]
     // 修改：改为存储多个渲染器
     private Renderer[] allLODRenderers; 
@@ -182,43 +184,120 @@ public class PropTarget : NetworkBehaviour
 
     }
 
-    // public void SetHighlight(bool active)
-    // {
-    //     if (targetRenderer == null || highlightedMaterials == null) return;
-    //     if (isHighlighted == active) return;
-    //     // 【修复】增加 enabled 检查，防止给隐藏的物体高亮
-    //     if (!targetRenderer.enabled) return;
-    //     isHighlighted = active;
-
-    //     // 直接整体替换数组，效率最高且避免引用问题
-    //     targetRenderer.materials = active ? highlightedMaterials : originalMaterials;
-    // }
-
     public void SetHighlight(bool active)
     {
-        // 【增强安全检查】
-        if (allLODRenderers == null || 
-            highlightedMaterialsList.Count != allLODRenderers.Length || 
-            originalMaterialsList.Count != allLODRenderers.Length) 
+        if (allLODRenderers == null) return;
+
+        // 获取本地玩家身份
+        var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        bool isWitch = localPlayer != null && localPlayer.playerRole == PlayerRole.Witch;
+
+        // 判定逻辑：
+        // 女巫看到高亮的情况：准星正指着 (active) OR 已经被发现 (isScouted)
+        // 猎人看到高亮的情况：仅准星正指着 (active)
+        bool shouldShow = active || (isWitch && isScouted);
+
+        if (isHighlighted == shouldShow) 
         {
+            // 状态没变时，如果是女巫且高亮着，刷新一次属性（防止从 active 切换到 permanent 时颜色没变）
+            if (shouldShow && isWitch) UpdateColorAndZTest(active);
             return;
         }
-        
-        if (isHighlighted == active) return;
-        isHighlighted = active;
 
+        isHighlighted = shouldShow;
+        
+        // 应用材质球切换
         for (int i = 0; i < allLODRenderers.Length; i++)
         {
             var renderer = allLODRenderers[i];
-            // 即使渲染器没激活也要切换材质，否则 LOD 切换后显示的是旧材质
             if (renderer == null) continue;
-            
-            // 现在这里绝对不会报错了，因为列表长度是强制对齐的
-            renderer.materials = active ? highlightedMaterialsList[i] : originalMaterialsList[i];
+            renderer.materials = shouldShow ? highlightedMaterialsList[i] : originalMaterialsList[i];
         }
+
+        if (shouldShow) UpdateColorAndZTest(active);
     }
+
+    // public void SetHighlight(bool active)
+    // {
+    //     // 【增强安全检查】
+    //     if (allLODRenderers == null || 
+    //         highlightedMaterialsList.Count != allLODRenderers.Length || 
+    //         originalMaterialsList.Count != allLODRenderers.Length) 
+    //     {
+    //         return;
+    //     }
+        
+    //     if (isHighlighted == active) return;
+    //     isHighlighted = active;
+
+    //     for (int i = 0; i < allLODRenderers.Length; i++)
+    //     {
+    //         var renderer = allLODRenderers[i];
+    //         // 即使渲染器没激活也要切换材质，否则 LOD 切换后显示的是旧材质
+    //         if (renderer == null) continue;
+            
+    //         // 现在这里绝对不会报错了，因为列表长度是强制对齐的
+    //         renderer.materials = active ? highlightedMaterialsList[i] : originalMaterialsList[i];
+    //     }
+    // }
     void OnDestroy()
     {
         if (outlineInstance != null) Destroy(outlineInstance);
+    }
+    // 当服务器同步侦察状态时，通知本地女巫刷新视觉
+    void OnScoutedChanged(bool oldVal, bool newVal)
+    {
+        // 获取本地玩家并通知 TeamVision 刷新
+        var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        if (localPlayer != null && localPlayer.playerRole == PlayerRole.Witch)
+        {
+            localPlayer.GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        }
+    }
+
+    private void UpdateColorAndZTest(bool isActiveByCrosshair)
+    {
+        if (outlineInstance == null) return;
+
+        Color finalColor = Color.yellow;
+        float zTestMode = 8f; // 默认为 Always (穿透)
+        float outlineWidth = 0.03f; // 默认宽度（对应你Shader里的默认值）
+
+        if (isAncientTree)
+        {
+            // ================= 古树逻辑 =================
+            finalColor = Color.green;
+            zTestMode = 8f; // 常驻穿透，方便女巫远距离看到目标
+            outlineWidth = 0.05f;  // 古树可以稍微加粗，显示重要性
+        }
+        else
+        {
+            // ================= 普通树逻辑 =================
+            if (isActiveByCrosshair && !isScouted)
+            {
+                // 正在被检视，但还没完成
+                finalColor = Color.yellow;
+                zTestMode = 8f; // 检视时穿透，方便看清轮廓
+                outlineWidth = 0.03f;
+            }
+            else if (isScouted)
+            {
+                // 检视完成：普通树常驻
+                // 方案：亮银色 (R:0.8, G:0.8, B:1.0) 比灰色显眼得多
+                finalColor = new Color(0.8f, 0.8f, 1.0f, 1.0f); 
+                
+                // 不穿透透视
+                zTestMode = 4f; 
+                
+                // 【关键点】加粗轮廓！因为不透视，加粗可以防止被细小的枝叶完全盖住
+                outlineWidth = 0.06f; 
+            }
+        }
+
+        // 设置 Shader 参数
+        outlineInstance.SetColor("_OutlineColor", finalColor);
+        outlineInstance.SetFloat("_ZTestMode", zTestMode);
+        // 动态修改轮廓粗细
+        outlineInstance.SetFloat("_OutlineWidth", outlineWidth);
     }
 }

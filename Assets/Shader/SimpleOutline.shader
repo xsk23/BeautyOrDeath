@@ -4,6 +4,8 @@ Shader "Custom/SimpleOutline"
     {
         _OutlineColor ("Outline Color", Color) = (0, 1, 0, 1)
         _OutlineWidth ("Outline Width", Range(0, 0.1)) = 0.03
+        // 定义 ZTest 变量：4 代表 LEqual (正常透视), 8 代表 Always (穿墙显示)
+        [Enum(UnityEngine.Rendering.CompareFunction)] _ZTestMode ("ZTest Mode", Float) = 8 
     }
     
     SubShader
@@ -18,8 +20,8 @@ Shader "Custom/SimpleOutline"
         Pass
         {
             Name "Mask"
-            ZTest Always    // 总是通过 (透视效果关键)
-            ZWrite Off      // 不写入深度
+            ZTest [_ZTestMode]     // 动态控制 (透视效果关键)
+            ZWrite on      // 不写入深度
             ColorMask 0     // 【关键】不输出任何颜色 (隐形)
             Cull Off        // 双面都进行标记
 
@@ -60,7 +62,7 @@ Shader "Custom/SimpleOutline"
         Pass
         {
             Name "Outline"
-            ZTest Always    // 总是通过 (透视效果关键)
+            ZTest [_ZTestMode] // 动态控制
             ZWrite Off
             Cull Front      // 剔除正面，只画背面
             Blend SrcAlpha OneMinusSrcAlpha // 支持半透明
@@ -90,7 +92,7 @@ Shader "Custom/SimpleOutline"
 
             float _OutlineWidth;
             float4 _OutlineColor;
-
+    
             v2f vert (appdata v)
             {
                 v2f o;

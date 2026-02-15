@@ -56,6 +56,8 @@ public class WitchPlayer : GamePlayer
     [Header("复活赛设置")]
     public int frogPropID = 1; // 假设 PropDatabase 中 ID 1 是青蛙
     public float frogHealth = 20f; // 小动物形态血量
+    private float scoutTimer = 0f;
+    public const float SCOUT_TIME_THRESHOLD = 0.5f;
 
     // ========================================================================
     // 【新增】多人共乘（抢方向盘）核心变量
@@ -434,6 +436,32 @@ public class WitchPlayer : GamePlayer
         {
             // 只有打中带 PropTarget 的物体才算有效
             hitProp = hit.collider.GetComponentInParent<PropTarget>();
+        }
+
+        // --- 新增：侦察计时逻辑 ---
+        if (hitProp != null && (hitProp.isStaticTree || hitProp.isAncientTree))
+        {
+            if (hitProp == currentFocusProp)
+            {
+                // 如果这棵树还没被标记为已发现，就开始计时
+                if (!hitProp.isScouted)
+                {
+                    scoutTimer += Time.deltaTime;
+                    if (scoutTimer >= SCOUT_TIME_THRESHOLD)
+                    {
+                        CmdSetTreeScouted(hitProp.netId);
+                        scoutTimer = 0f; // 触发后重置
+                    }
+                }       
+            }
+            else
+            {
+                scoutTimer = 0f;
+            }
+        }
+        else
+        {
+            scoutTimer = 0f;
         }
 
         // 2. 状态切换逻辑
@@ -1678,6 +1706,19 @@ public class WitchPlayer : GamePlayer
         {
             Camera.main.transform.localPosition = targetCamPos;
             isCamInitialized = true;
+        }
+    }
+    [Command]
+    void CmdSetTreeScouted(uint treeNetId)
+    {
+        if (NetworkServer.spawned.TryGetValue(treeNetId, out NetworkIdentity ni))
+        {
+            PropTarget prop = ni.GetComponent<PropTarget>();
+            if (prop != null)
+            {
+                prop.isScouted = true;
+                UnityEngine.Debug.Log($"[Server] Tree {treeNetId} marked as SCOUTED by {playerName}");
+            }
         }
     }
 }

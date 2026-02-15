@@ -80,6 +80,23 @@ public class TeamVision : NetworkBehaviour
                 if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(false);
             }
         }
+        // 2. --- 处理已发现树木的常驻高亮 ---
+        if (localPlayer.playerRole == PlayerRole.Witch)
+        {
+            PropTarget[] allProps = Object.FindObjectsOfType<PropTarget>();
+            foreach (var prop in allProps)
+            {
+                if (prop == null) continue;
+
+                // 如果是被发现的静态树，强制开启高亮渲染。
+                // SetHighlight(false) 传入 false 是因为此时准星没指着它，
+                // 但内部逻辑会因为 isScouted 为 true 而决定继续显示高亮。
+                if (prop.isScouted && (prop.isStaticTree || prop.isAncientTree))
+                {
+                    prop.SetHighlight(false); 
+                }
+            }
+        }
     }
 
     public void ForceUpdateVisuals()
