@@ -639,7 +639,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: -8.500162, y: -0.00006636025}
+  m_AnchoredPosition: {x: 8.809021, y: 0.000022888184}
   m_SizeDelta: {x: 600, y: 0}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &7074682544861411068
@@ -802,7 +802,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 7766636281011303896}
   m_HandleRect: {fileID: 4998563414636909127}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -1810,8 +1810,8 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 9063692991700533714}
   m_HandleRect: {fileID: 1535224877861178859}
   m_Direction: 0
-  m_Value: 1.0000072
-  m_Size: 0.9716215
+  m_Value: -0.018177705
+  m_Size: 0.9699066
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -2283,8 +2283,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0}
   m_AnchorMax: {x: 1, y: 0}
-  m_AnchoredPosition: {x: -214.76, y: 131}
-  m_SizeDelta: {x: 429.5293, y: 100}
+  m_AnchoredPosition: {x: -300, y: 131}
+  m_SizeDelta: {x: 600, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &5556714188512828730
 CanvasRenderer:
@@ -2942,7 +2942,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &2508424779606371762
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2960,10 +2960,10 @@ RectTransform:
   - {fileID: 827687707189949236}
   m_Father: {fileID: 3536261417077598192}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 425, y: -50}
-  m_SizeDelta: {x: 100, y: 100}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 143.036, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &5073195113436934877
 CanvasRenderer:
@@ -6820,7 +6820,9 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: V
+  m_text: 'left_click
+
+'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

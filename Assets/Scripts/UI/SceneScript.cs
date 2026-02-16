@@ -38,6 +38,9 @@ public class SceneScript : MonoBehaviour
     public GameObject blindPanel; //致盲面板
     [Header("Item UI")]
     public SkillSlotUI itemSlot; // 【新增】用于显示 F 键道具的 UI 槽位
+    [Header("Special Action Slots")]
+    public SkillSlotUI morphSlot; // 在 Inspector 中拖入一个新的 SkillSlotUI 预制体（通常放在 Q/E 旁边）
+    public Sprite morphIcon;      // 拖入一张代表变身的图标（如魔法棒或圈圈图标）
     private void Awake()
     {
         // 1. 单例赋值
@@ -85,6 +88,13 @@ public class SceneScript : MonoBehaviour
         if (ExecutionText != null)
         {
             ExecutionText.gameObject.SetActive(false);
+        }
+        // 初始化变身槽位显示
+        if (morphSlot != null)
+        {
+            // 假设变身对应左键或右键，这里写 "LMB" 或 "Morph"
+            morphSlot.Setup(morphIcon, "LMB"); 
+            morphSlot.gameObject.SetActive(true);
         }
 
     }

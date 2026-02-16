@@ -2030,6 +2030,7 @@ MonoBehaviour:
   possessedTreeNetId: 0
   hasDeliveredTree: 0
   humanModelGroup: {fileID: 1091863095878887460}
+  morphCooldown: 2
 --- !u!114 &273187763104958596
 MonoBehaviour:
   m_ObjectHideFlags: 0

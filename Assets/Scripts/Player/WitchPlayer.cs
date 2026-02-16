@@ -93,8 +93,21 @@ public class WitchPlayer : GamePlayer
     [Header("Camera Smoothing")]
     private Vector3 targetCamPos = new Vector3(0, 1.055f, 0.278f); 
     private bool isCamInitialized = false; // 用于初始化第一帧位置
+    [Header("Morph Cooldown")]
+    public float morphCooldown = 1.0f; // 1秒冷却
+    private float nextMorphTime = 0f;  // 下一次允许变身的时间
     // ========================================================================
 
+    // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
+    public float MorphCooldownRatio
+    {
+        get
+        {
+            float timeLeft = nextMorphTime - Time.time;
+            if (timeLeft <= 0) return 0f;
+            return Mathf.Clamp01(timeLeft / morphCooldown);
+        }
+    }
     private void Awake()
     {
         goalText = "Get Your Own Tree And Assemble at the Gates!";
@@ -198,6 +211,12 @@ public class WitchPlayer : GamePlayer
         }
 
         base.Update();
+
+        // --- 新增：本地玩家更新 UI 冷却进度 ---
+        if (isLocalPlayer && SceneScript.Instance != null && SceneScript.Instance.morphSlot != null)
+        {
+            SceneScript.Instance.morphSlot.UpdateCooldown(MorphCooldownRatio);
+        }
 
         // ----------------------------------------------------------------
         // 【核心修复】计算速度并同步动画参数
@@ -356,30 +375,6 @@ public class WitchPlayer : GamePlayer
     {
         if (isLocalPlayer && !isPermanentDead)
         {
-            //切换道具
-            // if (Input.GetKeyDown(KeyCode.Alpha1))
-            // {
-            //     ChangeItem(0);
-            // }
-            // else if (Input.GetKeyDown(KeyCode.Alpha2))
-            // {
-            //     ChangeItem(1);
-            // }
-            // else if (Input.GetKeyDown(KeyCode.Alpha3))
-            // {
-            //     ChangeItem(2);
-            // }
-            // if (Input.GetAxis("Mouse ScrollWheel") > 0f)
-            // {
-            //     int nextIndex = (currentItemIndex + 1) % witchItems.Length;
-            //     ChangeItem(nextIndex);
-
-            // }
-            // else if (Input.GetAxis("Mouse ScrollWheel") < 0f)
-            // {
-            //     int nextIndex = (currentItemIndex - 1 + witchItems.Length) % witchItems.Length;
-            //     ChangeItem(nextIndex);
-            // }
             //使用道具
             // --- 【保留】 使用道具的逻辑 ---
             if (Input.GetKeyDown(KeyCode.F))
@@ -488,14 +483,22 @@ public class WitchPlayer : GamePlayer
     private void HandleMorphInput()
     {
         if (isInSecondChance) return; // 复活赛期间锁死形态，不能通过长按左键恢复
+        // --- 新增：检查冷却 ---
+        bool isCoolingDown = Time.time < nextMorphTime;
         // 定义当前状态
         bool isPassenger = hostNetId != 0; // 是否是乘客
         bool isHost = isMorphed && !isPassenger; // 是否是宿主
         // --- 处理左键按下 ---
         if (Input.GetMouseButton(0))
         {
+            // 如果在冷却中，直接跳过
+            if (isCoolingDown) 
+            {
+                UnityEngine.Debug.Log("Morph is on cooldown...");
+                lmbHoldTimer = 0f;
+                return; 
+            }
             lmbHoldTimer += Time.deltaTime;
-
             // 【修改】如果是 变身状态(Host) 或者 乘客状态(Passenger)，都显示进度条
             if (isHost || isPassenger)
             {
@@ -526,6 +529,8 @@ public class WitchPlayer : GamePlayer
                             // 宿主长按 -> 变回人形
                             CmdRevert();
                         }
+                        // 变身触发冷却
+                        nextMorphTime = Time.time + morphCooldown;
                     }
                 }
 
@@ -545,6 +550,13 @@ public class WitchPlayer : GamePlayer
             // 【注意】乘客不能触发短按变身，必须是非乘客 (!isPassenger)
             if (!isPassenger && lmbHoldTimer > 0.01f && lmbHoldTimer < 0.3f && !isMorphed && currentFocusProp != null)
             {
+                // 如果在冷却中，直接跳过
+                if (isCoolingDown) 
+                {
+                    UnityEngine.Debug.Log("Morph is on cooldown...");
+                    lmbHoldTimer = 0f;
+                    return; 
+                }
                 // 【修改】使用 GetComponentInParent，因为脚本在父物体上
                 WitchPlayer otherWitch = currentFocusProp.GetComponentInParent<WitchPlayer>();
                 if (otherWitch != null && otherWitch != this)
@@ -552,11 +564,15 @@ public class WitchPlayer : GamePlayer
                     // 加入它！
                     UnityEngine.Debug.Log($"Detected another witch: {otherWitch.playerName}, joining...");
                     CmdJoinWitch(otherWitch.netId);
+                    // 只有成功操作才触发冷却
+                    nextMorphTime = Time.time + morphCooldown;
                 }
                 else
                 {
                     // 普通变身
                     CmdMorph(currentFocusProp.propID);
+                    // 变身触发冷却
+                    nextMorphTime = Time.time + morphCooldown;
                 }
             }
 
@@ -1029,7 +1045,11 @@ public class WitchPlayer : GamePlayer
             // 3. 瞬间移动到树的位置，保证无缝衔接
             this.transform.position = tree.transform.position;
             this.transform.rotation = tree.transform.rotation;
-
+            // =========================================================
+            // 【核心修复】必须在服务器端立刻执行物理变身逻辑！
+            // 否则服务器上的碰撞体还是人形，猎人打不到树干。
+            // =========================================================
+            ApplyMorph(tree.propID);
             UnityEngine.Debug.Log($"[Server] {playerName} possessed Ancient Tree: {tree.name}");
         }
     }
@@ -1062,21 +1082,8 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdRevert()
     {
-        if (possessedTreeNetId != 0)
-        {
-            // 如果是附身状态，把树“种”在当前位置
-            if (NetworkServer.spawned.TryGetValue(possessedTreeNetId, out NetworkIdentity treeIdentity))
-            {
-                PropTarget tree = treeIdentity.GetComponent<PropTarget>();
-                if (tree != null)
-                {
-                    tree.transform.position = this.transform.position;
-                    tree.transform.rotation = this.transform.rotation;
-                    tree.ServerSetHidden(false); // 重新显示树
-                }
-            }
-            possessedTreeNetId = 0;
-        }
+        // 使用新提炼的方法
+        ServerReleaseTreeAtCurrentPosition();
 
         ServerKickAllPassengers(); // 踢掉所有同乘的女巫
         isMorphed = false;
@@ -1092,6 +1099,29 @@ public class WitchPlayer : GamePlayer
 
         // 1. 暂时禁用 CC 以便安全修改位置和参数
         controller.enabled = false;
+
+        // 1. 获取一个安全弹开的方向
+        // 如果是刚从古树变回来，我们往后方和上方弹得更远一些
+        Vector3 escapeDir = -transform.forward; 
+        if (possessedTreeNetId != 0)
+        {
+            // 如果是古树，弹开距离要大于树的半径（假设树半径1.5米，我们弹开2米）
+            transform.position += escapeDir * 2.0f + Vector3.up * 1.0f;
+        }
+        else
+        {
+            transform.position += Vector3.up * (originalCCHeight * 0.5f);
+        }
+
+        // 2. 物理扫描排空（防止新位置依然卡在其他树里）
+        // 尝试在周围找一个空地
+        Collider[] overlaps = new Collider[5];
+        int count = Physics.OverlapSphereNonAlloc(transform.position, originalCCRadius, overlaps, propLayer | groundLayer);
+        if (count > 0)
+        {
+            // 如果还卡着，随机找个方向推
+            transform.position += Quaternion.Euler(0, Random.Range(0, 360), 0) * Vector3.forward * 1.5f;
+        }
 
         // 2. 【核心修复】解决掉下地板问题
         // 在恢复人形前，将坐标向上抬升（通常抬升人类高度的一半，防止下半身卡进地里）
@@ -1391,7 +1421,9 @@ public class WitchPlayer : GamePlayer
         float meshWidth = Mathf.Max(mesh.bounds.size.x * scale.x, mesh.bounds.size.z * scale.z);
 
         // 稍微收缩半径，防止变身后变成“推土机”
-        float newRadius = Mathf.Clamp(meshWidth * 0.35f, 0.15f, 0.45f);
+        // 【修改】如果是古树（通过 possessedTreeNetId 判断），允许更大的半径
+        float maxR = (possessedTreeNetId != 0) ? 2.5f : 0.6f; 
+        float newRadius = Mathf.Clamp(meshWidth * 0.35f, 0.15f, maxR);
         float newHeight = meshHeight;
 
         // 2. 应用参数
@@ -1454,6 +1486,13 @@ public class WitchPlayer : GamePlayer
     }
     protected override void HandleDeath()
     {
+        // =================================================================
+        // 【新增修复】死亡时，如果手里有古树，先把它种在原地！
+        // =================================================================
+        if (isServer)
+        {
+            ServerReleaseTreeAtCurrentPosition();
+        }
         // =================================================================
         // 【新增修复】当宿主死亡（无论是变青蛙还是彻底死亡）时，必须强制踢出所有乘客
         // =================================================================
@@ -1719,6 +1758,27 @@ public class WitchPlayer : GamePlayer
                 prop.isScouted = true;
                 UnityEngine.Debug.Log($"[Server] Tree {treeNetId} marked as SCOUTED by {playerName}");
             }
+        }
+    }
+    [Server]
+    private void ServerReleaseTreeAtCurrentPosition()
+    {
+        if (possessedTreeNetId != 0)
+        {
+            // 找到那棵被隐藏的树
+            if (NetworkServer.spawned.TryGetValue(possessedTreeNetId, out NetworkIdentity treeIdentity))
+            {
+                PropTarget tree = treeIdentity.GetComponent<PropTarget>();
+                if (tree != null)
+                {
+                    // 将树“种”在女巫当前倒下的位置
+                    tree.transform.position = this.transform.position;
+                    tree.transform.rotation = this.transform.rotation;
+                    tree.ServerSetHidden(false); // 重新显示树
+                    UnityEngine.Debug.Log($"[Server] {playerName} died/reverted, tree {possessedTreeNetId} planted at {transform.position}");
+                }
+            }
+            possessedTreeNetId = 0; // 清除 ID
         }
     }
 }

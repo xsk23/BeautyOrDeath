@@ -2063,6 +2063,14 @@ public class TreeManager : NetworkBehaviour
         }
 
         if (allTrees.Count == 0) return;
+   
+        // ================= 【核心修复：打乱树木对象列表】 =================
+        for (int i = 0; i < allTrees.Count; i++) {
+            PropTarget tempProp = allTrees[i];
+            int randomIndex = Random.Range(i, allTrees.Count);
+            allTrees[i] = allTrees[randomIndex];
+            allTrees[randomIndex] = tempProp;
+        }
 
         // 3. 打乱候选坐标顺序
         for (int i = 0; i < rawCandidatePositions.Count; i++) {
@@ -3165,12 +3173,15 @@ public class GunWeapon : WeaponBase
             // 方案：起点稍微向前偏移 0.6米，跳出猎人自己的 CharacterController 范围
             Vector3 startPos = origin + direction * 0.6f;
 
-            if (Physics.Raycast(startPos, direction, out RaycastHit hit, range))
+            if (Physics.Raycast(startPos, direction, out RaycastHit hit, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
             {
                 // CharacterController 会被识别为 hit.collider
                 // 【核心修复】使用 GetComponentInParent，因为 Collider 可能在模型子节点上
                 GamePlayer target = hit.collider.GetComponentInParent<GamePlayer>();
-
+                // 调试打印：看看由于打中了什么而没射中
+                if (target == null) {
+                    Debug.Log($"Shot hit object without Player script: {hit.collider.name} on Layer: {LayerMask.LayerToName(hit.collider.gameObject.layer)}");
+                }       
                 if (target != null)
                 {
                     // 获取攻击者（枪是在猎人手里的，所以父级一定是 HunterPlayer）
@@ -5399,7 +5410,11 @@ public class WitchPlayer : GamePlayer
             // 3. 瞬间移动到树的位置，保证无缝衔接
             this.transform.position = tree.transform.position;
             this.transform.rotation = tree.transform.rotation;
-
+            // =========================================================
+            // 【核心修复】必须在服务器端立刻执行物理变身逻辑！
+            // 否则服务器上的碰撞体还是人形，猎人打不到树干。
+            // =========================================================
+            ApplyMorph(tree.propID);
             UnityEngine.Debug.Log($"[Server] {playerName} possessed Ancient Tree: {tree.name}");
         }
     }
@@ -5432,21 +5447,8 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdRevert()
     {
-        if (possessedTreeNetId != 0)
-        {
-            // 如果是附身状态，把树“种”在当前位置
-            if (NetworkServer.spawned.TryGetValue(possessedTreeNetId, out NetworkIdentity treeIdentity))
-            {
-                PropTarget tree = treeIdentity.GetComponent<PropTarget>();
-                if (tree != null)
-                {
-                    tree.transform.position = this.transform.position;
-                    tree.transform.rotation = this.transform.rotation;
-                    tree.ServerSetHidden(false); // 重新显示树
-                }
-            }
-            possessedTreeNetId = 0;
-        }
+        // 使用新提炼的方法
+        ServerReleaseTreeAtCurrentPosition();
 
         ServerKickAllPassengers(); // 踢掉所有同乘的女巫
         isMorphed = false;
@@ -5462,6 +5464,29 @@ public class WitchPlayer : GamePlayer
 
         // 1. 暂时禁用 CC 以便安全修改位置和参数
         controller.enabled = false;
+
+        // 1. 获取一个安全弹开的方向
+        // 如果是刚从古树变回来，我们往后方和上方弹得更远一些
+        Vector3 escapeDir = -transform.forward; 
+        if (possessedTreeNetId != 0)
+        {
+            // 如果是古树，弹开距离要大于树的半径（假设树半径1.5米，我们弹开2米）
+            transform.position += escapeDir * 2.0f + Vector3.up * 1.0f;
+        }
+        else
+        {
+            transform.position += Vector3.up * (originalCCHeight * 0.5f);
+        }
+
+        // 2. 物理扫描排空（防止新位置依然卡在其他树里）
+        // 尝试在周围找一个空地
+        Collider[] overlaps = new Collider[5];
+        int count = Physics.OverlapSphereNonAlloc(transform.position, originalCCRadius, overlaps, propLayer | groundLayer);
+        if (count > 0)
+        {
+            // 如果还卡着，随机找个方向推
+            transform.position += Quaternion.Euler(0, Random.Range(0, 360), 0) * Vector3.forward * 1.5f;
+        }
 
         // 2. 【核心修复】解决掉下地板问题
         // 在恢复人形前，将坐标向上抬升（通常抬升人类高度的一半，防止下半身卡进地里）
@@ -5761,7 +5786,9 @@ public class WitchPlayer : GamePlayer
         float meshWidth = Mathf.Max(mesh.bounds.size.x * scale.x, mesh.bounds.size.z * scale.z);
 
         // 稍微收缩半径，防止变身后变成“推土机”
-        float newRadius = Mathf.Clamp(meshWidth * 0.35f, 0.15f, 0.45f);
+        // 【修改】如果是古树（通过 possessedTreeNetId 判断），允许更大的半径
+        float maxR = (possessedTreeNetId != 0) ? 2.5f : 0.6f; 
+        float newRadius = Mathf.Clamp(meshWidth * 0.35f, 0.15f, maxR);
         float newHeight = meshHeight;
 
         // 2. 应用参数
@@ -5824,6 +5851,13 @@ public class WitchPlayer : GamePlayer
     }
     protected override void HandleDeath()
     {
+        // =================================================================
+        // 【新增修复】死亡时，如果手里有古树，先把它种在原地！
+        // =================================================================
+        if (isServer)
+        {
+            ServerReleaseTreeAtCurrentPosition();
+        }
         // =================================================================
         // 【新增修复】当宿主死亡（无论是变青蛙还是彻底死亡）时，必须强制踢出所有乘客
         // =================================================================
@@ -6089,6 +6123,27 @@ public class WitchPlayer : GamePlayer
                 prop.isScouted = true;
                 UnityEngine.Debug.Log($"[Server] Tree {treeNetId} marked as SCOUTED by {playerName}");
             }
+        }
+    }
+    [Server]
+    private void ServerReleaseTreeAtCurrentPosition()
+    {
+        if (possessedTreeNetId != 0)
+        {
+            // 找到那棵被隐藏的树
+            if (NetworkServer.spawned.TryGetValue(possessedTreeNetId, out NetworkIdentity treeIdentity))
+            {
+                PropTarget tree = treeIdentity.GetComponent<PropTarget>();
+                if (tree != null)
+                {
+                    // 将树“种”在女巫当前倒下的位置
+                    tree.transform.position = this.transform.position;
+                    tree.transform.rotation = this.transform.rotation;
+                    tree.ServerSetHidden(false); // 重新显示树
+                    UnityEngine.Debug.Log($"[Server] {playerName} died/reverted, tree {possessedTreeNetId} planted at {transform.position}");
+                }
+            }
+            possessedTreeNetId = 0; // 清除 ID
         }
     }
 }
