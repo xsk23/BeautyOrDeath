@@ -54,10 +54,20 @@ public class HunterPlayer : GamePlayer
     {
         base.OnStartLocalPlayer();
         ChangeWeapon(currentWeaponIndex);
-        // 【新增】确保猎人看到的是隐藏的道具槽
-        if (SceneScript.Instance != null && SceneScript.Instance.itemSlot != null)
+    // 确保本地猎人看到的是隐藏的女巫相关 UI
+        if (SceneScript.Instance != null)
         {
-            SceneScript.Instance.itemSlot.gameObject.SetActive(false);
+            // 1. 隐藏女巫的 F 键道具槽（你原本已有的逻辑）
+            if (SceneScript.Instance.itemSlot != null)
+            {
+                SceneScript.Instance.itemSlot.gameObject.SetActive(false);
+            }
+
+            // 2. 【新增】隐藏女巫的变身技能槽
+            if (SceneScript.Instance.morphSlot != null)
+            {
+                SceneScript.Instance.morphSlot.gameObject.SetActive(false);
+            }
         }
     }
     public override void OnStartServer()

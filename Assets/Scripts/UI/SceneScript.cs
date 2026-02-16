@@ -94,7 +94,6 @@ public class SceneScript : MonoBehaviour
         {
             // 假设变身对应左键或右键，这里写 "LMB" 或 "Morph"
             morphSlot.Setup(morphIcon, "LMB"); 
-            morphSlot.gameObject.SetActive(true);
         }
 
     }

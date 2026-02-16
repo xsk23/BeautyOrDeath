@@ -4474,8 +4474,21 @@ public class WitchPlayer : GamePlayer
     [Header("Camera Smoothing")]
     private Vector3 targetCamPos = new Vector3(0, 1.055f, 0.278f); 
     private bool isCamInitialized = false; // 用于初始化第一帧位置
+    [Header("Morph Cooldown")]
+    public float morphCooldown = 1.0f; // 1秒冷却
+    private float nextMorphTime = 0f;  // 下一次允许变身的时间
     // ========================================================================
 
+    // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
+    public float MorphCooldownRatio
+    {
+        get
+        {
+            float timeLeft = nextMorphTime - Time.time;
+            if (timeLeft <= 0) return 0f;
+            return Mathf.Clamp01(timeLeft / morphCooldown);
+        }
+    }
     private void Awake()
     {
         goalText = "Get Your Own Tree And Assemble at the Gates!";
@@ -4579,6 +4592,12 @@ public class WitchPlayer : GamePlayer
         }
 
         base.Update();
+
+        // --- 新增：本地玩家更新 UI 冷却进度 ---
+        if (isLocalPlayer && SceneScript.Instance != null && SceneScript.Instance.morphSlot != null)
+        {
+            SceneScript.Instance.morphSlot.UpdateCooldown(MorphCooldownRatio);
+        }
 
         // ----------------------------------------------------------------
         // 【核心修复】计算速度并同步动画参数
@@ -4737,30 +4756,6 @@ public class WitchPlayer : GamePlayer
     {
         if (isLocalPlayer && !isPermanentDead)
         {
-            //切换道具
-            // if (Input.GetKeyDown(KeyCode.Alpha1))
-            // {
-            //     ChangeItem(0);
-            // }
-            // else if (Input.GetKeyDown(KeyCode.Alpha2))
-            // {
-            //     ChangeItem(1);
-            // }
-            // else if (Input.GetKeyDown(KeyCode.Alpha3))
-            // {
-            //     ChangeItem(2);
-            // }
-            // if (Input.GetAxis("Mouse ScrollWheel") > 0f)
-            // {
-            //     int nextIndex = (currentItemIndex + 1) % witchItems.Length;
-            //     ChangeItem(nextIndex);
-
-            // }
-            // else if (Input.GetAxis("Mouse ScrollWheel") < 0f)
-            // {
-            //     int nextIndex = (currentItemIndex - 1 + witchItems.Length) % witchItems.Length;
-            //     ChangeItem(nextIndex);
-            // }
             //使用道具
             // --- 【保留】 使用道具的逻辑 ---
             if (Input.GetKeyDown(KeyCode.F))
@@ -4869,14 +4864,22 @@ public class WitchPlayer : GamePlayer
     private void HandleMorphInput()
     {
         if (isInSecondChance) return; // 复活赛期间锁死形态，不能通过长按左键恢复
+        // --- 新增：检查冷却 ---
+        bool isCoolingDown = Time.time < nextMorphTime;
         // 定义当前状态
         bool isPassenger = hostNetId != 0; // 是否是乘客
         bool isHost = isMorphed && !isPassenger; // 是否是宿主
         // --- 处理左键按下 ---
         if (Input.GetMouseButton(0))
         {
+            // 如果在冷却中，直接跳过
+            if (isCoolingDown) 
+            {
+                UnityEngine.Debug.Log("Morph is on cooldown...");
+                lmbHoldTimer = 0f;
+                return; 
+            }
             lmbHoldTimer += Time.deltaTime;
-
             // 【修改】如果是 变身状态(Host) 或者 乘客状态(Passenger)，都显示进度条
             if (isHost || isPassenger)
             {
@@ -4907,6 +4910,8 @@ public class WitchPlayer : GamePlayer
                             // 宿主长按 -> 变回人形
                             CmdRevert();
                         }
+                        // 变身触发冷却
+                        nextMorphTime = Time.time + morphCooldown;
                     }
                 }
 
@@ -4926,6 +4931,13 @@ public class WitchPlayer : GamePlayer
             // 【注意】乘客不能触发短按变身，必须是非乘客 (!isPassenger)
             if (!isPassenger && lmbHoldTimer > 0.01f && lmbHoldTimer < 0.3f && !isMorphed && currentFocusProp != null)
             {
+                // 如果在冷却中，直接跳过
+                if (isCoolingDown) 
+                {
+                    UnityEngine.Debug.Log("Morph is on cooldown...");
+                    lmbHoldTimer = 0f;
+                    return; 
+                }
                 // 【修改】使用 GetComponentInParent，因为脚本在父物体上
                 WitchPlayer otherWitch = currentFocusProp.GetComponentInParent<WitchPlayer>();
                 if (otherWitch != null && otherWitch != this)
@@ -4933,11 +4945,15 @@ public class WitchPlayer : GamePlayer
                     // 加入它！
                     UnityEngine.Debug.Log($"Detected another witch: {otherWitch.playerName}, joining...");
                     CmdJoinWitch(otherWitch.netId);
+                    // 只有成功操作才触发冷却
+                    nextMorphTime = Time.time + morphCooldown;
                 }
                 else
                 {
                     // 普通变身
                     CmdMorph(currentFocusProp.propID);
+                    // 变身触发冷却
+                    nextMorphTime = Time.time + morphCooldown;
                 }
             }
 
@@ -9251,6 +9267,9 @@ public class SceneScript : MonoBehaviour
     public GameObject blindPanel; //致盲面板
     [Header("Item UI")]
     public SkillSlotUI itemSlot; // 【新增】用于显示 F 键道具的 UI 槽位
+    [Header("Special Action Slots")]
+    public SkillSlotUI morphSlot; // 在 Inspector 中拖入一个新的 SkillSlotUI 预制体（通常放在 Q/E 旁边）
+    public Sprite morphIcon;      // 拖入一张代表变身的图标（如魔法棒或圈圈图标）
     private void Awake()
     {
         // 1. 单例赋值
@@ -9298,6 +9317,13 @@ public class SceneScript : MonoBehaviour
         if (ExecutionText != null)
         {
             ExecutionText.gameObject.SetActive(false);
+        }
+        // 初始化变身槽位显示
+        if (morphSlot != null)
+        {
+            // 假设变身对应左键或右键，这里写 "LMB" 或 "Morph"
+            morphSlot.Setup(morphIcon, "LMB"); 
+            morphSlot.gameObject.SetActive(true);
         }
 
     }
