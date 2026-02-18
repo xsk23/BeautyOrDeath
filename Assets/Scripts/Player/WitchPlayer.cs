@@ -96,6 +96,12 @@ public class WitchPlayer : GamePlayer
     [Header("Morph Cooldown")]
     public float morphCooldown = 1.0f; // 1秒冷却
     private float nextMorphTime = 0f;  // 下一次允许变身的时间
+    [Header("Reward Settings")]
+    public int treesPerReward = 20; // 每检视20棵树获得一次奖励
+    [SyncVar] public int pendingRewards = 0; // 待领取的奖励次数
+    [SyncVar] public int scoutedCount = 0; 
+    // 增加一个列表，专门让服务器记住发给客户端的是哪三个奖励
+    private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
 
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
@@ -733,13 +739,16 @@ public class WitchPlayer : GamePlayer
 
             // 4. 【核心修复】禁用脚本但保留动画
             // 遍历 Behaviour 能够同时覆盖 MonoBehaviour 和 Animator
-            Behaviour[] allBehaviours = currentVisualProp.GetComponentsInChildren<Behaviour>();
-            foreach (var comp in allBehaviours)
+            // 2. 找到 ApplyMorph 方法中大约 743 行的循环，修改为：
+            // 将原来的 Behaviour[] 改为 Component[] 或者是更精准的逻辑
+            Component[] allComps = currentVisualProp.GetComponentsInChildren<Component>();
+            foreach (var comp in allComps)
             {
-                // 如果不是 Animator 且不是渲染器相关，就禁用它（比如禁用移动脚本、输入脚本）
-                if (!(comp is Animator) && !(comp is Renderer))
+                // 如果是脚本(MonoBehaviour) 且不是 Animator，则禁用
+                // 注意：Renderer 根本没有 .enabled 属性在 Behaviour 级别，它在 Renderer 级别
+                if (comp is MonoBehaviour script && !(comp is Animator))
                 {
-                    comp.enabled = false;
+                    script.enabled = false;
                 }
             }
 
@@ -1753,13 +1762,259 @@ public class WitchPlayer : GamePlayer
         if (NetworkServer.spawned.TryGetValue(treeNetId, out NetworkIdentity ni))
         {
             PropTarget prop = ni.GetComponent<PropTarget>();
-            if (prop != null)
+            if (prop != null && !prop.isScouted)
             {
                 prop.isScouted = true;
-                UnityEngine.Debug.Log($"[Server] Tree {treeNetId} marked as SCOUTED by {playerName}");
+                scoutedCount++;
+                
+                if (scoutedCount % treesPerReward == 0)
+                {
+                    pendingRewards++;
+                    
+                    // --- 【核心修改：在服务器生成奖励】 ---
+                    serverRewardPool.Clear();
+                    serverRewardPool.Add(CreateAttributeReward());
+                    serverRewardPool.Add(CreateSkillReward());
+                    serverRewardPool.Add(CreateExtraReward());
+
+                    // 将生成好的数组通过 RPC 发送给客户端
+                    TargetShowRewardUI(connectionToClient, serverRewardPool.ToArray());
+                }
             }
         }
     }
+    // --- 奖励生成逻辑 ---
+
+    private List<RewardOption> currentRewardPool = new List<RewardOption>();
+
+    [TargetRpc]
+    void TargetShowRewardUI(NetworkConnection target, RewardOption[] options)
+    {
+        // 客户端存一份，用于 UI 显示
+        currentRewardPool = new List<RewardOption>(options);
+        
+        // 显示 UI
+        RewardUI.Instance.Show(options);
+    }
+
+    private RewardOption CreateAttributeReward()
+    {
+        int rand = Random.Range(0, 5);
+        string[] titles = { "Healing", "Vitality", "Mana Soul", "Arcane Flow", "Celerity" };
+        string[] keys = { "AddHP", "MaxHP", "AddMana", "MaxMana", "MoveSpeed" };
+        float[] values = { 30f, 50f, 40f, 50f, 1.5f };
+        
+        return new RewardOption { 
+            title = titles[rand], 
+            description = $"Permanent {keys[rand]} +{values[rand]}", 
+            category = RewardCategory.Attribute, 
+            rewardKey = keys[rand], 
+            value = values[rand],
+            id = 0 // UI索引
+        };
+    }
+
+    private RewardOption CreateSkillReward()
+    {
+        List<RewardOption> validOptions = new List<RewardOption>();
+
+        // 辅助函数：检查某个类名是否在玩家选中的两个技能之中
+        System.Func<string, bool> isSkillEquipped = (className) => {
+            return syncedSkill1Name == className || syncedSkill2Name == className;
+        };
+
+        // 1. 检查迷雾 (Mist)
+        if (isSkillEquipped("WitchSkill_Mist"))
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Abyssal Fog", 
+                description = "Mist radius doubled (2x size)", 
+                category = RewardCategory.Skill, 
+                rewardKey = "MistRadius", 
+                value = 2.0f 
+            });
+        }
+
+        // 2. 检查诅咒 (Curse)
+        if (isSkillEquipped("WitchSkill_Curse"))
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Extended Hex", 
+                description = "Curse casting range +10m", 
+                category = RewardCategory.Skill, 
+                rewardKey = "CurseRange", 
+                value = 10f 
+            });
+        }
+
+        // 3. 检查分身 (Decoy)
+        if (isSkillEquipped("WitchSkill_Decoy"))
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Triple Illusion", 
+                description = "Decoy spawns 3 clones per use", 
+                category = RewardCategory.Skill, 
+                rewardKey = "DecoyCount", 
+                value = 3f 
+            });
+        }
+
+        // 4. 检查混沌 (Chaos)
+        if (isSkillEquipped("WitchSkill_Chaos"))
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Chaos Mastery", 
+                description = "Chaos disturbance radius +5m", 
+                category = RewardCategory.Skill, 
+                rewardKey = "ChaosRadius", 
+                value = 5f 
+            });
+        }
+
+        // 兜底逻辑：如果什么都没带（或是同步还没完成），给一个法力值相关的奖励
+        if (validOptions.Count == 0)
+        {
+            return new RewardOption { 
+                title = "Arcane Surge", 
+                description = "Recover 50 Mana immediately", 
+                category = RewardCategory.Attribute, 
+                rewardKey = "AddMana", 
+                value = 50f 
+            };
+        }
+
+        // 随机返回一个已装备技能的增益
+        return validOptions[Random.Range(0, validOptions.Count)];
+    }
+
+    private RewardOption CreateExtraReward()
+    {
+        if (Random.value > 0.5f)
+            return new RewardOption { title = "Hunter Scent", description = "Reveal Hunters for 10s", category = RewardCategory.Extra, rewardKey = "HunterVision", value = 10f };
+        else
+            return new RewardOption { title = "Forest Spirit", description = "Reveal Ancient Trees for 5s", category = RewardCategory.Extra, rewardKey = "AncientVision", value = 5f };
+    }
+
+    [Command]
+    public void CmdSelectReward(int index)
+    {
+        // 使用服务器自己的 serverRewardPool 进行校验
+        if (pendingRewards <= 0 || index >= serverRewardPool.Count) return;
+        
+        pendingRewards--;
+        
+        var choice = serverRewardPool[index];
+        ApplyRewardEffect(choice.rewardKey, choice.value);
+        
+        // 选完后清空服务器缓存
+        serverRewardPool.Clear(); 
+    }
+
+    [Server]
+    private void ApplyRewardEffect(string key, float val)
+    {
+        switch (key)
+        {
+            // ======= 属性类 =======
+            case "AddHP":
+                currentHealth = Mathf.Min(maxHealth, currentHealth + val);
+                break;
+            case "MaxHP":
+                maxHealth += val;
+                currentHealth += val;
+                break;
+            case "AddMana":
+                currentMana = Mathf.Min(maxMana, currentMana + val);
+                break;
+            case "MaxMana":
+                maxMana += val;
+                currentMana += val;
+                break;
+            case "MoveSpeed":
+                originalHumanSpeed += val; // 永久提升基础速度
+                if (!isMorphed) moveSpeed = originalHumanSpeed;
+                break;
+
+        // ======= 迷雾增强 =======
+            case "MistRadius":
+                var mistSkill = GetComponent<WitchSkill_Mist>();
+                if (mistSkill) mistSkill.mistScale = val; // 将倍率设为 2.0
+                break;
+
+            // ======= 诅咒增强 =======
+            case "CurseRange":
+                var curseSkill = GetComponent<WitchSkill_Curse>();
+                if (curseSkill) curseSkill.range += val; // 增加射程
+                break;
+
+            // ======= 原有的技能增强 =======
+            case "DecoyCount":
+                var decoySkill = GetComponent<WitchSkill_Decoy>();
+                if (decoySkill) decoySkill.spawnCount = (int)val;
+                break;
+            case "ChaosRadius":
+                var chaosSkill = GetComponent<WitchSkill_Chaos>();
+                if (chaosSkill) chaosSkill.radius += val;
+                break;
+
+            // ======= 额外奖励类 =======
+            case "AncientVision":
+                TargetTempRevealAncient(connectionToClient, val);
+                break;
+            case "HunterVision":
+                TargetTempRevealHunters(connectionToClient, val);
+                break;
+        }
+    }
+
+    // --- 客户端辅助逻辑：临时透视 --- 
+    //debug
+
+    [TargetRpc]
+    private void TargetTempRevealAncient(NetworkConnection target, float duration)
+    {
+        StartCoroutine(TempAncientHighlightRoutine(duration));
+    }
+
+    private IEnumerator TempAncientHighlightRoutine(float duration)
+    {
+        // 获取场景中所有的 PropTarget
+        PropTarget[] all = Object.FindObjectsOfType<PropTarget>();
+        List<PropTarget> ancients = new List<PropTarget>();
+        
+        foreach (var p in all)
+        {
+            // 找到古树且当前没被发现的
+            if (p.isAncientTree && !p.isScouted)
+            {
+                ancients.Add(p);
+                p.isLocalTempRevealed = true; // 修改本地临时变量
+            }
+        }
+        
+        // 【关键】手动通知本地的 TeamVision 刷新一次视觉
+        GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        
+        yield return new WaitForSeconds(duration);
+        
+        // 恢复
+        foreach (var p in ancients) 
+        {
+            if (p != null) p.isLocalTempRevealed = false;
+        }
+        
+        // 【关键】再次刷新视觉
+        GetComponent<TeamVision>()?.ForceUpdateVisuals();
+    }
+    [TargetRpc]
+    private void TargetTempRevealHunters(NetworkConnection target, float duration)
+    {
+        var vision = GetComponent<TeamVision>();
+        if (vision != null) StartCoroutine(vision.TempShowEnemies(duration));
+    }
+
+
+
     [Server]
     private void ServerReleaseTreeAtCurrentPosition()
     {

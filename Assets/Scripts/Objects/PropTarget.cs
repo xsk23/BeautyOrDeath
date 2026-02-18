@@ -5,6 +5,7 @@ using Mirror;
 
 public class PropTarget : NetworkBehaviour
 {
+    public bool isLocalTempRevealed = false; // 仅本地有效，不联网
     [Header("Identity")]
     [SyncVar]
     public int propID; 
@@ -195,7 +196,8 @@ public class PropTarget : NetworkBehaviour
         // 判定逻辑：
         // 女巫看到高亮的情况：准星正指着 (active) OR 已经被发现 (isScouted)
         // 猎人看到高亮的情况：仅准星正指着 (active)
-        bool shouldShow = active || (isWitch && isScouted);
+        // 修改判定逻辑：增加 isLocalTempRevealed
+        bool shouldShow = active || (isWitch && (isScouted || isLocalTempRevealed));
 
         if (isHighlighted == shouldShow) 
         {

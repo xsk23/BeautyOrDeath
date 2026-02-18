@@ -6,6 +6,7 @@ public class WitchSkill_Mist : SkillBase
     [Header("技能参数")]
     public GameObject mistPrefab; // 迷雾预制体
     public float spawnOffset = 1.0f; // 在身后多少米生成
+    public float mistScale = 1.0f; // 【新增】迷雾缩放倍率，默认为1
 
     protected override void OnCast()
     {
@@ -26,7 +27,9 @@ public class WitchSkill_Mist : SkillBase
 
         // 2. 生成实例
         GameObject mist = Instantiate(mistPrefab, spawnPos, Quaternion.identity);
-
+        // 【核心修改】应用奖励带来的缩放
+        // 缩放 Transform 会同时增大其子物体的 Trigger 碰撞体范围
+        mist.transform.localScale *= mistScale;
         // 3. 网络同步
         NetworkServer.Spawn(mist);
     }

@@ -135,13 +135,35 @@ public class SceneScript : MonoBehaviour
         }
         else
         {
-            // 拼接字符串：显示“还需带回数”和“地图剩余数”
+            // 1. 基础胜利目标文本
             string goalInfo = local is WitchPlayer ? 
                 $"Trees needed: <color=yellow>{remainingToWin}</color>" : 
                 $"Witches need: <color=red>{remainingToWin}</color>";
 
-            // 新增一行显示地图资源情况
-            GoalText.text = $"{goalInfo}\n<color={statusColor}>Ancient Trees on Map: {availableOnMap}</color> (Team: {delivered}/{total})";
+            // 2. 地图资源统计
+            string mapInfo = $"\n<color={statusColor}>Ancient Trees on Map: {availableOnMap}</color> (Team: {delivered}/{total})";
+
+            // ----------------- 【核心修改：添加女巫奖励进度】 -----------------
+            string rewardInfo = "";
+            if (local is WitchPlayer witch)
+            {
+                // 计算当前这一轮奖励的进度 (例如 5/20)
+                int currentProgress = witch.scoutedCount % witch.treesPerReward;
+                
+                // 如果有待领取的奖励，高亮显示
+                if (witch.pendingRewards > 0)
+                {
+                    rewardInfo = $"\n<color=#FFD700>---REWARD READY: {witch.pendingRewards}---</color>";
+                }
+                else
+                {
+                    // 显示普通进度，使用紫色区分
+                    rewardInfo = $"\n<color=#BB88FF>Scouting Reward: {currentProgress}/{witch.treesPerReward}</color>";
+                }
+            }
+            // ----------------------------------------------------------------
+
+            GoalText.text = goalInfo + mapInfo + rewardInfo;
         }
     }
 

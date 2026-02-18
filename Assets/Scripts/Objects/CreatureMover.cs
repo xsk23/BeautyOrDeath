@@ -47,7 +47,7 @@ namespace Controller
         public Vector3 Target => m_Target;
         public bool IsRun => m_IsRun;
 
-        private void OnValidate()
+        private new void OnValidate()
         {
             m_WalkSpeed = Mathf.Max(m_WalkSpeed, 0f);
             m_RunSpeed = Mathf.Max(m_RunSpeed, m_WalkSpeed);

@@ -80,13 +80,13 @@ public class TreeManager : NetworkBehaviour
         
         foreach (Vector3 originalPos in rawCandidatePositions) {
             Vector3 currentTestPos = originalPos;
-            bool successfullyPlaced = false;
+            // bool successfullyPlaced = false;
 
             // 尝试多次偏移以寻找合法位置
             for (int attempt = 0; attempt <= maxAdjustmentAttempts; attempt++) {
                 if (IsPositionValid(currentTestPos, finalFilteredPositions, spawnPoints)) {
                     finalFilteredPositions.Add(currentTestPos);
-                    successfullyPlaced = true;
+                    // successfullyPlaced = true;
                     break;
                 }
 

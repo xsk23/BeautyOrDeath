@@ -1171,7 +1171,7 @@ namespace Controller
         public Vector3 Target => m_Target;
         public bool IsRun => m_IsRun;
 
-        private void OnValidate()
+        private new void OnValidate()
         {
             m_WalkSpeed = Mathf.Max(m_WalkSpeed, 0f);
             m_RunSpeed = Mathf.Max(m_RunSpeed, m_WalkSpeed);
@@ -1593,6 +1593,7 @@ using Mirror;
 
 public class PropTarget : NetworkBehaviour
 {
+    public bool isLocalTempRevealed = false; // 仅本地有效，不联网
     [Header("Identity")]
     [SyncVar]
     public int propID; 
@@ -1783,7 +1784,8 @@ public class PropTarget : NetworkBehaviour
         // 判定逻辑：
         // 女巫看到高亮的情况：准星正指着 (active) OR 已经被发现 (isScouted)
         // 猎人看到高亮的情况：仅准星正指着 (active)
-        bool shouldShow = active || (isWitch && isScouted);
+        // 修改判定逻辑：增加 isLocalTempRevealed
+        bool shouldShow = active || (isWitch && (isScouted || isLocalTempRevealed));
 
         if (isHighlighted == shouldShow) 
         {
@@ -2085,13 +2087,13 @@ public class TreeManager : NetworkBehaviour
         
         foreach (Vector3 originalPos in rawCandidatePositions) {
             Vector3 currentTestPos = originalPos;
-            bool successfullyPlaced = false;
+            // bool successfullyPlaced = false;
 
             // 尝试多次偏移以寻找合法位置
             for (int attempt = 0; attempt <= maxAdjustmentAttempts; attempt++) {
                 if (IsPositionValid(currentTestPos, finalFilteredPositions, spawnPoints)) {
                     finalFilteredPositions.Add(currentTestPos);
-                    successfullyPlaced = true;
+                    // successfullyPlaced = true;
                     break;
                 }
 
@@ -3281,10 +3283,20 @@ public class HunterPlayer : GamePlayer
     {
         base.OnStartLocalPlayer();
         ChangeWeapon(currentWeaponIndex);
-        // 【新增】确保猎人看到的是隐藏的道具槽
-        if (SceneScript.Instance != null && SceneScript.Instance.itemSlot != null)
+    // 确保本地猎人看到的是隐藏的女巫相关 UI
+        if (SceneScript.Instance != null)
         {
-            SceneScript.Instance.itemSlot.gameObject.SetActive(false);
+            // 1. 隐藏女巫的 F 键道具槽（你原本已有的逻辑）
+            if (SceneScript.Instance.itemSlot != null)
+            {
+                SceneScript.Instance.itemSlot.gameObject.SetActive(false);
+            }
+
+            // 2. 【新增】隐藏女巫的变身技能槽
+            if (SceneScript.Instance.morphSlot != null)
+            {
+                SceneScript.Instance.morphSlot.gameObject.SetActive(false);
+            }
         }
     }
     public override void OnStartServer()
@@ -4477,6 +4489,12 @@ public class WitchPlayer : GamePlayer
     [Header("Morph Cooldown")]
     public float morphCooldown = 1.0f; // 1秒冷却
     private float nextMorphTime = 0f;  // 下一次允许变身的时间
+    [Header("Reward Settings")]
+    public int treesPerReward = 20; // 每检视20棵树获得一次奖励
+    [SyncVar] public int pendingRewards = 0; // 待领取的奖励次数
+    [SyncVar] public int scoutedCount = 0; 
+    // 增加一个列表，专门让服务器记住发给客户端的是哪三个奖励
+    private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
 
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
@@ -5114,13 +5132,16 @@ public class WitchPlayer : GamePlayer
 
             // 4. 【核心修复】禁用脚本但保留动画
             // 遍历 Behaviour 能够同时覆盖 MonoBehaviour 和 Animator
-            Behaviour[] allBehaviours = currentVisualProp.GetComponentsInChildren<Behaviour>();
-            foreach (var comp in allBehaviours)
+            // 2. 找到 ApplyMorph 方法中大约 743 行的循环，修改为：
+            // 将原来的 Behaviour[] 改为 Component[] 或者是更精准的逻辑
+            Component[] allComps = currentVisualProp.GetComponentsInChildren<Component>();
+            foreach (var comp in allComps)
             {
-                // 如果不是 Animator 且不是渲染器相关，就禁用它（比如禁用移动脚本、输入脚本）
-                if (!(comp is Animator) && !(comp is Renderer))
+                // 如果是脚本(MonoBehaviour) 且不是 Animator，则禁用
+                // 注意：Renderer 根本没有 .enabled 属性在 Behaviour 级别，它在 Renderer 级别
+                if (comp is MonoBehaviour script && !(comp is Animator))
                 {
-                    comp.enabled = false;
+                    script.enabled = false;
                 }
             }
 
@@ -6134,13 +6155,248 @@ public class WitchPlayer : GamePlayer
         if (NetworkServer.spawned.TryGetValue(treeNetId, out NetworkIdentity ni))
         {
             PropTarget prop = ni.GetComponent<PropTarget>();
-            if (prop != null)
+            if (prop != null && !prop.isScouted)
             {
                 prop.isScouted = true;
-                UnityEngine.Debug.Log($"[Server] Tree {treeNetId} marked as SCOUTED by {playerName}");
+                scoutedCount++;
+                
+                if (scoutedCount % treesPerReward == 0)
+                {
+                    pendingRewards++;
+                    
+                    // --- 【核心修改：在服务器生成奖励】 ---
+                    serverRewardPool.Clear();
+                    serverRewardPool.Add(CreateAttributeReward());
+                    serverRewardPool.Add(CreateSkillReward());
+                    serverRewardPool.Add(CreateExtraReward());
+
+                    // 将生成好的数组通过 RPC 发送给客户端
+                    TargetShowRewardUI(connectionToClient, serverRewardPool.ToArray());
+                }
             }
         }
     }
+    // --- 奖励生成逻辑 ---
+
+    private List<RewardOption> currentRewardPool = new List<RewardOption>();
+
+    [TargetRpc]
+    void TargetShowRewardUI(NetworkConnection target, RewardOption[] options)
+    {
+        // 客户端存一份，用于 UI 显示
+        currentRewardPool = new List<RewardOption>(options);
+        
+        // 显示 UI
+        RewardUI.Instance.Show(options);
+    }
+
+    private RewardOption CreateAttributeReward()
+    {
+        int rand = Random.Range(0, 5);
+        string[] titles = { "Healing", "Vitality", "Mana Soul", "Arcane Flow", "Celerity" };
+        string[] keys = { "AddHP", "MaxHP", "AddMana", "MaxMana", "MoveSpeed" };
+        float[] values = { 30f, 50f, 40f, 50f, 1.5f };
+        
+        return new RewardOption { 
+            title = titles[rand], 
+            description = $"Permanent {keys[rand]} +{values[rand]}", 
+            category = RewardCategory.Attribute, 
+            rewardKey = keys[rand], 
+            value = values[rand],
+            id = 0 // UI索引
+        };
+    }
+
+    private RewardOption CreateSkillReward()
+    {
+        // 创建一个候选列表，只存放当前已装备技能的奖励
+        List<RewardOption> validOptions = new List<RewardOption>();
+
+        // 1. 检查迷雾技能 (Mist)
+        var mist = GetComponent<WitchSkill_Mist>();
+        if (mist != null && mist.enabled) // 必须存在且已被 PlayerSkillManager 激活
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Abyssal Fog", 
+                description = "Mist radius doubled (2x size)", 
+                category = RewardCategory.Skill, 
+                rewardKey = "MistRadius", 
+                value = 2.0f 
+            });
+        }
+
+        // 2. 检查诅咒技能 (Curse)
+        var curse = GetComponent<WitchSkill_Curse>();
+        if (curse != null && curse.enabled)
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Extended Hex", 
+                description = "Curse casting range +10m", 
+                category = RewardCategory.Skill, 
+                rewardKey = "CurseRange", 
+                value = 10f 
+            });
+        }
+
+        // 3. 检查分身技能 (Decoy)
+        var decoy = GetComponent<WitchSkill_Decoy>();
+        if (decoy != null && decoy.enabled)
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Triple Illusion", 
+                description = "Decoy spawns 3 clones per use", 
+                category = RewardCategory.Skill, 
+                rewardKey = "DecoyCount", 
+                value = 3f 
+            });
+        }
+
+        // 4. 检查混沌技能 (Chaos)
+        var chaos = GetComponent<WitchSkill_Chaos>();
+        if (chaos != null && chaos.enabled)
+        {
+            validOptions.Add(new RewardOption { 
+                title = "Chaos Mastery", 
+                description = "Chaos disturbance radius +5m", 
+                category = RewardCategory.Skill, 
+                rewardKey = "ChaosRadius", 
+                value = 5f 
+            });
+        }
+
+        // 从所有合法的技能奖励中随机返回一个
+        int randomIndex = Random.Range(0, validOptions.Count);
+        return validOptions[randomIndex];
+    }
+
+    private RewardOption CreateExtraReward()
+    {
+        if (Random.value > 0.5f)
+            return new RewardOption { title = "Hunter Scent", description = "Reveal Hunters for 10s", category = RewardCategory.Extra, rewardKey = "HunterVision", value = 10f };
+        else
+            return new RewardOption { title = "Forest Spirit", description = "Reveal Ancient Trees for 5s", category = RewardCategory.Extra, rewardKey = "AncientVision", value = 5f };
+    }
+
+    [Command]
+    public void CmdSelectReward(int index)
+    {
+        // 使用服务器自己的 serverRewardPool 进行校验
+        if (pendingRewards <= 0 || index >= serverRewardPool.Count) return;
+        
+        pendingRewards--;
+        
+        var choice = serverRewardPool[index];
+        ApplyRewardEffect(choice.rewardKey, choice.value);
+        
+        // 选完后清空服务器缓存
+        serverRewardPool.Clear(); 
+    }
+
+    [Server]
+    private void ApplyRewardEffect(string key, float val)
+    {
+        switch (key)
+        {
+            // ======= 属性类 =======
+            case "AddHP":
+                currentHealth = Mathf.Min(maxHealth, currentHealth + val);
+                break;
+            case "MaxHP":
+                maxHealth += val;
+                currentHealth += val;
+                break;
+            case "AddMana":
+                currentMana = Mathf.Min(maxMana, currentMana + val);
+                break;
+            case "MaxMana":
+                maxMana += val;
+                currentMana += val;
+                break;
+            case "MoveSpeed":
+                originalHumanSpeed += val; // 永久提升基础速度
+                if (!isMorphed) moveSpeed = originalHumanSpeed;
+                break;
+
+        // ======= 迷雾增强 =======
+            case "MistRadius":
+                var mistSkill = GetComponent<WitchSkill_Mist>();
+                if (mistSkill) mistSkill.mistScale = val; // 将倍率设为 2.0
+                break;
+
+            // ======= 诅咒增强 =======
+            case "CurseRange":
+                var curseSkill = GetComponent<WitchSkill_Curse>();
+                if (curseSkill) curseSkill.range += val; // 增加射程
+                break;
+
+            // ======= 原有的技能增强 =======
+            case "DecoyCount":
+                var decoySkill = GetComponent<WitchSkill_Decoy>();
+                if (decoySkill) decoySkill.spawnCount = (int)val;
+                break;
+            case "ChaosRadius":
+                var chaosSkill = GetComponent<WitchSkill_Chaos>();
+                if (chaosSkill) chaosSkill.radius += val;
+                break;
+
+            // ======= 额外奖励类 =======
+            case "AncientVision":
+                TargetTempRevealAncient(connectionToClient, val);
+                break;
+            case "HunterVision":
+                TargetTempRevealHunters(connectionToClient, val);
+                break;
+        }
+    }
+
+    // --- 客户端辅助逻辑：临时透视 --- 
+    //debug
+
+    [TargetRpc]
+    private void TargetTempRevealAncient(NetworkConnection target, float duration)
+    {
+        StartCoroutine(TempAncientHighlightRoutine(duration));
+    }
+
+    private IEnumerator TempAncientHighlightRoutine(float duration)
+    {
+        // 获取场景中所有的 PropTarget
+        PropTarget[] all = Object.FindObjectsOfType<PropTarget>();
+        List<PropTarget> ancients = new List<PropTarget>();
+        
+        foreach (var p in all)
+        {
+            // 找到古树且当前没被发现的
+            if (p.isAncientTree && !p.isScouted)
+            {
+                ancients.Add(p);
+                p.isLocalTempRevealed = true; // 修改本地临时变量
+            }
+        }
+        
+        // 【关键】手动通知本地的 TeamVision 刷新一次视觉
+        GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        
+        yield return new WaitForSeconds(duration);
+        
+        // 恢复
+        foreach (var p in ancients) 
+        {
+            if (p != null) p.isLocalTempRevealed = false;
+        }
+        
+        // 【关键】再次刷新视觉
+        GetComponent<TeamVision>()?.ForceUpdateVisuals();
+    }
+    [TargetRpc]
+    private void TargetTempRevealHunters(NetworkConnection target, float duration)
+    {
+        var vision = GetComponent<TeamVision>();
+        if (vision != null) StartCoroutine(vision.TempShowEnemies(duration));
+    }
+
+
+
     [Server]
     private void ServerReleaseTreeAtCurrentPosition()
     {
@@ -6162,6 +6418,25 @@ public class WitchPlayer : GamePlayer
             possessedTreeNetId = 0; // 清除 ID
         }
     }
+}
+```
+
+## Player\Rewards\WitchReward.cs
+
+```csharp
+using UnityEngine;
+
+public enum RewardCategory { Attribute, Skill, Extra }
+
+[System.Serializable]
+public struct RewardOption
+{
+    public string title;
+    public string description;
+    public RewardCategory category;
+    public string rewardKey; // 用于标识具体的逻辑，例如 "MaxHP", "DecoyCount"
+    public float value;      // 奖励数值
+    public int id;           // 传递给服务器的唯一索引
 }
 ```
 
@@ -7882,7 +8157,7 @@ using Mirror;
 public class WitchSkill_Decoy : SkillBase
 {
     public GameObject decoyPrefab; 
-
+    [HideInInspector] public int spawnCount = 1; // 默认生成1个
     protected override void OnCast()
     {
         Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} used skill: Decoy! Summoning a decoy.</color>");
@@ -7892,19 +8167,22 @@ public class WitchSkill_Decoy : SkillBase
         // 如果没变身，就复制人类 (或者禁止使用)
         // 这里假设复制当前的 morphedPropID
         int idToCopy = witch.isMorphed ? witch.morphedPropID : -1; // -1 表示没变身
-
-        // 在玩家前方一個身位的位置生成
-        Vector3 spawnPosition = witch.transform.position + witch.transform.forward * 1.0f;
-        // 2. 地面探测：从上方发射射线，确保分身生成在地面高度
-        if (Physics.Raycast(spawnPosition + Vector3.up * 2f, Vector3.down, out RaycastHit hit, 5f, witch.groundLayer))
+        for (int i = 0; i < spawnCount; i++)
         {
-            spawnPosition = hit.point + Vector3.up * 0.05f; // 贴地并微抬防止卡入
-        }
-        GameObject decoy = Instantiate(decoyPrefab, spawnPosition, witch.transform.rotation);
-        DecoyBehavior db = decoy.GetComponent<DecoyBehavior>();
-        db.propID = idToCopy;
+            // 在玩家前方一個身位的位置生成
+            Vector3 spawnPosition = witch.transform.position + witch.transform.forward * 1.0f;
+            // 2. 地面探测：从上方发射射线，确保分身生成在地面高度
+            if (Physics.Raycast(spawnPosition + Vector3.up * 2f, Vector3.down, out RaycastHit hit, 5f, witch.groundLayer))
+            {
+                spawnPosition = hit.point + Vector3.up * 0.05f; // 贴地并微抬防止卡入
+            }
+            GameObject decoy = Instantiate(decoyPrefab, spawnPosition, witch.transform.rotation);
+            DecoyBehavior db = decoy.GetComponent<DecoyBehavior>();
+            db.propID = idToCopy;
 
-        NetworkServer.Spawn(decoy);
+            NetworkServer.Spawn(decoy);            
+        }
+
     }
 }
 ```
@@ -7920,6 +8198,7 @@ public class WitchSkill_Mist : SkillBase
     [Header("技能参数")]
     public GameObject mistPrefab; // 迷雾预制体
     public float spawnOffset = 1.0f; // 在身后多少米生成
+    public float mistScale = 1.0f; // 【新增】迷雾缩放倍率，默认为1
 
     protected override void OnCast()
     {
@@ -7940,7 +8219,9 @@ public class WitchSkill_Mist : SkillBase
 
         // 2. 生成实例
         GameObject mist = Instantiate(mistPrefab, spawnPos, Quaternion.identity);
-
+        // 【核心修改】应用奖励带来的缩放
+        // 缩放 Transform 会同时增大其子物体的 Trigger 碰撞体范围
+        mist.transform.localScale *= mistScale;
         // 3. 网络同步
         NetworkServer.Spawn(mist);
     }
@@ -9224,6 +9505,59 @@ public class PlayMenu : MonoBehaviour
 
 ```
 
+## UI\RewardUI.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using Mirror;
+
+public class RewardUI : MonoBehaviour
+{
+    public static RewardUI Instance;
+    public GameObject panel;
+    public Button[] optionButtons;
+    public TextMeshProUGUI[] optionTexts;
+
+    private RewardOption[] currentOptions;
+
+    void Awake() { Instance = this; panel.SetActive(false); }
+
+    public void Show(RewardOption[] options)
+    {
+        currentOptions = options;
+        panel.SetActive(true);
+        
+        // 解锁鼠标
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        for (int i = 0; i < 3; i++)
+        {
+            int index = i;
+            optionTexts[i].text = $"<b>{options[i].title}</b>\n{options[i].description}";
+            optionButtons[i].onClick.RemoveAllListeners();
+            optionButtons[i].onClick.AddListener(() => OnClickOption(index));
+        }
+    }
+
+    void OnClickOption(int index)
+    {
+        // 告知服务器我们的选择
+        var localWitch = NetworkClient.localPlayer.GetComponent<WitchPlayer>();
+        // 发送点击的索引 (0, 1, 或 2)
+        localWitch.CmdSelectReward(index); 
+
+        panel.SetActive(false);
+        
+        // 恢复鼠标锁定
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+}
+```
+
 ## UI\SceneScript.cs
 
 ```csharp
@@ -9323,7 +9657,6 @@ public class SceneScript : MonoBehaviour
         {
             // 假设变身对应左键或右键，这里写 "LMB" 或 "Morph"
             morphSlot.Setup(morphIcon, "LMB"); 
-            morphSlot.gameObject.SetActive(true);
         }
 
     }
@@ -9365,13 +9698,35 @@ public class SceneScript : MonoBehaviour
         }
         else
         {
-            // 拼接字符串：显示“还需带回数”和“地图剩余数”
+            // 1. 基础胜利目标文本
             string goalInfo = local is WitchPlayer ? 
                 $"Trees needed: <color=yellow>{remainingToWin}</color>" : 
                 $"Witches need: <color=red>{remainingToWin}</color>";
 
-            // 新增一行显示地图资源情况
-            GoalText.text = $"{goalInfo}\n<color={statusColor}>Ancient Trees on Map: {availableOnMap}</color> (Team: {delivered}/{total})";
+            // 2. 地图资源统计
+            string mapInfo = $"\n<color={statusColor}>Ancient Trees on Map: {availableOnMap}</color> (Team: {delivered}/{total})";
+
+            // ----------------- 【核心修改：添加女巫奖励进度】 -----------------
+            string rewardInfo = "";
+            if (local is WitchPlayer witch)
+            {
+                // 计算当前这一轮奖励的进度 (例如 5/20)
+                int currentProgress = witch.scoutedCount % witch.treesPerReward;
+                
+                // 如果有待领取的奖励，高亮显示
+                if (witch.pendingRewards > 0)
+                {
+                    rewardInfo = $"\n<color=#FFD700>---REWARD READY: {witch.pendingRewards}---</color>";
+                }
+                else
+                {
+                    // 显示普通进度，使用紫色区分
+                    rewardInfo = $"\n<color=#BB88FF>Scouting Reward: {currentProgress}/{witch.treesPerReward}</color>";
+                }
+            }
+            // ----------------------------------------------------------------
+
+            GoalText.text = goalInfo + mapInfo + rewardInfo;
         }
     }
 
@@ -9850,6 +10205,8 @@ public class TeamVision : NetworkBehaviour
 
     private GamePlayer localPlayer;
 
+    // 【新增】标记当前是否正在强制显示猎人（防止逻辑竞争）
+    private bool isEffectRevealingHunters = false;
     public override void OnStartLocalPlayer()
     {
         localPlayer = GetComponent<GamePlayer>();
@@ -9870,10 +10227,104 @@ public class TeamVision : NetworkBehaviour
         }
     }
 
+    public IEnumerator TempShowEnemies(float duration)
+    {
+        isEffectRevealingHunters = true; // 开启强制显示标记
+        
+        // 立即刷新一次
+        UpdateAllOutlines();
+
+        yield return new WaitForSeconds(duration);
+
+        isEffectRevealingHunters = false; // 关闭强制显示
+        
+        // 效果结束立即刷新，清除红色描边
+        UpdateAllOutlines();
+    }
+
+    private void ForceShowHuntersOnce()
+    {
+        foreach (var p in GamePlayer.AllPlayers)
+        {
+            if (p != null && p.playerRole == PlayerRole.Hunter)
+            {
+                var outline = p.GetComponent<PlayerOutline>();
+                if (outline) outline.SetOutline(true, Color.red); // 强制显示红色描边
+            }
+        }
+    }
+    // private void UpdateAllOutlines()
+    // {
+    //     if (localPlayer == null) return;
+        
+    //     foreach (var targetPlayer in GamePlayer.AllPlayers)
+    //     {
+    //         if (targetPlayer == null || targetPlayer == localPlayer) continue;
+
+    //         var outline = targetPlayer.GetComponent<PlayerOutline>();
+    //         if (outline == null) continue;
+
+    //         // 获取同步变量
+    //         bool isTrapped = targetPlayer.isTrappedByNet;
+    //         bool IAmHunter = (localPlayer.playerRole == PlayerRole.Hunter);
+    //         bool isTeammate = (targetPlayer.playerRole == localPlayer.playerRole);
+            
+
+    //         // --- 核心逻辑优先级：被抓状态高于一切 ---
+    //         if (isTrapped)
+    //         {
+    //             // 只要被抓了，不管是猎人看她，还是女巫队友看她，全部显示红色
+    //             // 这样队友也能意识到“糟糕，她被抓了，需要掩护/解救”
+    //             outline.SetOutline(true, Color.red);
+    //             // if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(false);
+    //             continue; 
+    //         }
+
+    //         // --- 正常的队友显示逻辑 ---
+    //         if (localPlayer.playerRole != PlayerRole.None && isTeammate)
+    //         {
+    //             Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
+    //             outline.SetOutline(true, c);
+                
+    //             if (targetPlayer.nameText != null)
+    //             {
+    //                 bool shouldShowName = !(targetPlayer is WitchPlayer w && w.isMorphed);
+    //                 targetPlayer.nameText.gameObject.SetActive(shouldShowName);
+    //                 targetPlayer.nameText.color = Color.green;
+    //             }
+    //         }
+    //         // --- 正常的敌对显示逻辑 ---
+    //         else
+    //         {
+    //             outline.SetOutline(false, Color.white);
+    //             if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(false);
+    //         }
+    //     }
+    //     // 2. --- 处理已发现树木的常驻高亮 ---
+    //     if (localPlayer.playerRole == PlayerRole.Witch)
+    //     {
+    //         PropTarget[] allProps = Object.FindObjectsOfType<PropTarget>();
+    //         foreach (var prop in allProps)
+    //         {
+    //             if (prop == null) continue;
+
+    //             // 如果是被发现的静态树，强制开启高亮渲染。
+    //             // SetHighlight(false) 传入 false 是因为此时准星没指着它，
+    //             // 但内部逻辑会因为 isScouted 为 true 而决定继续显示高亮。
+    //             // 判定逻辑里应包含临时状态 (由于 PropTarget.SetHighlight 已经改了，这里只需确保调用)
+    //             if ((prop.isScouted || prop.isLocalTempRevealed) && (prop.isStaticTree || prop.isAncientTree))
+    //             {
+    //                 prop.SetHighlight(false); 
+    //             }
+    //         }
+    //     }
+    // }
+
     private void UpdateAllOutlines()
     {
         if (localPlayer == null) return;
         
+        // 1. 处理玩家描边
         foreach (var targetPlayer in GamePlayer.AllPlayers)
         {
             if (targetPlayer == null || targetPlayer == localPlayer) continue;
@@ -9881,56 +10332,43 @@ public class TeamVision : NetworkBehaviour
             var outline = targetPlayer.GetComponent<PlayerOutline>();
             if (outline == null) continue;
 
-            // 获取同步变量
             bool isTrapped = targetPlayer.isTrappedByNet;
-            bool IAmHunter = (localPlayer.playerRole == PlayerRole.Hunter);
             bool isTeammate = (targetPlayer.playerRole == localPlayer.playerRole);
+            bool isTargetHunter = (targetPlayer.playerRole == PlayerRole.Hunter);
 
-            // --- 核心逻辑优先级：被抓状态高于一切 ---
+            // --- 优先级逻辑 ---
             if (isTrapped)
             {
-                // 只要被抓了，不管是猎人看她，还是女巫队友看她，全部显示红色
-                // 这样队友也能意识到“糟糕，她被抓了，需要掩护/解救”
                 outline.SetOutline(true, Color.red);
-                // if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(false);
-                continue; 
             }
-
-            // --- 正常的队友显示逻辑 ---
-            if (localPlayer.playerRole != PlayerRole.None && isTeammate)
+            // 【核心修复】如果是猎人且正处于“奖励透视期”
+            else if (isTargetHunter && isEffectRevealingHunters)
+            {
+                outline.SetOutline(true, Color.red);
+            }
+            else if (isTeammate)
             {
                 Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
                 outline.SetOutline(true, c);
-                
-                if (targetPlayer.nameText != null)
-                {
-                    bool shouldShowName = !(targetPlayer is WitchPlayer w && w.isMorphed);
-                    targetPlayer.nameText.gameObject.SetActive(shouldShowName);
-                    targetPlayer.nameText.color = Color.green;
-                }
             }
-            // --- 正常的敌对显示逻辑 ---
             else
             {
+                // 正常敌对状态（非透视期且未被抓），关闭描边
                 outline.SetOutline(false, Color.white);
-                if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(false);
             }
         }
-        // 2. --- 处理已发现树木的常驻高亮 ---
+
+        // 2. 处理树木描边
         if (localPlayer.playerRole == PlayerRole.Witch)
         {
             PropTarget[] allProps = Object.FindObjectsOfType<PropTarget>();
             foreach (var prop in allProps)
             {
-                if (prop == null) continue;
+                if (prop == null || (!prop.isStaticTree && !prop.isAncientTree)) continue;
 
-                // 如果是被发现的静态树，强制开启高亮渲染。
-                // SetHighlight(false) 传入 false 是因为此时准星没指着它，
-                // 但内部逻辑会因为 isScouted 为 true 而决定继续显示高亮。
-                if (prop.isScouted && (prop.isStaticTree || prop.isAncientTree))
-                {
-                    prop.SetHighlight(false); 
-                }
+                // 【核心修复】始终调用 SetHighlight，让内部去根据最新状态决定是否显示
+                // 内部条件 active || isScouted || isLocalTempRevealed 只要全为 false，高亮就会消失
+                prop.SetHighlight(false); 
             }
         }
     }
