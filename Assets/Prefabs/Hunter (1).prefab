@@ -1111,11 +1111,13 @@ MonoBehaviour:
   scanRadius: 30
   visualDuration: 5
   currentMode: 1
+  spawnInterval: 0.3
   minAlpha: 0.1
   maxAlpha: 0.8
   footprintPrefab: {fileID: 47214768639774771, guid: 462e210f4e68b4e408b552c649416761, type: 3}
   humanGhostPrefab: {fileID: 7437291211915263204, guid: 0e987d9859f20a94f8c16cbf77f20518, type: 3}
   ghostMaterial: {fileID: 2100000, guid: de9e38de9d9275543a9cb0807fe7ad1f, type: 2}
+  fireflyParticlePrefab: {fileID: 9047306817882455896, guid: d816a37432e16564eb813274d20e15ea, type: 3}
 --- !u!1 &4565058604513354316
 GameObject:
   m_ObjectHideFlags: 0
