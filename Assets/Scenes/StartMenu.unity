@@ -596,6 +596,22 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 8377226405294211074, guid: ab8787cea52a2ec4f8aae58014483f8f, type: 3}
+      propertyPath: hunterMalePrefab
+      value: 
+      objectReference: {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
+    - target: {fileID: 8377226405294211074, guid: ab8787cea52a2ec4f8aae58014483f8f, type: 3}
+      propertyPath: hunterFemalePrefab
+      value: 
+      objectReference: {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
+    - target: {fileID: 8377226405294211074, guid: ab8787cea52a2ec4f8aae58014483f8f, type: 3}
+      propertyPath: spawnPrefabs.Array.size
+      value: 148
+      objectReference: {fileID: 0}
+    - target: {fileID: 8377226405294211074, guid: ab8787cea52a2ec4f8aae58014483f8f, type: 3}
+      propertyPath: spawnPrefabs.Array.data[147]
+      value: 
+      objectReference: {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
