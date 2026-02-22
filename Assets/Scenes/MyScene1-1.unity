@@ -473,11 +473,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &42589090
 MonoBehaviour:
@@ -847,11 +849,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &87975418
 MonoBehaviour:
@@ -1833,11 +1837,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &168144413
 MonoBehaviour:
@@ -3098,11 +3104,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &425444713
 MonoBehaviour:
@@ -4303,11 +4311,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &726430130
 MonoBehaviour:
@@ -5631,11 +5641,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &922504675
 MonoBehaviour:
@@ -7211,11 +7223,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &1303880956
 MonoBehaviour:
@@ -10537,11 +10551,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &1828446538
 MonoBehaviour:
@@ -10755,11 +10771,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &1858348730
 MonoBehaviour:
@@ -11417,11 +11435,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &1950571521
 MonoBehaviour:
@@ -12145,11 +12165,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &2061843892
 MonoBehaviour:
@@ -12351,11 +12373,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &2086822757
 MonoBehaviour:
@@ -12726,11 +12750,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
   isAncientTree: 0
   runtimeID: 0
   isHiddenByPossession: 0
   isStaticTree: 0
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!1001 &7682874593317230905
 PrefabInstance:
@@ -12778,7 +12804,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 943304024876635932, guid: 7be315c00ca4e3f4a8ba19c5f995da79, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -8.500005
+      value: -8.500006
       objectReference: {fileID: 0}
     - target: {fileID: 1315677288366718587, guid: 7be315c00ca4e3f4a8ba19c5f995da79, type: 3}
       propertyPath: m_AnchorMax.y
