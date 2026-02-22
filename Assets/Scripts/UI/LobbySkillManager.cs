@@ -34,7 +34,7 @@ public class LobbySkillManager : MonoBehaviour
 
     [Header("Colors")]
     public Color highlightColor = Color.yellow; // 选中的黄色高亮
-
+    public Sprite defaultEmptyIcon; // 【新增】当没选技能时显示的默认图标（可选）
     private int currentSelectingSlot = -1;
 
     private void Awake() => Instance = this;
@@ -187,13 +187,59 @@ public class LobbySkillManager : MonoBehaviour
         if (PlayerSettings.Instance == null) return;
 
         var settings = PlayerSettings.Instance;
-        UpdateBtnText(witchSkill1Btn, settings.selectedWitchSkillNames[0]);
-        UpdateBtnText(witchSkill2Btn, settings.selectedWitchSkillNames[1]);
-        UpdateBtnText(witchItemBtn, settings.selectedWitchItemName);
-        UpdateBtnText(hunterSkill1Btn, settings.selectedHunterSkillNames[0]);
-        UpdateBtnText(hunterSkill2Btn, settings.selectedHunterSkillNames[1]);
+        // 更新所有主按钮的显示
+        UpdateBtnVisual(witchSkill1Btn, settings.selectedWitchSkillNames[0]);
+        UpdateBtnVisual(witchSkill2Btn, settings.selectedWitchSkillNames[1]);
+        UpdateBtnVisual(witchItemBtn, settings.selectedWitchItemName);
+        UpdateBtnVisual(hunterSkill1Btn, settings.selectedHunterSkillNames[0]);
+        UpdateBtnVisual(hunterSkill2Btn, settings.selectedHunterSkillNames[1]);
     }
+    private Sprite GetIconByClassName(string className)
+    {
+        if (string.IsNullOrEmpty(className)) return null;
 
+        // 从技能数据库找
+        var skill = allSkills.Find(s => s.scriptClassName == className);
+        if (skill != null) return skill.icon;
+
+        // 从道具数据库找
+        var item = allItems.Find(i => i.scriptClassName == className);
+        if (item != null) return item.icon;
+
+        return null;
+    }
+    private void UpdateBtnVisual(Button btn, string className)
+    {
+        if (btn == null) return;
+
+        // 尝试获取子物体中的 Icon Image 和 Text
+        Transform iconTrans = btn.transform.Find("Icon");
+        Image iconImage = iconTrans != null ? iconTrans.GetComponent<Image>() : null;
+        TextMeshProUGUI textComp = btn.GetComponentInChildren<TextMeshProUGUI>();
+
+        Sprite skillIcon = GetIconByClassName(className);
+
+        if (skillIcon != null)
+        {
+            // 如果找到了图标：显示图标，隐藏文字
+            if (iconImage != null)
+            {
+                iconImage.sprite = skillIcon;
+                iconImage.enabled = true;
+            }
+            if (textComp != null) textComp.enabled = false;
+        }
+        else
+        {
+            // 如果没选或没找到图标：隐藏图标，显示文字（显示类名或 None）
+            if (iconImage != null) iconImage.enabled = false;
+            if (textComp != null)
+            {
+                textComp.enabled = true;
+                textComp.text = "None"; 
+            }
+        }
+    }
     private void UpdateBtnText(Button btn, string className)
     {
         if (btn == null) return;

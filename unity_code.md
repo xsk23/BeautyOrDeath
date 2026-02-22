@@ -7347,6 +7347,7 @@ public class HunterSkill_Dog : SkillBase
 ```csharp
 using UnityEngine;
 using Mirror;
+using System.Collections;
 using System.Collections.Generic;
 
 // 定义一个新结构体，用来打包“某一个女巫”的所有数据
@@ -7366,9 +7367,14 @@ public class HunterSkill_Scan : SkillBase
 
     [Header("侦察设置")]
     public float scanRadius = 15f; 
-    public float visualDuration = 5f; 
+    public float visualDuration = 2f; 
     public ScanMode currentMode = ScanMode.Ghost; 
 
+
+    [Header("生成节奏")]
+    public float spawnInterval = 0.5f; // 【新增】每个残影之间生成的间隔时间
+
+    
     [Header("渐变设置")]
     [Range(0f, 1f)] public float minAlpha = 0.1f; 
     [Range(0f, 1f)] public float maxAlpha = 0.6f; 
@@ -7377,6 +7383,7 @@ public class HunterSkill_Scan : SkillBase
     public GameObject footprintPrefab;
     public GameObject humanGhostPrefab;
     public Material ghostMaterial;
+    public GameObject fireflyParticlePrefab; 
 
     // Shader 属性 ID
     private static readonly int ColorPropID = Shader.PropertyToID("_Color");
@@ -7390,7 +7397,7 @@ public class HunterSkill_Scan : SkillBase
     [Server] 
     private void ServerScanLogic(Vector3 center)
     {
-        // 1. 创建一个组的列表，而不是点的列表
+        //  创建一个组的列表, 每个组包含一个女巫的所有轨迹和一个独特的颜色
         List<WitchTrailGroup> allGroups = new List<WitchTrailGroup>();
 
         foreach (var player in GamePlayer.AllPlayers)
@@ -7405,9 +7412,8 @@ public class HunterSkill_Scan : SkillBase
                     
                     if (trailsList.Count > 0)
                     {
-                        // --- 核心修改：生成唯一颜色 ---
-                        // 这里尝试获取玩家脚本上的颜色，如果没有，就根据 NetID 算一个随机色
-                        // 这样即使没有同步颜色变量，同一个女巫的颜色也是固定的
+                        // 生成唯一颜色 
+
                         Color uniqueColor = GetWitchColor(witch);
 
                         // 打包成组
@@ -7423,7 +7429,7 @@ public class HunterSkill_Scan : SkillBase
             }
         }
 
-        Debug.Log($"[Server] Scan found {allGroups.Count} witch groups.");
+        //Debug.Log($"[Server] Scan found {allGroups.Count} witch groups.");
 
         // 发送组数据
         NetworkConnection targetConn = ownerPlayer.connectionToClient;
@@ -7433,7 +7439,8 @@ public class HunterSkill_Scan : SkillBase
         }
         else if (ownerPlayer.isLocalPlayer) 
         {
-            ShowTrailsLocal(allGroups.ToArray());
+            //howTrailsLocal(allGroups.ToArray());
+            StartCoroutine(SpawnTrailsSequentially(allGroups.ToArray()));
         }
     }
 
@@ -7449,53 +7456,60 @@ public class HunterSkill_Scan : SkillBase
     [TargetRpc]
     private void TargetShowTrails(NetworkConnection target, WitchTrailGroup[] groups)
     {
-        ShowTrailsLocal(groups);
+        //ShowTrailsLocal(groups);
+        StartCoroutine(SpawnTrailsSequentially(groups));
     }
 
-    private void ShowTrailsLocal(WitchTrailGroup[] groups)
+    private IEnumerator SpawnTrailsSequentially(WitchTrailGroup[] groups)
     {
-        if (groups.Length == 0) return;
-        Debug.Log($"[Client] Displaying trails for {groups.Length} witches.");
-        
-        // --- 双层循环 ---
-        // 外层：遍历不同的女巫
+        if (groups.Length == 0) yield break;
+
+        // 找到所有女巫中最长的一条轨迹长度
+        int maxTrails = 0;
         foreach (var group in groups)
         {
-            TrailSnapshot[] trails = group.trails;
-            Color groupColor = group.trailColor;
+            if (group.trails.Length > maxTrails)
+                maxTrails = group.trails.Length;
+        }
 
-            // 内层：遍历该女巫的轨迹点
-            for (int i = 0; i < trails.Length; i++)
+        // 按时间顺序（从最老的点到最新的点）逐个遍历
+        for (int i = 0; i < maxTrails; i++)
+        {
+            bool spawnedAny = false;
+
+            // 同时遍历所有女巫，确保她们的痕迹是同步向前推进的
+            foreach (var group in groups)
             {
-                // 核心修复：透明度计算现在是基于“当前女巫的轨迹长度”
-                // 这样每个女巫最新的点都是最清晰的 (maxAlpha)
-                float t = (trails.Length > 1) ? (float)i / (trails.Length - 1) : 1f;
-                float alpha = Mathf.Lerp(minAlpha, maxAlpha, t);
+                // 如果这个女巫在当前时间节点有痕迹，则生成
+                if (i < group.trails.Length)
+                {
+                    if (currentMode == ScanMode.Footprints)
+                        SpawnFootprint(group.trails[i], group.trailColor);
+                    else
+                        SpawnGhost(group.trails[i], group.trailColor);
 
-                // 生成时传入 颜色 和 透明度
-                if (currentMode == ScanMode.Footprints)
-                {
-                    SpawnFootprint(trails[i], groupColor, alpha);
+                    spawnedAny = true;
                 }
-                else
-                {
-                    SpawnGhost(trails[i], groupColor, alpha);
-                }
+            }
+
+            // 只要这一步生成了任何东西，就等待一段时间再生成下一个
+            if (spawnedAny)
+            {
+                // 越靠近最新的点，间隔可以越短，表现出追踪的紧迫感（可选）
+                yield return new WaitForSeconds(spawnInterval);
             }
         }
     }
 
-    private void SpawnFootprint(TrailSnapshot trail, Color color, float alpha)
+    private void SpawnFootprint(TrailSnapshot trail, Color color)
     {
         if (footprintPrefab == null) return;
         GameObject fp = Instantiate(footprintPrefab, trail.position + Vector3.up * 0.1f, trail.rotation);
         
-        ApplyGhostMaterial(fp, color, alpha);
-        
-        Destroy(fp, visualDuration);
+        SetupFireflyVisual(fp, color);
     }
 
-    private void SpawnGhost(TrailSnapshot trail, Color color, float alpha)
+    private void SpawnGhost(TrailSnapshot trail, Color color)
     {
         GameObject ghostObj = null;
 
@@ -7518,8 +7532,7 @@ public class HunterSkill_Scan : SkillBase
 
         if (ghostObj != null)
         {
-            ApplyGhostMaterial(ghostObj, color, alpha);
-            Destroy(ghostObj, visualDuration);
+            SetupFireflyVisual(ghostObj, color);
         }
     }
 
@@ -7536,33 +7549,138 @@ public class HunterSkill_Scan : SkillBase
             t.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
     }
 
-    // 【修改】现在接受 Color 参数，而不仅仅是 alpha
-    private void ApplyGhostMaterial(GameObject obj, Color baseColor, float alphaValue)
+    private void SetupFireflyVisual(GameObject obj, Color fireflyColor)
     {
-        if (ghostMaterial == null) return;
-
-        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
-        MaterialPropertyBlock propBlock = new MaterialPropertyBlock();
-
-        foreach (var r in renderers)
+        // 1. 替换为黑影材质
+        if (ghostMaterial != null)
         {
-            Material[] newMats = new Material[r.sharedMaterials.Length];
-            for (int i = 0; i < newMats.Length; i++) newMats[i] = ghostMaterial;
-            r.sharedMaterials = newMats;
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            r.GetPropertyBlock(propBlock);
-
-            // 使用传入的 baseColor (区分女巫) 并应用 alpha (区分新旧)
-            Color finalColor = baseColor;
-            finalColor.a = alphaValue;
-
-            propBlock.SetColor(ColorPropID, finalColor);
-            propBlock.SetColor(BaseColorPropID, finalColor);
-
-            r.SetPropertyBlock(propBlock);
+            Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
+            foreach (var r in renderers)
+            {
+                Material[] newMats = new Material[r.sharedMaterials.Length];
+                for (int i = 0; i < newMats.Length; i++) newMats[i] = ghostMaterial;
+                r.sharedMaterials = newMats;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
         }
+
+        // 2. 动态添加特效脚本，并把粒子预制体传给它
+        TrailFireflyEffect effect = obj.AddComponent<TrailFireflyEffect>();
+        effect.Setup(fireflyColor, visualDuration, fireflyParticlePrefab); // 【修改】多传一个参数
     }
+
+
+    // private void ShowTrailsLocal(WitchTrailGroup[] groups)
+    // {
+    //     if (groups.Length == 0) return;
+    //     Debug.Log($"[Client] Displaying trails for {groups.Length} witches.");
+        
+    //     // --- 双层循环 ---
+    //     // 外层：遍历不同的女巫
+    //     foreach (var group in groups)
+    //     {
+    //         TrailSnapshot[] trails = group.trails;
+    //         Color groupColor = group.trailColor;
+
+    //         // 内层：遍历该女巫的轨迹点
+    //         for (int i = 0; i < trails.Length; i++)
+    //         {
+    //             // 核心修复：透明度计算现在是基于“当前女巫的轨迹长度”
+    //             // 这样每个女巫最新的点都是最清晰的 (maxAlpha)
+    //             float t = (trails.Length > 1) ? (float)i / (trails.Length - 1) : 1f;
+    //             float alpha = Mathf.Lerp(minAlpha, maxAlpha, t);
+
+    //             // 生成时传入 颜色 和 透明度
+    //             if (currentMode == ScanMode.Footprints)
+    //             {
+    //                 SpawnFootprint(trails[i], groupColor, alpha);
+    //             }
+    //             else
+    //             {
+    //                 SpawnGhost(trails[i], groupColor, alpha);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // private void SpawnFootprint(TrailSnapshot trail, Color color, float alpha)
+    // {
+    //     if (footprintPrefab == null) return;
+    //     GameObject fp = Instantiate(footprintPrefab, trail.position + Vector3.up * 0.1f, trail.rotation);
+        
+    //     ApplyGhostMaterial(fp, color, alpha);
+        
+    //     Destroy(fp, visualDuration);
+    // }
+
+    // private void SpawnGhost(TrailSnapshot trail, Color color, float alpha)
+    // {
+    //     GameObject ghostObj = null;
+
+    //     if (trail.propID >= 0)
+    //     {
+    //         if (PropDatabase.Instance != null && PropDatabase.Instance.GetPropPrefab(trail.propID, out GameObject prefab))
+    //         {
+    //             ghostObj = Instantiate(prefab, trail.position, trail.rotation);
+    //             CleanupGhostObject(ghostObj);
+    //         }
+    //     }
+    //     else 
+    //     {
+    //         if (humanGhostPrefab != null)
+    //         {
+    //             ghostObj = Instantiate(humanGhostPrefab, trail.position, trail.rotation);
+    //             CleanupGhostObject(ghostObj); 
+    //         }
+    //     }
+
+    //     if (ghostObj != null)
+    //     {
+    //         ApplyGhostMaterial(ghostObj, color, alpha);
+    //         Destroy(ghostObj, visualDuration);
+    //     }
+    // }
+
+    // private void CleanupGhostObject(GameObject obj)
+    // {
+    //     foreach (var c in obj.GetComponentsInChildren<Collider>()) Destroy(c);
+    //     foreach (var rb in obj.GetComponentsInChildren<Rigidbody>()) Destroy(rb);
+    //     foreach (var script in obj.GetComponentsInChildren<MonoBehaviour>()) Destroy(script);
+    //     foreach (var ps in obj.GetComponentsInChildren<ParticleSystem>()) Destroy(ps);
+    //     foreach (var anim in obj.GetComponentsInChildren<Animator>()) Destroy(anim);
+        
+    //     obj.layer = LayerMask.NameToLayer("Ignore Raycast");
+    //     foreach(Transform t in obj.GetComponentsInChildren<Transform>()) 
+    //         t.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+    // }
+
+    // 【修改】现在接受 Color 参数，而不仅仅是 alpha
+    // private void ApplyGhostMaterial(GameObject obj, Color baseColor, float alphaValue)
+    // {
+    //     if (ghostMaterial == null) return;
+
+    //     Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
+    //     MaterialPropertyBlock propBlock = new MaterialPropertyBlock();
+
+    //     foreach (var r in renderers)
+    //     {
+    //         Material[] newMats = new Material[r.sharedMaterials.Length];
+    //         for (int i = 0; i < newMats.Length; i++) newMats[i] = ghostMaterial;
+    //         r.sharedMaterials = newMats;
+    //         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+    //         r.GetPropertyBlock(propBlock);
+
+    //         // 使用传入的 baseColor (区分女巫) 并应用 alpha (区分新旧)
+    //         Color finalColor = baseColor;
+    //         finalColor.a = alphaValue;
+
+    //         propBlock.SetColor(ColorPropID, finalColor);
+    //         propBlock.SetColor(BaseColorPropID, finalColor);
+
+    //         r.SetPropertyBlock(propBlock);
+    //     }
+    // }
 }
 ```
 
@@ -7752,6 +7870,101 @@ public class HunterSkill_Trap : SkillBase
             // 这里我们直接 return，不再生成陷阱，从而彻底解决“浮空陷阱”的问题
             // 如果你希望即使在空中也生成（类似于丢出去），则在这里写 else 逻辑，但通常陷阱需要贴地。
         }
+    }
+}
+```
+
+## Skill\Hunter\TrailFireflyEffect.cs
+
+```csharp
+using UnityEngine;
+using System.Collections;
+
+public class TrailFireflyEffect : MonoBehaviour
+{
+    private Color themeColor;
+    private float lifeTime;
+    private Renderer[] renderers;
+    private MaterialPropertyBlock propBlock;
+    
+    // Shader 属性
+    private static readonly int ColorPropID = Shader.PropertyToID("_Color");
+    private static readonly int BaseColorPropID = Shader.PropertyToID("_BaseColor");
+
+    private float spawnTime;
+    private GameObject particleInstance; // 保存生成的粒子实例
+
+    // 【修改】接收传进来的 Prefab
+    public void Setup(Color fireflyColor, float duration, GameObject particlePrefab)
+    {
+        themeColor = fireflyColor;
+        lifeTime = duration;
+        renderers = GetComponentsInChildren<Renderer>();
+        propBlock = new MaterialPropertyBlock();
+        spawnTime = Time.time;
+
+        // 【新增】直接使用预制体生成
+        if (particlePrefab != null)
+        {
+            // 在当前黑影的位置生成你调好的粒子
+            particleInstance = Instantiate(particlePrefab, transform);
+            particleInstance.transform.localPosition = Vector3.up * 1.0f; // 稍微抬高到身体中心
+
+            // 获取粒子组件，覆盖颜色为你算好的女巫专属色
+            ParticleSystem ps = particleInstance.GetComponent<ParticleSystem>();
+            if (ps != null)
+            {
+                // 先强行停止，防止因为预制体自带 PlayOnAwake 导致报错
+                ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                
+                // 仅覆盖颜色，大小/速度/拖尾全按你在编辑器里调的算
+                var main = ps.main;
+                main.startColor = themeColor; 
+
+                // 重新播放
+                ps.Play();
+            }
+        }
+
+        // 开启生命周期协程
+        StartCoroutine(LifeRoutine());
+    }
+
+    private void Update()
+    {
+        if (renderers == null || renderers.Length == 0) return;
+
+        // 【黑影闪烁逻辑】使用正弦波制造“一闪一闪”的呼吸感 (频率 8.0f 可自己调)
+        float pulse = Mathf.Abs(Mathf.Sin((Time.time - spawnTime) * 8.0f)); 
+        
+        // 基础透明度 0.1，最高闪烁到 0.4
+        float currentAlpha = Mathf.Lerp(0.1f, 0.4f, pulse);
+
+        // 如果快要消失了，整体淡出
+        float timeLeft = (spawnTime + lifeTime) - Time.time;
+        if (timeLeft < 1.0f) 
+        {
+            currentAlpha *= timeLeft; // 最后一秒渐渐消失
+        }
+
+        foreach (var r in renderers)
+        {
+            r.GetPropertyBlock(propBlock);
+
+            Color shadowColor = themeColor * 0.2f; 
+            shadowColor.a = currentAlpha;
+
+            propBlock.SetColor(ColorPropID, shadowColor);
+            propBlock.SetColor(BaseColorPropID, shadowColor);
+            r.SetPropertyBlock(propBlock);
+        }
+    }
+
+    private IEnumerator LifeRoutine()
+    {
+        // 存活指定时间后销毁自己（由于粒子是子物体，会跟着一起销毁）
+        yield return new WaitForSeconds(lifeTime);
+        Destroy(gameObject);
     }
 }
 ```

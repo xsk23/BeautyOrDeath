@@ -137,7 +137,7 @@ AnimatorState:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: dance-graceful-378939
+  m_Name: changepose
   m_Speed: 1
   m_CycleOffset: 0
   m_Transitions:
@@ -151,7 +151,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 9208585814330549813, guid: aa159048205d73b4c9acab2d23bec854, type: 3}
+  m_Motion: {fileID: -962236217463199669, guid: 4a6603b1f83e004489277bfa40a8e5b4, type: 3}
   m_Tag: 
   m_SpeedParameter: 
   m_MirrorParameter: 
