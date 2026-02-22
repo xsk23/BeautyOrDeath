@@ -103,6 +103,9 @@ public class WitchPlayer : GamePlayer
     // 增加一个列表，专门让服务器记住发给客户端的是哪三个奖励
     private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
+    [SerializeField] private Animator animator; // 在Inspector中拖入你的Animator
+    [SyncVar] // 让速度在全网同步
+    private float syncedSpeed;
 
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
@@ -218,6 +221,18 @@ public class WitchPlayer : GamePlayer
 
         base.Update();
 
+        if (isLocalPlayer) // 只有自己计算速度
+        {
+            float horizontalSpeed = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            // 把速度传给服务器进行同步
+            CmdUpdateAnimationSpeed(horizontalSpeed);
+        }
+
+        // 所有人（包括本地和远程客户端）都根据同步的速度值更新动画
+        if (!isMorphed && animator != null)
+        {
+            animator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+        }
         // --- 新增：本地玩家更新 UI 冷却进度 ---
         if (isLocalPlayer && SceneScript.Instance != null && SceneScript.Instance.morphSlot != null)
         {
@@ -2035,5 +2050,10 @@ public class WitchPlayer : GamePlayer
             }
             possessedTreeNetId = 0; // 清除 ID
         }
+    }
+    [Command]
+    void CmdUpdateAnimationSpeed(float speed)
+    {
+        syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
     }
 }

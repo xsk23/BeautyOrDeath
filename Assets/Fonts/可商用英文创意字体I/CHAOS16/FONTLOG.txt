@@ -1,0 +1,34 @@
+FONTLOG for the CHAOS16 font
+
+This file provides detailed information on the CHAOS16 Font Software.
+This information should be distributed along with the CHAOS16 font
+and any derivative works.
+
+Basic Font Information
+
+CHAOS16 is 16x16 pixel font that support ENG and RUS languages.
+
+To contribute to the project you can contact me: reznicenkoroma@gmail.com
+
+
+ChangeLog
+
+23 July 2025 (Reznichenko Roman) CHAOS16 version 1.0
+- Font created. ENG support and basic special symbols.
+
+25 July 2025 (Reznichenko Roman) CHAOS16 version 2.0
+- RUS support. Also added radioactive symbol (U+2622) for fun.
+
+Acknowledgements
+
+If you make modifications be sure to add your name (N), email (E), web-address
+(if you have one) (W) and description (D). This list is in alphabetical order.
+
+SAMPLE:
+N: Jane Doe
+E: jane@university.edu
+W: https://art.university.edu/projects/fonts
+D: Contributor - Armenian glyphs and code
+
+LOLLIWAFFLE IS ME!
+Doing it for the love of art<3

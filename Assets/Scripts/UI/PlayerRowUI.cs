@@ -16,6 +16,7 @@ public class PlayerRowUI : MonoBehaviour
     public GameObject nameContainer;            // 可選：包住 nameText + btnEdit 的容器
 
     private PlayerScript boundPlayer;      // 記住這行對應哪個玩家
+    private bool isEditingNow = false; // 【新增】标记位
     private void Awake()
     {
         if (btnEdit != null)
@@ -37,11 +38,15 @@ public class PlayerRowUI : MonoBehaviour
     public void UpdateInfo(string playerName, bool isReady, bool isLocalPlayer,int ping) // 【修改】增加 ping 参数
     {
         // 名字显示
-        nameText.text = playerName + (isLocalPlayer ? " (You)" : "");
+        if (!isEditingNow)
+        {
+            nameText.text = playerName + (isLocalPlayer ? " (You)" : "");
+        }
         // nameText.color = isLocalPlayer ? Color.green : Color.white;
 
         // 状态显示
-        statusText.text = isReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";   
+        // statusText.text = isReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";   
+        statusText.text = isReady ? "<color=green><b>Y</b></color>" : "<color=red><b>N</b></color>";
         // 【新增】显示延迟逻辑
         if (pingText != null)
         {
@@ -62,11 +67,11 @@ public class PlayerRowUI : MonoBehaviour
             btnEdit.gameObject.SetActive(isLocalPlayer);
         }
 
-        // 確保編輯中狀態被重置（斷線重連等情況）
-        if (nameInputField != null && nameInputField.gameObject.activeSelf)
-        {
-            StopEditing();
-        }
+        // // 確保編輯中狀態被重置（斷線重連等情況）
+        // if (nameInputField != null && nameInputField.gameObject.activeSelf)
+        // {
+        //     StopEditing();
+        // }
     }
     // 讓 LobbyScript 呼叫，綁定對應的 PlayerScript
     public void BindToPlayer(PlayerScript player)
@@ -77,6 +82,7 @@ public class PlayerRowUI : MonoBehaviour
     private void StartEditingName()
     {
         if (boundPlayer == null || nameText == null || nameInputField == null) return;
+        isEditingNow = true; // 【新增】标记开始编辑
 
         // 1. 把當前名字填入輸入框
         nameInputField.text = boundPlayer.playerName;
@@ -111,6 +117,7 @@ public class PlayerRowUI : MonoBehaviour
 
     private void StopEditing()
     {
+        isEditingNow = false; // 【新增】标记结束编辑
         if (nameText != null) nameText.gameObject.SetActive(true);
         if (btnEdit != null && boundPlayer != null && boundPlayer.isLocalPlayer)
         {

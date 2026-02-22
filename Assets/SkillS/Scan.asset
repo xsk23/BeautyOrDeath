@@ -15,5 +15,5 @@ MonoBehaviour:
   skillName: Scan
   scriptClassName: HunterSkill_Scan
   role: 2
-  icon: {fileID: 21300000, guid: 60d0452712ebf64479cc3a595a23ab07, type: 3}
+  icon: {fileID: 21300000, guid: 8e30381068a5b49a799ba2855737b3ef, type: 3}
   description: ScanScanScan

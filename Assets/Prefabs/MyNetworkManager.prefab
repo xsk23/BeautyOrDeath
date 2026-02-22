@@ -63,6 +63,7 @@ MonoBehaviour:
   autoCreatePlayer: 1
   playerSpawnMethod: 1
   spawnPrefabs:
+  - {fileID: 1288303555106897353, guid: dd57c30e0b0f17441826758f36e34972, type: 3}
   - {fileID: 1493958779012120596, guid: b9de24523a11d714db3851b5f0f9d527, type: 3}
   - {fileID: 4376218212519654712, guid: e74aa12158a3600408560695dc95fc72, type: 3}
   - {fileID: 7205609430714872807, guid: 1d70454db050b2e4686cc7e6e10a194c, type: 3}
@@ -71,6 +72,7 @@ MonoBehaviour:
   - {fileID: 38335279662140195, guid: 34d3f526198dae440bb2ce6005d86055, type: 3}
   - {fileID: 8073443194988779917, guid: 6b0b0b098177a3b439c80991ec9deacc, type: 3}
   - {fileID: 7521825788994678682, guid: c76cafe7358b0c840849e8d2bbb72890, type: 3}
+  - {fileID: 8352306640421939357, guid: 378f88eeaf3c9584ab384a54f82b7d79, type: 3}
   - {fileID: 7402009758359158996, guid: 4ecab060b0afb5d4db61f7f1311b9e24, type: 3}
   - {fileID: 2629182449500102118, guid: 15ca4494f24bf9741a48b37ec2c4c632, type: 3}
   - {fileID: 5220707498806962377, guid: a6fe150fa8940dd4aa35b92cba9c31a3, type: 3}
@@ -86,6 +88,7 @@ MonoBehaviour:
   - {fileID: 4385080170328260021, guid: ff62b58c5a9ea164fa8ddf8038e10cd1, type: 3}
   - {fileID: 5440707293445505367, guid: 494f6d43e170e9145bc7865d243ee00b, type: 3}
   - {fileID: 1527881004230699645, guid: 66f01a8db88f9644baed659d1f91cdca, type: 3}
+  - {fileID: 8496233643591365644, guid: 4afeff48029bd4e4cb7a725c053b5e80, type: 3}
   - {fileID: 7405846476849542632, guid: c6308cb7062fac34e8e50600086b12a1, type: 3}
   - {fileID: 5202732821079448320, guid: cebfacc247a640945a2c30b442202fca, type: 3}
   - {fileID: 4680757731160225450, guid: 0fde05fa0f3321942a21896ff4f0856f, type: 3}
@@ -223,8 +226,10 @@ MonoBehaviour:
   evaluationInterval: 3
   timeInterpolationGui: 0
   gameSceneName: Assets/Scenes/MyScene.unity
-  witchPrefab: {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
-  hunterPrefab: {fileID: 4516135911683214189, guid: 34e398540f2f1b648a4c2e5307a27d45, type: 3}
+  witchMalePrefab: {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
+  witchFemalePrefab: {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
+  hunterMalePrefab: {fileID: 4516135911683214189, guid: 34e398540f2f1b648a4c2e5307a27d45, type: 3}
+  hunterFemalePrefab: {fileID: 4516135911683214189, guid: 34e398540f2f1b648a4c2e5307a27d45, type: 3}
   gameManagerPrefab: {fileID: 4317130386679613736, guid: dbcc69960cf8d9046b073d292c8b16f0, type: 3}
 --- !u!114 &6538974110224861687
 MonoBehaviour:

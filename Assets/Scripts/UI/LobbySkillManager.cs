@@ -1,0 +1,224 @@
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections.Generic;
+
+public class LobbySkillManager : MonoBehaviour
+{
+    public static LobbySkillManager Instance;
+
+    [Header("Main Selection Buttons")]
+    public Button witchSkill1Btn;
+    public Button witchSkill2Btn;
+    public Button witchItemBtn;
+    public Button hunterSkill1Btn;
+    public Button hunterSkill2Btn;
+
+    [Header("Popup Panels")]
+    public GameObject witchSkillPanel;
+    public GameObject witchItemPanel;
+    public GameObject hunterSkillPanel;
+    public GameObject uiBlocker; // 拖入全屏透明遮罩
+
+    [Header("Panel Explain Texts")]
+    public TextMeshProUGUI witchSkillExplainText;
+    public TextMeshProUGUI witchItemExplainText;
+    public TextMeshProUGUI hunterSkillExplainText;
+
+    [Header("Choice Button Prefab")]
+    public GameObject choiceButtonPrefab;
+
+    [Header("Databases")]
+    public List<SkillData> allSkills;
+    public List<WitchItemData> allItems;
+
+    [Header("Colors")]
+    public Color highlightColor = Color.yellow; // 选中的黄色高亮
+
+    private int currentSelectingSlot = -1;
+
+    private void Awake() => Instance = this;
+
+    private void Start()
+    {
+        CloseAllPanels();
+
+        // 绑定主按钮
+        witchSkill1Btn.onClick.AddListener(() => OpenSelectionPanel(0));
+        witchSkill2Btn.onClick.AddListener(() => OpenSelectionPanel(1));
+        witchItemBtn.onClick.AddListener(() => OpenSelectionPanel(2));
+        hunterSkill1Btn.onClick.AddListener(() => OpenSelectionPanel(3));
+        hunterSkill2Btn.onClick.AddListener(() => OpenSelectionPanel(4));
+
+        // 绑定全屏遮罩：点击框外关闭
+        if (uiBlocker != null)
+        {
+            uiBlocker.GetComponent<Button>().onClick.AddListener(CloseAllPanels);
+        }
+
+        RefreshMainButtonUI();
+    }
+
+    private void OpenSelectionPanel(int slotIndex)
+    {
+        // 如果点的是当前已经打开的槽位，则关闭它（开关逻辑）
+        if (currentSelectingSlot == slotIndex && IsAnyPanelOpen())
+        {
+            CloseAllPanels();
+            return;
+        }
+        // 第一步：关闭所有已打开的面板，确保互斥
+        CloseAllPanels();
+        currentSelectingSlot = slotIndex;
+        uiBlocker.SetActive(true); // 开启背景检测
+
+        if (slotIndex <= 1)
+        {
+            witchSkillPanel.SetActive(true);
+            PopulatePanel(witchSkillPanel.transform.Find("SkillButtonContainer"), PlayerRole.Witch, witchSkillExplainText);
+        }
+        else if (slotIndex == 2)
+        {
+            witchItemPanel.SetActive(true);
+            PopulateItemPanel(witchItemPanel.transform.Find("SkillButtonContainer"), witchItemExplainText);
+        }
+        else
+        {
+            hunterSkillPanel.SetActive(true);
+            PopulatePanel(hunterSkillPanel.transform.Find("SkillButtonContainer"), PlayerRole.Hunter, hunterSkillExplainText);
+        }
+    }
+    private bool IsAnyPanelOpen()
+    {
+        return witchSkillPanel.activeSelf || witchItemPanel.activeSelf || hunterSkillPanel.activeSelf;
+    }
+    private void PopulatePanel(Transform container, PlayerRole role, TextMeshProUGUI targetText)
+    {
+        foreach (Transform child in container) Destroy(child.gameObject);
+        if(targetText) targetText.text = "Select your power...";
+
+        var settings = PlayerSettings.Instance;
+        // 确定该职业目前选了什么，用于高亮和禁用
+        List<string> currentlyEquipped = (role == PlayerRole.Witch) ? settings.selectedWitchSkillNames : settings.selectedHunterSkillNames;
+
+        foreach (var skill in allSkills)
+        {
+            if (skill.role != role) continue;
+
+            GameObject go = Instantiate(choiceButtonPrefab, container);
+            go.transform.Find("Icon").GetComponent<Image>().sprite = skill.icon;
+            
+            Button btn = go.GetComponent<Button>();
+            Outline outline = go.GetComponent<Outline>();
+
+            // --- 核心逻辑：高亮与交互状态 ---
+            bool isAlreadySelected = currentlyEquipped.Contains(skill.scriptClassName);
+            
+            if (isAlreadySelected)
+            {
+                btn.interactable = false; // 已选中的不能再点
+                if (outline != null)
+                {
+                    outline.effectColor = highlightColor;
+                    outline.effectDistance = new Vector2(4, 4); // 展现黄色外框
+                }
+            }
+
+            btn.onClick.AddListener(() => OnChoiceSelected(skill.scriptClassName));
+            
+            SkillChoiceHover hover = go.AddComponent<SkillChoiceHover>();
+            hover.targetText = targetText; 
+            hover.description = $"<color=#FFD700><b>{skill.skillName}</b></color>\n{skill.description}";
+        }
+    }
+
+    private void PopulateItemPanel(Transform container, TextMeshProUGUI targetText)
+    {
+        foreach (Transform child in container) Destroy(child.gameObject);
+        if(targetText) targetText.text = "Select an item...";
+
+        string equippedItem = PlayerSettings.Instance.selectedWitchItemName;
+
+        foreach (var item in allItems)
+        {
+            GameObject go = Instantiate(choiceButtonPrefab, container);
+            go.transform.Find("Icon").GetComponent<Image>().sprite = item.icon;
+            
+            Button btn = go.GetComponent<Button>();
+            Outline outline = go.GetComponent<Outline>();
+
+            if (item.scriptClassName == equippedItem)
+            {
+                btn.interactable = false;
+                if (outline != null)
+                {
+                    outline.effectColor = highlightColor;
+                    outline.effectDistance = new Vector2(4, 4);
+                }
+            }
+
+            btn.onClick.AddListener(() => OnChoiceSelected(item.scriptClassName));
+
+            SkillChoiceHover hover = go.AddComponent<SkillChoiceHover>();
+            hover.targetText = targetText;
+            hover.description = $"<color=#BB88FF><b>{item.itemName}</b></color>\n{item.description}";
+        }
+    }
+
+    private void OnChoiceSelected(string className)
+    {
+        var settings = PlayerSettings.Instance;
+
+        switch (currentSelectingSlot)
+        {
+            case 0: settings.selectedWitchSkillNames[0] = className; break;
+            case 1: settings.selectedWitchSkillNames[1] = className; break;
+            case 2: settings.selectedWitchItemName = className; break;
+            case 3: settings.selectedHunterSkillNames[0] = className; break;
+            case 4: settings.selectedHunterSkillNames[1] = className; break;
+        }
+
+        CloseAllPanels();
+        RefreshMainButtonUI();
+    }
+
+    public void RefreshMainButtonUI()
+    {
+        if (PlayerSettings.Instance == null) return;
+
+        var settings = PlayerSettings.Instance;
+        UpdateBtnText(witchSkill1Btn, settings.selectedWitchSkillNames[0]);
+        UpdateBtnText(witchSkill2Btn, settings.selectedWitchSkillNames[1]);
+        UpdateBtnText(witchItemBtn, settings.selectedWitchItemName);
+        UpdateBtnText(hunterSkill1Btn, settings.selectedHunterSkillNames[0]);
+        UpdateBtnText(hunterSkill2Btn, settings.selectedHunterSkillNames[1]);
+    }
+
+    private void UpdateBtnText(Button btn, string className)
+    {
+        if (btn == null) return;
+        var textComp = btn.GetComponentInChildren<TextMeshProUGUI>();
+        if (textComp != null)
+        {
+            textComp.text = GetDisplayName(className);
+        }
+    }
+
+    private string GetDisplayName(string className)
+    {
+        if (string.IsNullOrEmpty(className)) return "None";
+        var skill = allSkills.Find(s => s.scriptClassName == className);
+        if (skill != null) return skill.skillName;
+        var item = allItems.Find(i => i.scriptClassName == className);
+        if (item != null) return item.itemName;
+        return className;
+    }
+
+    public void CloseAllPanels()
+    {
+        witchSkillPanel.SetActive(false);
+        witchItemPanel.SetActive(false);
+        hunterSkillPanel.SetActive(false);
+        if (uiBlocker != null) uiBlocker.SetActive(false);
+    }
+}

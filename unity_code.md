@@ -68,7 +68,7 @@ public class GameManager : NetworkBehaviour
 
     [Header("Physics Settings")]
     public LayerMask propLayer; // 用于检测树木/道具的层级
-
+    public Dictionary<int, Gender> pendingGenders = new Dictionary<int, Gender>();
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -279,7 +279,9 @@ public class GameManager : NetworkBehaviour
     [Server]
     public void SpawnPlayerForConnection(NetworkConnectionToClient conn)
     {
+        Gender gender = pendingGenders.ContainsKey(conn.connectionId) ? pendingGenders[conn.connectionId] : Gender.Male;
         MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
+        GameObject prefabToUse;
         if (netManager == null) return;
         int id = conn.connectionId;
         // ---------------------------------------------------------
@@ -309,7 +311,15 @@ public class GameManager : NetworkBehaviour
         }
 
         // 2. 获取 Prefab
-        GameObject prefabToUse = (role == PlayerRole.Witch) ? netManager.witchPrefab : netManager.hunterPrefab;
+        // 根据角色和性别四选一
+        if (role == PlayerRole.Witch)
+        {
+            prefabToUse = (gender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+        }
+        else
+        {
+            prefabToUse = (gender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
+        }
         if (prefabToUse == null) return;
 
 
@@ -478,6 +488,12 @@ public class GameManager : NetworkBehaviour
             pendingNames[conn.connectionId] = pName;
 
             Debug.Log($"[PreAssignRoles] ID: {conn.connectionId} | Name: {pName} | Role: {assignedRole} (Ratio Target: {hunterTargetCount}/{totalPlayers})");
+        }
+        foreach (var conn in connections)
+        {
+            var pScript = conn.identity.GetComponent<PlayerScript>();
+            // 记录该连接选中的性别
+            pendingGenders[conn.connectionId] = pScript.myGender;
         }
     }
 
@@ -681,8 +697,10 @@ public class MyNetworkManager : NetworkManager
 
     // 【新增】在这里定义 Prefab 槽位，方便在 Inspector 拖拽
     [Header("Role Prefabs")]
-    public GameObject witchPrefab;
-    public GameObject hunterPrefab;
+    public GameObject witchMalePrefab ;
+    public GameObject witchFemalePrefab;
+    public GameObject hunterMalePrefab ;
+    public GameObject hunterFemalePrefab;
 
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
@@ -3247,7 +3265,10 @@ public class HunterPlayer : GamePlayer
     // 当前武器索引（同步变量，变化时调用 OnWeaponChanged）
     [SyncVar(hook = nameof(OnWeaponChanged))]
     public int currentWeaponIndex = 0;
-
+    [Header("Animation")]
+    [SerializeField] private Animator hunterAnimator; // 在 Inspector 中拖入猎人的 Animator
+    // 【新增 1】定义记录上一帧位置的变量
+    private Vector3 lastPosition;
     // 【新增】在初始化时赋值给父类的字段
     private void Awake()
     {
@@ -3298,6 +3319,17 @@ public class HunterPlayer : GamePlayer
                 SceneScript.Instance.morphSlot.gameObject.SetActive(false);
             }
         }
+        // 手动触发一次，确保初始动画状态正确
+        if (hunterAnimator != null)
+        {
+            hunterAnimator.SetInteger("WeaponType", currentWeaponIndex);
+        }
+    }
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        // 记录出生时的位置，防止 Update 第一帧计算出巨大的瞬移距离
+        lastPosition = transform.position;
     }
     public override void OnStartServer()
     {
@@ -3323,10 +3355,36 @@ public class HunterPlayer : GamePlayer
                 weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             }
         }
+        // 【新增】同步武器类型给状态机
+        // 假设索引 0 是拳头，1 是猎枪，2 是网筒
+        if (hunterAnimator != null)
+        {
+            hunterAnimator.SetInteger("WeaponType", newWeaponIndex);
+            
+            // 强制触发一次状态转换，让动画立即切换
+            hunterAnimator.Update(0); 
+        }
     }
     public override void Update()
     {
         base.Update();
+        // 无论是不是本地玩家，都要更新 Animator 的 Speed
+        if (hunterAnimator != null)
+        {
+            float speedMagnitude;
+            if (isLocalPlayer)
+            {
+                speedMagnitude = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            }
+            else
+            {
+                // 远程玩家通过位置差计算速度（代码参考你 WitchPlayer 里的实现）
+                float distance = Vector3.Distance(transform.position, lastPosition);
+                speedMagnitude = distance / Time.deltaTime;
+                lastPosition = transform.position;
+            }
+            hunterAnimator.SetFloat("Speed", speedMagnitude, 0.1f, Time.deltaTime);
+        }
         if (isLocalPlayer)
         {
             // 切换武器
@@ -3933,6 +3991,7 @@ public class PlayerScript : NetworkBehaviour
 
     [SyncVar(hook = nameof(OnRoleChanged))]
     public PlayerRole role; // 角色类型
+    [SyncVar] public Gender myGender = Gender.Male;
 
     private void OnPingChanged(int oldPing, int newPing)
     {
@@ -4014,6 +4073,7 @@ public class PlayerScript : NetworkBehaviour
         }
         // 【新增】开始定期更新 Ping
         StartCoroutine(UpdatePingRoutine());
+        CmdUpdateGender(PlayerSettings.Instance.selectedGender);
     }
 
     // 【新增】协程：每 2 秒更新一次延迟（不需要太频繁，节省带宽）
@@ -4241,6 +4301,21 @@ public class PlayerScript : NetworkBehaviour
                 break;
         }
     }
+    [Command]
+    public void CmdCancelStart()
+    {
+        // 在服务器上寻找 LobbyScript 并执行取消逻辑
+        LobbyScript lobby = FindObjectOfType<LobbyScript>();
+        if (lobby != null)
+        {
+            lobby.CancelCountdown();
+        }
+    }
+    [Command]
+    public void CmdUpdateGender(Gender g)
+    {
+        myGender = g;
+    }
 }
 
 ```
@@ -4252,11 +4327,14 @@ using UnityEngine;
 
 using System.Collections.Generic;
 
+public enum Gender { Male, Female }
+
 public class PlayerSettings : MonoBehaviour
 {
     public static PlayerSettings Instance { get; private set; }
     public string PlayerName { get; set; } = "";
 
+    public Gender selectedGender = Gender.Male; // 默认男性
     // 存储选中的技能名称（或者 ID）
     public List<string> selectedWitchSkillNames = new List<string>();
     public List<string> selectedHunterSkillNames = new List<string>();
@@ -4265,6 +4343,16 @@ public class PlayerSettings : MonoBehaviour
     private void Awake() {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+        if (selectedWitchSkillNames.Count < 2) {
+            selectedWitchSkillNames.Clear();
+            selectedWitchSkillNames.Add("WitchSkill_Mist"); // 默认值
+            selectedWitchSkillNames.Add("WitchSkill_Decoy");
+        }
+        if (selectedHunterSkillNames.Count < 2) {
+            selectedHunterSkillNames.Clear();
+            selectedHunterSkillNames.Add("HunterSkill_Trap");
+            selectedHunterSkillNames.Add("HunterSkill_Scan");
+        }
         DontDestroyOnLoad(gameObject);
     }
 
@@ -4272,6 +4360,11 @@ public class PlayerSettings : MonoBehaviour
     public void Clear()
     {
         PlayerName = "Player";
+    }
+    // 供 UI 调用
+    public void SetGender(int index)
+    {
+        selectedGender = (Gender)index;
     }
 }
 ```
@@ -4496,6 +4589,9 @@ public class WitchPlayer : GamePlayer
     // 增加一个列表，专门让服务器记住发给客户端的是哪三个奖励
     private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
+    [SerializeField] private Animator animator; // 在Inspector中拖入你的Animator
+    [SyncVar] // 让速度在全网同步
+    private float syncedSpeed;
 
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
@@ -4611,6 +4707,18 @@ public class WitchPlayer : GamePlayer
 
         base.Update();
 
+        if (isLocalPlayer) // 只有自己计算速度
+        {
+            float horizontalSpeed = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            // 把速度传给服务器进行同步
+            CmdUpdateAnimationSpeed(horizontalSpeed);
+        }
+
+        // 所有人（包括本地和远程客户端）都根据同步的速度值更新动画
+        if (!isMorphed && animator != null)
+        {
+            animator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+        }
         // --- 新增：本地玩家更新 UI 冷却进度 ---
         if (isLocalPlayer && SceneScript.Instance != null && SceneScript.Instance.morphSlot != null)
         {
@@ -6209,12 +6317,15 @@ public class WitchPlayer : GamePlayer
 
     private RewardOption CreateSkillReward()
     {
-        // 创建一个候选列表，只存放当前已装备技能的奖励
         List<RewardOption> validOptions = new List<RewardOption>();
 
-        // 1. 检查迷雾技能 (Mist)
-        var mist = GetComponent<WitchSkill_Mist>();
-        if (mist != null && mist.enabled) // 必须存在且已被 PlayerSkillManager 激活
+        // 辅助函数：检查某个类名是否在玩家选中的两个技能之中
+        System.Func<string, bool> isSkillEquipped = (className) => {
+            return syncedSkill1Name == className || syncedSkill2Name == className;
+        };
+
+        // 1. 检查迷雾 (Mist)
+        if (isSkillEquipped("WitchSkill_Mist"))
         {
             validOptions.Add(new RewardOption { 
                 title = "Abyssal Fog", 
@@ -6225,9 +6336,8 @@ public class WitchPlayer : GamePlayer
             });
         }
 
-        // 2. 检查诅咒技能 (Curse)
-        var curse = GetComponent<WitchSkill_Curse>();
-        if (curse != null && curse.enabled)
+        // 2. 检查诅咒 (Curse)
+        if (isSkillEquipped("WitchSkill_Curse"))
         {
             validOptions.Add(new RewardOption { 
                 title = "Extended Hex", 
@@ -6238,9 +6348,8 @@ public class WitchPlayer : GamePlayer
             });
         }
 
-        // 3. 检查分身技能 (Decoy)
-        var decoy = GetComponent<WitchSkill_Decoy>();
-        if (decoy != null && decoy.enabled)
+        // 3. 检查分身 (Decoy)
+        if (isSkillEquipped("WitchSkill_Decoy"))
         {
             validOptions.Add(new RewardOption { 
                 title = "Triple Illusion", 
@@ -6251,9 +6360,8 @@ public class WitchPlayer : GamePlayer
             });
         }
 
-        // 4. 检查混沌技能 (Chaos)
-        var chaos = GetComponent<WitchSkill_Chaos>();
-        if (chaos != null && chaos.enabled)
+        // 4. 检查混沌 (Chaos)
+        if (isSkillEquipped("WitchSkill_Chaos"))
         {
             validOptions.Add(new RewardOption { 
                 title = "Chaos Mastery", 
@@ -6264,9 +6372,20 @@ public class WitchPlayer : GamePlayer
             });
         }
 
-        // 从所有合法的技能奖励中随机返回一个
-        int randomIndex = Random.Range(0, validOptions.Count);
-        return validOptions[randomIndex];
+        // 兜底逻辑：如果什么都没带（或是同步还没完成），给一个法力值相关的奖励
+        if (validOptions.Count == 0)
+        {
+            return new RewardOption { 
+                title = "Arcane Surge", 
+                description = "Recover 50 Mana immediately", 
+                category = RewardCategory.Attribute, 
+                rewardKey = "AddMana", 
+                value = 50f 
+            };
+        }
+
+        // 随机返回一个已装备技能的增益
+        return validOptions[Random.Range(0, validOptions.Count)];
     }
 
     private RewardOption CreateExtraReward()
@@ -6417,6 +6536,11 @@ public class WitchPlayer : GamePlayer
             }
             possessedTreeNetId = 0; // 清除 ID
         }
+    }
+    [Command]
+    void CmdUpdateAnimationSpeed(float speed)
+    {
+        syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
     }
 }
 ```
@@ -8532,6 +8656,141 @@ public class LobbyChat : MonoBehaviour
 }
 ```
 
+## UI\LobbyModelPreview.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using Mirror;
+
+public class LobbyModelPreview : MonoBehaviour
+{
+    [Header("UI Buttons")]
+    public Button maleButton;
+    public Button femaleButton;
+
+    [Header("Models")]
+    public Animator witchMale;
+    public Animator witchFemale;
+    public Animator hunterMale;
+    public Animator hunterFemale;
+
+    [Header("Movement Settings")]
+    public float forwardZ = -1.5f; 
+    public float backwardZ = 1.0f; 
+    public float lerpSpeed = 10f; // 增加速度让反馈更即时
+
+    [Header("Rotation Settings")]
+    public Vector3 facingRotation = new Vector3(0, 180, 0); // 如果模型背对镜头，修改这里的 Y
+
+    private Vector3 wMaleBase, wFemaleBase, hMaleBase, hFemaleBase;
+    private Gender currentGender;
+
+    private void Start()
+    {
+        // 1. 记录初始位置
+        // 建议在编辑器里把这4个模型放在同一个 Z 轴坐标上
+        wMaleBase = witchMale.transform.localPosition;
+        wFemaleBase = witchFemale.transform.localPosition;
+        hMaleBase = hunterMale.transform.localPosition;
+        hFemaleBase = hunterFemale.transform.localPosition;
+
+        // 2. 绑定按钮
+        maleButton.onClick.AddListener(() => UpdateSelection(Gender.Male));
+        femaleButton.onClick.AddListener(() => UpdateSelection(Gender.Female));
+
+        // 3. 初始读取性别并直接应用（不等待 Lerp）
+        currentGender = PlayerSettings.Instance.selectedGender;
+        ApplySelection(currentGender, true);
+    }
+
+    private void UpdateSelection(Gender gender)
+    {
+        if (currentGender == gender) return;
+        ApplySelection(gender, false);
+    }
+
+    private void ApplySelection(Gender gender, bool immediate)
+    {
+        currentGender = gender;
+        PlayerSettings.Instance.SetGender((int)gender);
+        // 1. 【核心修复】在切换性别的瞬间，立刻把所有模型的旋转拉回初始方向
+        // 这样可以清除上一段动画可能残留的微小旋转误差
+        ResetAllRotations();
+        if (NetworkClient.active && NetworkClient.localPlayer != null)
+        {
+            NetworkClient.localPlayer.GetComponent<PlayerScript>().CmdUpdateGender(gender);
+        }
+
+        // 按钮交互
+        if (maleButton) maleButton.interactable = (gender != Gender.Male);
+        if (femaleButton) femaleButton.interactable = (gender != Gender.Female);
+        
+        UpdateAnimatorParams();
+
+        if (immediate)
+        {
+            // 瞬间移动位置，防止第一帧看到错位
+            SetPos(witchMale.transform, wMaleBase, gender == Gender.Male);
+            SetPos(witchFemale.transform, wFemaleBase, gender == Gender.Female);
+            SetPos(hunterMale.transform, hMaleBase, gender == Gender.Male);
+            SetPos(hunterFemale.transform, hFemaleBase, gender == Gender.Female);
+        }
+    }
+
+    private void Update()
+    {
+        // 平滑移动逻辑
+        MoveModel(witchMale.transform, wMaleBase, currentGender == Gender.Male);
+        MoveModel(witchFemale.transform, wFemaleBase, currentGender == Gender.Female);
+        MoveModel(hunterMale.transform, hMaleBase, currentGender == Gender.Male);
+        MoveModel(hunterFemale.transform, hFemaleBase, currentGender == Gender.Female);
+    }
+
+    private void MoveModel(Transform trans, Vector3 basePos, bool isSelected)
+    {
+        Vector3 target = GetTargetPos(basePos, isSelected);
+        trans.localPosition = Vector3.Lerp(trans.localPosition, target, Time.deltaTime * lerpSpeed);
+    }
+
+    private void SetPos(Transform trans, Vector3 basePos, bool isSelected)
+    {
+        trans.localPosition = GetTargetPos(basePos, isSelected);
+    }
+
+    private Vector3 GetTargetPos(Vector3 basePos, bool isSelected)
+    {
+        float offset = isSelected ? forwardZ : backwardZ;
+        return new Vector3(basePos.x, basePos.y, basePos.z + offset);
+    }
+
+    private void UpdateAnimatorParams()
+    {
+        SetAnim(witchMale, currentGender == Gender.Male);
+        SetAnim(witchFemale, currentGender == Gender.Female);
+        SetAnim(hunterMale, currentGender == Gender.Male);
+        SetAnim(hunterFemale, currentGender == Gender.Female);
+    }
+
+    private void SetAnim(Animator anim, bool isSelected)
+    {
+        if (anim == null) return;
+        anim.SetBool("IsSelected", isSelected);
+        // 【关键修复】强制 Animator 立即评估状态，而不是等下一帧
+        anim.Update(0); 
+    }
+    // 新增：只在切换时调用的重置方法
+    private void ResetAllRotations()
+    {
+        Quaternion fixedRot = Quaternion.Euler(facingRotation);
+        if (witchMale) witchMale.transform.localRotation = fixedRot;
+        if (witchFemale) witchFemale.transform.localRotation = fixedRot;
+        if (hunterMale) hunterMale.transform.localRotation = fixedRot;
+        if (hunterFemale) hunterFemale.transform.localRotation = fixedRot;
+    }
+}
+```
+
 ## UI\LobbyScript.cs
 
 ```csharp
@@ -8587,6 +8846,10 @@ public class LobbyScript : NetworkBehaviour
     private Dictionary<PlayerScript, PlayerRowUI> playerRows = new Dictionary<PlayerScript, PlayerRowUI>();
     
     private Coroutine countdownCoroutine; // 【新增】保存协程引用
+    [Header("Start Button Style")]
+    public TextMeshProUGUI startButtonText; // 拖入你的 StartText 对象
+    public Color normalTextColor = new Color(0.788f, 0.666f, 0.541f); // 你截图中的 C9AA8A
+    public Color countdownTextColor = new Color(1f, 0.73f, 0.42f);     // 琥珀金，更具魔幻感
     private void Start()
     {
         // 【新增】进入大厅时，强制恢复鼠标显示和解锁
@@ -8698,11 +8961,17 @@ public class LobbyScript : NetworkBehaviour
             // 倒计时开始后，禁用开始按钮
             if (btnStartGame != null)
             {
-                btnStartGame.gameObject.SetActive(true);
-                btnStartGame.interactable = false; 
-                // 可选：更改按钮文字
+                // btnStartGame.interactable = false; // 倒计时期间禁止重复点击
+                btnStartGame.interactable = allReady || isGameStarting;
+                // 获取按钮下的 TMP 文字组件
                 var btnText = btnStartGame.GetComponentInChildren<TextMeshProUGUI>();
-                if (btnText) btnText.text = "Launching...";
+                if (btnText != null)
+                {
+                    // 将文字改为大的数字倒计时
+                    btnText.text = countdownDisplay.ToString();
+                    btnText.fontSize = 30; // 倒计时数字可以大一点，更有冲击力  
+                    btnText.color = countdownTextColor; // 切换到倒计时颜色
+                }
             }
         }
         // --- 逻辑 B: 等待阶段 ---
@@ -8714,19 +8983,26 @@ public class LobbyScript : NetworkBehaviour
                 btnStartGame.interactable = allReady; // 只有全员准备好才能点
                 
                 var btnText = btnStartGame.GetComponentInChildren<TextMeshProUGUI>();
-                if (btnText) btnText.text = "Start";
+                if (btnText != null)
+                {
+                    btnText.text = "Start";
+                    startButtonText.color = normalTextColor; // 恢复为你设定的原色 C9AA8A
+                    startButtonText.fontSize = 20; // 恢复你图中的字体大小
+                    // 如果人没齐，文字可以半透明或变灰，提示不可点
+                    startButtonText.color = allReady ? normalTextColor : new Color(normalTextColor.r, normalTextColor.g, normalTextColor.b, 0.5f);
+                }
             }
 
             if (roomStatusText != null)
             {
                 if (allReady)
                 {
-                    roomStatusText.text = "All Ready! Waiting for Players to Start...";
+                    roomStatusText.text = "All Ready!";
                     roomStatusText.color = Color.green;
                 }
                 else
                 {
-                    roomStatusText.text = $"Waiting for Players... ({readyCount}/{playerCount} Ready)";
+                    roomStatusText.text = $"Waiting for Players";
                     roomStatusText.color = Color.red;
                 }
             }
@@ -8771,9 +9047,19 @@ public class LobbyScript : NetworkBehaviour
     // 点击开始游戏按钮
     public void OnClickStartGame()
     {
+        // 安全获取本地玩家
         var localPlayer = NetworkClient.connection.identity.GetComponent<PlayerScript>();
-        if (localPlayer != null)
+        if (localPlayer == null) return;
+
+        if (isGameStarting)
         {
+            // --- 核心修改：通过 Command 请求取消 ---
+            Debug.Log("Player requested to cancel countdown.");
+            localPlayer.CmdCancelStart(); 
+        }
+        else
+        {
+            // --- 正常开始游戏 (之前已有的逻辑) ---
             localPlayer.CmdStartGame();
         }
     }
@@ -9141,6 +9427,235 @@ public class LobbySettingsManager : MonoBehaviour
 }
 ```
 
+## UI\LobbySkillManager.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections.Generic;
+
+public class LobbySkillManager : MonoBehaviour
+{
+    public static LobbySkillManager Instance;
+
+    [Header("Main Selection Buttons")]
+    public Button witchSkill1Btn;
+    public Button witchSkill2Btn;
+    public Button witchItemBtn;
+    public Button hunterSkill1Btn;
+    public Button hunterSkill2Btn;
+
+    [Header("Popup Panels")]
+    public GameObject witchSkillPanel;
+    public GameObject witchItemPanel;
+    public GameObject hunterSkillPanel;
+    public GameObject uiBlocker; // 拖入全屏透明遮罩
+
+    [Header("Panel Explain Texts")]
+    public TextMeshProUGUI witchSkillExplainText;
+    public TextMeshProUGUI witchItemExplainText;
+    public TextMeshProUGUI hunterSkillExplainText;
+
+    [Header("Choice Button Prefab")]
+    public GameObject choiceButtonPrefab;
+
+    [Header("Databases")]
+    public List<SkillData> allSkills;
+    public List<WitchItemData> allItems;
+
+    [Header("Colors")]
+    public Color highlightColor = Color.yellow; // 选中的黄色高亮
+
+    private int currentSelectingSlot = -1;
+
+    private void Awake() => Instance = this;
+
+    private void Start()
+    {
+        CloseAllPanels();
+
+        // 绑定主按钮
+        witchSkill1Btn.onClick.AddListener(() => OpenSelectionPanel(0));
+        witchSkill2Btn.onClick.AddListener(() => OpenSelectionPanel(1));
+        witchItemBtn.onClick.AddListener(() => OpenSelectionPanel(2));
+        hunterSkill1Btn.onClick.AddListener(() => OpenSelectionPanel(3));
+        hunterSkill2Btn.onClick.AddListener(() => OpenSelectionPanel(4));
+
+        // 绑定全屏遮罩：点击框外关闭
+        if (uiBlocker != null)
+        {
+            uiBlocker.GetComponent<Button>().onClick.AddListener(CloseAllPanels);
+        }
+
+        RefreshMainButtonUI();
+    }
+
+    private void OpenSelectionPanel(int slotIndex)
+    {
+        // 如果点的是当前已经打开的槽位，则关闭它（开关逻辑）
+        if (currentSelectingSlot == slotIndex && IsAnyPanelOpen())
+        {
+            CloseAllPanels();
+            return;
+        }
+        // 第一步：关闭所有已打开的面板，确保互斥
+        CloseAllPanels();
+        currentSelectingSlot = slotIndex;
+        uiBlocker.SetActive(true); // 开启背景检测
+
+        if (slotIndex <= 1)
+        {
+            witchSkillPanel.SetActive(true);
+            PopulatePanel(witchSkillPanel.transform.Find("SkillButtonContainer"), PlayerRole.Witch, witchSkillExplainText);
+        }
+        else if (slotIndex == 2)
+        {
+            witchItemPanel.SetActive(true);
+            PopulateItemPanel(witchItemPanel.transform.Find("SkillButtonContainer"), witchItemExplainText);
+        }
+        else
+        {
+            hunterSkillPanel.SetActive(true);
+            PopulatePanel(hunterSkillPanel.transform.Find("SkillButtonContainer"), PlayerRole.Hunter, hunterSkillExplainText);
+        }
+    }
+    private bool IsAnyPanelOpen()
+    {
+        return witchSkillPanel.activeSelf || witchItemPanel.activeSelf || hunterSkillPanel.activeSelf;
+    }
+    private void PopulatePanel(Transform container, PlayerRole role, TextMeshProUGUI targetText)
+    {
+        foreach (Transform child in container) Destroy(child.gameObject);
+        if(targetText) targetText.text = "Select your power...";
+
+        var settings = PlayerSettings.Instance;
+        // 确定该职业目前选了什么，用于高亮和禁用
+        List<string> currentlyEquipped = (role == PlayerRole.Witch) ? settings.selectedWitchSkillNames : settings.selectedHunterSkillNames;
+
+        foreach (var skill in allSkills)
+        {
+            if (skill.role != role) continue;
+
+            GameObject go = Instantiate(choiceButtonPrefab, container);
+            go.transform.Find("Icon").GetComponent<Image>().sprite = skill.icon;
+            
+            Button btn = go.GetComponent<Button>();
+            Outline outline = go.GetComponent<Outline>();
+
+            // --- 核心逻辑：高亮与交互状态 ---
+            bool isAlreadySelected = currentlyEquipped.Contains(skill.scriptClassName);
+            
+            if (isAlreadySelected)
+            {
+                btn.interactable = false; // 已选中的不能再点
+                if (outline != null)
+                {
+                    outline.effectColor = highlightColor;
+                    outline.effectDistance = new Vector2(4, 4); // 展现黄色外框
+                }
+            }
+
+            btn.onClick.AddListener(() => OnChoiceSelected(skill.scriptClassName));
+            
+            SkillChoiceHover hover = go.AddComponent<SkillChoiceHover>();
+            hover.targetText = targetText; 
+            hover.description = $"<color=#FFD700><b>{skill.skillName}</b></color>\n{skill.description}";
+        }
+    }
+
+    private void PopulateItemPanel(Transform container, TextMeshProUGUI targetText)
+    {
+        foreach (Transform child in container) Destroy(child.gameObject);
+        if(targetText) targetText.text = "Select an item...";
+
+        string equippedItem = PlayerSettings.Instance.selectedWitchItemName;
+
+        foreach (var item in allItems)
+        {
+            GameObject go = Instantiate(choiceButtonPrefab, container);
+            go.transform.Find("Icon").GetComponent<Image>().sprite = item.icon;
+            
+            Button btn = go.GetComponent<Button>();
+            Outline outline = go.GetComponent<Outline>();
+
+            if (item.scriptClassName == equippedItem)
+            {
+                btn.interactable = false;
+                if (outline != null)
+                {
+                    outline.effectColor = highlightColor;
+                    outline.effectDistance = new Vector2(4, 4);
+                }
+            }
+
+            btn.onClick.AddListener(() => OnChoiceSelected(item.scriptClassName));
+
+            SkillChoiceHover hover = go.AddComponent<SkillChoiceHover>();
+            hover.targetText = targetText;
+            hover.description = $"<color=#BB88FF><b>{item.itemName}</b></color>\n{item.description}";
+        }
+    }
+
+    private void OnChoiceSelected(string className)
+    {
+        var settings = PlayerSettings.Instance;
+
+        switch (currentSelectingSlot)
+        {
+            case 0: settings.selectedWitchSkillNames[0] = className; break;
+            case 1: settings.selectedWitchSkillNames[1] = className; break;
+            case 2: settings.selectedWitchItemName = className; break;
+            case 3: settings.selectedHunterSkillNames[0] = className; break;
+            case 4: settings.selectedHunterSkillNames[1] = className; break;
+        }
+
+        CloseAllPanels();
+        RefreshMainButtonUI();
+    }
+
+    public void RefreshMainButtonUI()
+    {
+        if (PlayerSettings.Instance == null) return;
+
+        var settings = PlayerSettings.Instance;
+        UpdateBtnText(witchSkill1Btn, settings.selectedWitchSkillNames[0]);
+        UpdateBtnText(witchSkill2Btn, settings.selectedWitchSkillNames[1]);
+        UpdateBtnText(witchItemBtn, settings.selectedWitchItemName);
+        UpdateBtnText(hunterSkill1Btn, settings.selectedHunterSkillNames[0]);
+        UpdateBtnText(hunterSkill2Btn, settings.selectedHunterSkillNames[1]);
+    }
+
+    private void UpdateBtnText(Button btn, string className)
+    {
+        if (btn == null) return;
+        var textComp = btn.GetComponentInChildren<TextMeshProUGUI>();
+        if (textComp != null)
+        {
+            textComp.text = GetDisplayName(className);
+        }
+    }
+
+    private string GetDisplayName(string className)
+    {
+        if (string.IsNullOrEmpty(className)) return "None";
+        var skill = allSkills.Find(s => s.scriptClassName == className);
+        if (skill != null) return skill.skillName;
+        var item = allItems.Find(i => i.scriptClassName == className);
+        if (item != null) return item.itemName;
+        return className;
+    }
+
+    public void CloseAllPanels()
+    {
+        witchSkillPanel.SetActive(false);
+        witchItemPanel.SetActive(false);
+        hunterSkillPanel.SetActive(false);
+        if (uiBlocker != null) uiBlocker.SetActive(false);
+    }
+}
+```
+
 ## UI\Main.cs
 
 ```csharp
@@ -9369,6 +9884,7 @@ public class PlayerRowUI : MonoBehaviour
     public GameObject nameContainer;            // 可選：包住 nameText + btnEdit 的容器
 
     private PlayerScript boundPlayer;      // 記住這行對應哪個玩家
+    private bool isEditingNow = false; // 【新增】标记位
     private void Awake()
     {
         if (btnEdit != null)
@@ -9390,11 +9906,15 @@ public class PlayerRowUI : MonoBehaviour
     public void UpdateInfo(string playerName, bool isReady, bool isLocalPlayer,int ping) // 【修改】增加 ping 参数
     {
         // 名字显示
-        nameText.text = playerName + (isLocalPlayer ? " (You)" : "");
+        if (!isEditingNow)
+        {
+            nameText.text = playerName + (isLocalPlayer ? " (You)" : "");
+        }
         // nameText.color = isLocalPlayer ? Color.green : Color.white;
 
         // 状态显示
-        statusText.text = isReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";   
+        // statusText.text = isReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";   
+        statusText.text = isReady ? "<color=green><b>Y</b></color>" : "<color=red><b>N</b></color>";
         // 【新增】显示延迟逻辑
         if (pingText != null)
         {
@@ -9415,11 +9935,11 @@ public class PlayerRowUI : MonoBehaviour
             btnEdit.gameObject.SetActive(isLocalPlayer);
         }
 
-        // 確保編輯中狀態被重置（斷線重連等情況）
-        if (nameInputField != null && nameInputField.gameObject.activeSelf)
-        {
-            StopEditing();
-        }
+        // // 確保編輯中狀態被重置（斷線重連等情況）
+        // if (nameInputField != null && nameInputField.gameObject.activeSelf)
+        // {
+        //     StopEditing();
+        // }
     }
     // 讓 LobbyScript 呼叫，綁定對應的 PlayerScript
     public void BindToPlayer(PlayerScript player)
@@ -9430,6 +9950,7 @@ public class PlayerRowUI : MonoBehaviour
     private void StartEditingName()
     {
         if (boundPlayer == null || nameText == null || nameInputField == null) return;
+        isEditingNow = true; // 【新增】标记开始编辑
 
         // 1. 把當前名字填入輸入框
         nameInputField.text = boundPlayer.playerName;
@@ -9464,6 +9985,7 @@ public class PlayerRowUI : MonoBehaviour
 
     private void StopEditing()
     {
+        isEditingNow = false; // 【新增】标记结束编辑
         if (nameText != null) nameText.gameObject.SetActive(true);
         if (btnEdit != null && boundPlayer != null && boundPlayer.isLocalPlayer)
         {
@@ -9916,6 +10438,36 @@ public class SkillButtonUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
 }
 ```
 
+## UI\SkillChoiceHover.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.EventSystems;
+using TMPro;
+
+public class SkillChoiceHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    public TextMeshProUGUI targetText; // 指向所属面板的 ExplainText
+    public string description;
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (targetText != null)
+        {
+            targetText.text = description;
+        }
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (targetText != null)
+        {
+            targetText.text = "Select your power...";
+        }
+    }
+}
+```
+
 ## UI\StartMenu.cs
 
 ```csharp
@@ -10348,11 +10900,22 @@ public class TeamVision : NetworkBehaviour
             }
             else if (isTeammate)
             {
+                // 队友：显示名字（如果是女巫且变身中则隐藏）
+                if (targetPlayer.nameText != null)
+                {
+                    bool shouldShowName = !(targetPlayer is WitchPlayer w && w.isMorphed);
+                    targetPlayer.nameText.gameObject.SetActive(shouldShowName);
+                }
                 Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
                 outline.SetOutline(true, c);
             }
             else
             {
+                // 敌人：强制隐藏名字
+                if (targetPlayer.nameText != null) 
+                {
+                    targetPlayer.nameText.gameObject.SetActive(false);
+                }
                 // 正常敌对状态（非透视期且未被抓），关闭描边
                 outline.SetOutline(false, Color.white);
             }
@@ -10378,6 +10941,63 @@ public class TeamVision : NetworkBehaviour
         UpdateAllOutlines();
     }
 
+}
+```
+
+## UI\UIButtonEffects.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using TMPro;
+
+public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler
+{
+    private Vector3 initialScale;
+    public float hoverScale = 1.05f;    // 悬浮时放大倍数
+    public float pressScale = 0.95f;    // 按下时缩小倍数
+    
+    [Header("Color Tint (Optional)")]
+    public Image targetImage;           // 按钮的背景图
+    public Color hoverColor = Color.white;
+    public Color pressColor = new Color(0.7f, 0.7f, 0.7f);
+    private Color originalColor;
+
+    private void Awake()
+    {
+        initialScale = transform.localScale;
+        if (targetImage == null) targetImage = GetComponent<Image>();
+        if (targetImage != null) originalColor = targetImage.color;
+    }
+
+    // 鼠标移入
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        transform.localScale = initialScale * hoverScale;
+        // 如果想做发光效果，可以在这里开启一个隐藏的 Glow 图片
+    }
+
+    // 鼠标移出
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        transform.localScale = initialScale;
+        if (targetImage != null) targetImage.color = originalColor;
+    }
+
+    // 鼠标按下
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        transform.localScale = initialScale * pressScale;
+        if (targetImage != null) targetImage.color = pressColor;
+    }
+
+    // 鼠标抬起
+    public void OnPointerUp(PointerEventData eventData)
+    {
+        transform.localScale = initialScale * hoverScale;
+        if (targetImage != null) targetImage.color = hoverColor;
+    }
 }
 ```
 

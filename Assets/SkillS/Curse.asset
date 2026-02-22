@@ -15,5 +15,5 @@ MonoBehaviour:
   skillName: Curse
   scriptClassName: WitchSkill_Curse
   role: 1
-  icon: {fileID: 21300000, guid: 4fb9eb81819aa77498878f347a5d4c9a, type: 3}
+  icon: {fileID: 21300000, guid: 9bf1599db53f94f2094fe67770702198, type: 3}
   description: CurseCurseCurseCurseCurse

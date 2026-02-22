@@ -12,8 +12,10 @@ public class MyNetworkManager : NetworkManager
 
     // 【新增】在这里定义 Prefab 槽位，方便在 Inspector 拖拽
     [Header("Role Prefabs")]
-    public GameObject witchPrefab;
-    public GameObject hunterPrefab;
+    public GameObject witchMalePrefab ;
+    public GameObject witchFemalePrefab;
+    public GameObject hunterMalePrefab ;
+    public GameObject hunterFemalePrefab;
 
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)

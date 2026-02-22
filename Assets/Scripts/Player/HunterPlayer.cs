@@ -18,7 +18,10 @@ public class HunterPlayer : GamePlayer
     // 当前武器索引（同步变量，变化时调用 OnWeaponChanged）
     [SyncVar(hook = nameof(OnWeaponChanged))]
     public int currentWeaponIndex = 0;
-
+    [Header("Animation")]
+    [SerializeField] private Animator hunterAnimator; // 在 Inspector 中拖入猎人的 Animator
+    // 【新增 1】定义记录上一帧位置的变量
+    private Vector3 lastPosition;
     // 【新增】在初始化时赋值给父类的字段
     private void Awake()
     {
@@ -69,6 +72,17 @@ public class HunterPlayer : GamePlayer
                 SceneScript.Instance.morphSlot.gameObject.SetActive(false);
             }
         }
+        // 手动触发一次，确保初始动画状态正确
+        if (hunterAnimator != null)
+        {
+            hunterAnimator.SetInteger("WeaponType", currentWeaponIndex);
+        }
+    }
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        // 记录出生时的位置，防止 Update 第一帧计算出巨大的瞬移距离
+        lastPosition = transform.position;
     }
     public override void OnStartServer()
     {
@@ -94,10 +108,36 @@ public class HunterPlayer : GamePlayer
                 weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             }
         }
+        // 【新增】同步武器类型给状态机
+        // 假设索引 0 是拳头，1 是猎枪，2 是网筒
+        if (hunterAnimator != null)
+        {
+            hunterAnimator.SetInteger("WeaponType", newWeaponIndex);
+            
+            // 强制触发一次状态转换，让动画立即切换
+            hunterAnimator.Update(0); 
+        }
     }
     public override void Update()
     {
         base.Update();
+        // 无论是不是本地玩家，都要更新 Animator 的 Speed
+        if (hunterAnimator != null)
+        {
+            float speedMagnitude;
+            if (isLocalPlayer)
+            {
+                speedMagnitude = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            }
+            else
+            {
+                // 远程玩家通过位置差计算速度（代码参考你 WitchPlayer 里的实现）
+                float distance = Vector3.Distance(transform.position, lastPosition);
+                speedMagnitude = distance / Time.deltaTime;
+                lastPosition = transform.position;
+            }
+            hunterAnimator.SetFloat("Speed", speedMagnitude, 0.1f, Time.deltaTime);
+        }
         if (isLocalPlayer)
         {
             // 切换武器

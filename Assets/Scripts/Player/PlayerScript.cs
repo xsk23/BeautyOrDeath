@@ -32,6 +32,7 @@ public class PlayerScript : NetworkBehaviour
 
     [SyncVar(hook = nameof(OnRoleChanged))]
     public PlayerRole role; // 角色类型
+    [SyncVar] public Gender myGender = Gender.Male;
 
     private void OnPingChanged(int oldPing, int newPing)
     {
@@ -113,6 +114,7 @@ public class PlayerScript : NetworkBehaviour
         }
         // 【新增】开始定期更新 Ping
         StartCoroutine(UpdatePingRoutine());
+        CmdUpdateGender(PlayerSettings.Instance.selectedGender);
     }
 
     // 【新增】协程：每 2 秒更新一次延迟（不需要太频繁，节省带宽）
@@ -339,5 +341,20 @@ public class PlayerScript : NetworkBehaviour
                 UnityEngine.Debug.LogWarning($"Unknown lobby setting type: {type}");
                 break;
         }
+    }
+    [Command]
+    public void CmdCancelStart()
+    {
+        // 在服务器上寻找 LobbyScript 并执行取消逻辑
+        LobbyScript lobby = FindObjectOfType<LobbyScript>();
+        if (lobby != null)
+        {
+            lobby.CancelCountdown();
+        }
+    }
+    [Command]
+    public void CmdUpdateGender(Gender g)
+    {
+        myGender = g;
     }
 }

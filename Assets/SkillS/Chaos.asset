@@ -15,7 +15,7 @@ MonoBehaviour:
   skillName: Chaos
   scriptClassName: WitchSkill_Chaos
   role: 1
-  icon: {fileID: 21300000, guid: 23ffb80fdc898484b84de5cf7629e8da, type: 3}
+  icon: {fileID: 21300000, guid: df0305f005e604fec9bf1c9414ce8aa0, type: 3}
   description: 'ChaosChaosChaosChaosChaos
 
 '

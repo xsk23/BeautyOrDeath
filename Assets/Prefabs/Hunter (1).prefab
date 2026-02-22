@@ -696,6 +696,7 @@ GameObject:
   - component: {fileID: 3439203615201911615}
   - component: {fileID: -7488479657767331540}
   - component: {fileID: 3684472165130412370}
+  - component: {fileID: -2428229412174797750}
   m_Layer: 6
   m_Name: Hunter (1)
   m_TagString: Untagged
@@ -863,6 +864,7 @@ MonoBehaviour:
   - {fileID: 5097230362010807672}
   - {fileID: 8697314932901651437}
   currentWeaponIndex: 0
+  hunterAnimator: {fileID: -2428229412174797750}
 --- !u!114 &2353516808386118448
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1116,6 +1118,27 @@ MonoBehaviour:
   footprintPrefab: {fileID: 47214768639774771, guid: 462e210f4e68b4e408b552c649416761, type: 3}
   humanGhostPrefab: {fileID: 7437291211915263204, guid: 0e987d9859f20a94f8c16cbf77f20518, type: 3}
   ghostMaterial: {fileID: 2100000, guid: de9e38de9d9275543a9cb0807fe7ad1f, type: 2}
+--- !u!95 &-2428229412174797750
+Animator:
+  serializedVersion: 5
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4516135911683214189}
+  m_Enabled: 1
+  m_Avatar: {fileID: 9000000, guid: ea40090a78c304e409c83f1169b83a13, type: 3}
+  m_Controller: {fileID: 9100000, guid: 216d66a74489cf1498d63aa04e1b2060, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &4565058604513354316
 GameObject:
   m_ObjectHideFlags: 0

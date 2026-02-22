@@ -50,6 +50,10 @@ public class LobbyScript : NetworkBehaviour
     private Dictionary<PlayerScript, PlayerRowUI> playerRows = new Dictionary<PlayerScript, PlayerRowUI>();
     
     private Coroutine countdownCoroutine; // 【新增】保存协程引用
+    [Header("Start Button Style")]
+    public TextMeshProUGUI startButtonText; // 拖入你的 StartText 对象
+    public Color normalTextColor = new Color(0.788f, 0.666f, 0.541f); // 你截图中的 C9AA8A
+    public Color countdownTextColor = new Color(1f, 0.73f, 0.42f);     // 琥珀金，更具魔幻感
     private void Start()
     {
         // 【新增】进入大厅时，强制恢复鼠标显示和解锁
@@ -161,11 +165,17 @@ public class LobbyScript : NetworkBehaviour
             // 倒计时开始后，禁用开始按钮
             if (btnStartGame != null)
             {
-                btnStartGame.gameObject.SetActive(true);
-                btnStartGame.interactable = false; 
-                // 可选：更改按钮文字
+                // btnStartGame.interactable = false; // 倒计时期间禁止重复点击
+                btnStartGame.interactable = allReady || isGameStarting;
+                // 获取按钮下的 TMP 文字组件
                 var btnText = btnStartGame.GetComponentInChildren<TextMeshProUGUI>();
-                if (btnText) btnText.text = "Launching...";
+                if (btnText != null)
+                {
+                    // 将文字改为大的数字倒计时
+                    btnText.text = countdownDisplay.ToString();
+                    btnText.fontSize = 30; // 倒计时数字可以大一点，更有冲击力  
+                    btnText.color = countdownTextColor; // 切换到倒计时颜色
+                }
             }
         }
         // --- 逻辑 B: 等待阶段 ---
@@ -177,19 +187,26 @@ public class LobbyScript : NetworkBehaviour
                 btnStartGame.interactable = allReady; // 只有全员准备好才能点
                 
                 var btnText = btnStartGame.GetComponentInChildren<TextMeshProUGUI>();
-                if (btnText) btnText.text = "Start";
+                if (btnText != null)
+                {
+                    btnText.text = "Start";
+                    startButtonText.color = normalTextColor; // 恢复为你设定的原色 C9AA8A
+                    startButtonText.fontSize = 20; // 恢复你图中的字体大小
+                    // 如果人没齐，文字可以半透明或变灰，提示不可点
+                    startButtonText.color = allReady ? normalTextColor : new Color(normalTextColor.r, normalTextColor.g, normalTextColor.b, 0.5f);
+                }
             }
 
             if (roomStatusText != null)
             {
                 if (allReady)
                 {
-                    roomStatusText.text = "All Ready! Waiting for Players to Start...";
+                    roomStatusText.text = "All Ready!";
                     roomStatusText.color = Color.green;
                 }
                 else
                 {
-                    roomStatusText.text = $"Waiting for Players... ({readyCount}/{playerCount} Ready)";
+                    roomStatusText.text = $"Waiting for Players";
                     roomStatusText.color = Color.red;
                 }
             }
@@ -234,9 +251,19 @@ public class LobbyScript : NetworkBehaviour
     // 点击开始游戏按钮
     public void OnClickStartGame()
     {
+        // 安全获取本地玩家
         var localPlayer = NetworkClient.connection.identity.GetComponent<PlayerScript>();
-        if (localPlayer != null)
+        if (localPlayer == null) return;
+
+        if (isGameStarting)
         {
+            // --- 核心修改：通过 Command 请求取消 ---
+            Debug.Log("Player requested to cancel countdown.");
+            localPlayer.CmdCancelStart(); 
+        }
+        else
+        {
+            // --- 正常开始游戏 (之前已有的逻辑) ---
             localPlayer.CmdStartGame();
         }
     }

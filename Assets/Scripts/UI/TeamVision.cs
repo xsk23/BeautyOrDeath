@@ -157,11 +157,22 @@ public class TeamVision : NetworkBehaviour
             }
             else if (isTeammate)
             {
+                // 队友：显示名字（如果是女巫且变身中则隐藏）
+                if (targetPlayer.nameText != null)
+                {
+                    bool shouldShowName = !(targetPlayer is WitchPlayer w && w.isMorphed);
+                    targetPlayer.nameText.gameObject.SetActive(shouldShowName);
+                }
                 Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
                 outline.SetOutline(true, c);
             }
             else
             {
+                // 敌人：强制隐藏名字
+                if (targetPlayer.nameText != null) 
+                {
+                    targetPlayer.nameText.gameObject.SetActive(false);
+                }
                 // 正常敌对状态（非透视期且未被抓），关闭描边
                 outline.SetOutline(false, Color.white);
             }

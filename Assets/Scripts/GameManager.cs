@@ -61,7 +61,7 @@ public class GameManager : NetworkBehaviour
 
     [Header("Physics Settings")]
     public LayerMask propLayer; // 用于检测树木/道具的层级
-
+    public Dictionary<int, Gender> pendingGenders = new Dictionary<int, Gender>();
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -272,7 +272,9 @@ public class GameManager : NetworkBehaviour
     [Server]
     public void SpawnPlayerForConnection(NetworkConnectionToClient conn)
     {
+        Gender gender = pendingGenders.ContainsKey(conn.connectionId) ? pendingGenders[conn.connectionId] : Gender.Male;
         MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
+        GameObject prefabToUse;
         if (netManager == null) return;
         int id = conn.connectionId;
         // ---------------------------------------------------------
@@ -302,7 +304,15 @@ public class GameManager : NetworkBehaviour
         }
 
         // 2. 获取 Prefab
-        GameObject prefabToUse = (role == PlayerRole.Witch) ? netManager.witchPrefab : netManager.hunterPrefab;
+        // 根据角色和性别四选一
+        if (role == PlayerRole.Witch)
+        {
+            prefabToUse = (gender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+        }
+        else
+        {
+            prefabToUse = (gender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
+        }
         if (prefabToUse == null) return;
 
 
@@ -471,6 +481,12 @@ public class GameManager : NetworkBehaviour
             pendingNames[conn.connectionId] = pName;
 
             Debug.Log($"[PreAssignRoles] ID: {conn.connectionId} | Name: {pName} | Role: {assignedRole} (Ratio Target: {hunterTargetCount}/{totalPlayers})");
+        }
+        foreach (var conn in connections)
+        {
+            var pScript = conn.identity.GetComponent<PlayerScript>();
+            // 记录该连接选中的性别
+            pendingGenders[conn.connectionId] = pScript.myGender;
         }
     }
 
