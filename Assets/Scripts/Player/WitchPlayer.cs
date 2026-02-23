@@ -104,8 +104,6 @@ public class WitchPlayer : GamePlayer
     private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
     [SerializeField] private Animator animator; // 在Inspector中拖入你的Animator
-    [SyncVar] // 让速度在全网同步
-    private float syncedSpeed;
 
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
@@ -2051,9 +2049,5 @@ public class WitchPlayer : GamePlayer
             possessedTreeNetId = 0; // 清除 ID
         }
     }
-    [Command]
-    void CmdUpdateAnimationSpeed(float speed)
-    {
-        syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
-    }
+
 }
