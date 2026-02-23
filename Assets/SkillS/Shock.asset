@@ -15,5 +15,5 @@ MonoBehaviour:
   skillName: Shock
   scriptClassName: HunterSkill_Shockwave
   role: 2
-  icon: {fileID: 21300000, guid: a119d3fa0625f48ea859b7235a666a68, type: 3}
+  icon: {fileID: 21300000, guid: 20fc1a916bdaac547b6f6475b8a7afee, type: 3}
   description: ShockShockShockShockShock
