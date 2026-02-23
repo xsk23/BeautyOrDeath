@@ -59,6 +59,15 @@ public class LobbySkillManager : MonoBehaviour
 
         RefreshMainButtonUI();
     }
+    private void Update()
+    {
+        // 如果有任何一个子面板（技能或道具）打开，按 Esc 全部关闭
+        if (IsAnyPanelOpen() && Input.GetKeyDown(KeyCode.Escape))
+        {
+            CloseAllPanels();
+        }
+    }
+
     // 【新增方法】
     private void InitializeDefaultSettings()
     {

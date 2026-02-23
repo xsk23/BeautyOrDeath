@@ -63,6 +63,16 @@ public class LobbySettingsManager : MonoBehaviour
         BuildSettingsUI();
     }
 
+    // --- 【新增代码：检测键盘 Esc 输入】 ---
+    private void Update()
+    {
+        // 如果面板正处于打开状态，且玩家按下了 Esc 键
+        if (settingPanel.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+        {
+            // 调用原有的 TogglePanel 方法来关闭它
+            TogglePanel();
+        }
+    }
     public void TogglePanel()
     {
         bool isActive = !settingPanel.activeSelf;
