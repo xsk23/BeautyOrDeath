@@ -72,11 +72,6 @@ public class HunterPlayer : GamePlayer
                 SceneScript.Instance.morphSlot.gameObject.SetActive(false);
             }
         }
-        // 手动触发一次，确保初始动画状态正确
-        if (hunterAnimator != null)
-        {
-            hunterAnimator.SetInteger("WeaponType", currentWeaponIndex);
-        }
     }
     public override void OnStartClient()
     {
@@ -108,38 +103,15 @@ public class HunterPlayer : GamePlayer
                 weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             }
         }
-        // 【新增】同步武器类型给状态机
-        // 假设索引 0 是拳头，1 是猎枪，2 是网筒
-        if (hunterAnimator != null)
-        {
-            hunterAnimator.SetInteger("WeaponType", newWeaponIndex);
-            
-            // 强制触发一次状态转换，让动画立即切换
-            hunterAnimator.Update(0); 
-        }
     }
     public override void Update()
     {
         base.Update();
-        // 无论是不是本地玩家，都要更新 Animator 的 Speed
-        if (hunterAnimator != null)
-        {
-            float speedMagnitude;
-            if (isLocalPlayer)
-            {
-                speedMagnitude = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
-            }
-            else
-            {
-                // 远程玩家通过位置差计算速度（代码参考你 WitchPlayer 里的实现）
-                float distance = Vector3.Distance(transform.position, lastPosition);
-                speedMagnitude = distance / Time.deltaTime;
-                lastPosition = transform.position;
-            }
-            hunterAnimator.SetFloat("Speed", speedMagnitude, 0.1f, Time.deltaTime);
-        }
         if (isLocalPlayer)
         {
+            // 1. 本地计算速度并发送给服务器
+            float horizontalSpeed = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            CmdUpdateAnimationSpeed(horizontalSpeed);
             // 切换武器
             if (Input.GetKeyDown(KeyCode.Alpha1))
             {
@@ -183,6 +155,12 @@ public class HunterPlayer : GamePlayer
             HandleCooldownUI();
             // 处决检查
             HandleExecutionCheck(Camera.main.transform.position, Camera.main.transform.forward);
+        }
+        // 2. 所有人（本地和远程）都根据同步的速度值更新 Animator
+        if (hunterAnimator != null)
+        {
+            // 注意：截图里参数名是小写 "speed"
+            hunterAnimator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
         }
     }
 

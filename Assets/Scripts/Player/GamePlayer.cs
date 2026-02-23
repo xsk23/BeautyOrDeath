@@ -107,6 +107,7 @@ public abstract class GamePlayer : NetworkBehaviour
 
     // 【抽象方法】强制子类必须实现 Attack
     protected abstract void Attack();
+    [SyncVar] protected float syncedSpeed;// 让速度在全网同步
 
 
     // --------------------------------------------------------
@@ -798,5 +799,10 @@ public abstract class GamePlayer : NetworkBehaviour
             // 我们在 TeamVision 里增加一个 Public 方法
             tv.ForceUpdateVisuals(); 
         }
+    }
+    [Command]
+    protected void CmdUpdateAnimationSpeed(float speed)
+    {
+        syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
     }
 }
