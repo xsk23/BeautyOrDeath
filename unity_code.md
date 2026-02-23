@@ -2314,7 +2314,7 @@ public class FistWeapon : WeaponBase
     {
         // 初始化默认值
         if (damage == 0) damage = 10f;
-        if (fireRate == 1.0f) fireRate = 0.4f;
+        fireRate = 0.5f;
         weaponName = "Fist";
     }
 
@@ -3275,6 +3275,7 @@ public class HunterPlayer : GamePlayer
     [SerializeField] private Animator hunterAnimator; // 在 Inspector 中拖入猎人的 Animator
     // 【新增 1】定义记录上一帧位置的变量
     private Vector3 lastPosition;
+    private bool nextPunchIsRight = false; // 记录左右交替的状态
     // 【新增】在初始化时赋值给父类的字段
     private void Awake()
     {
@@ -3442,10 +3443,29 @@ public class HunterPlayer : GamePlayer
     [ClientRpc]
     void RpcFireEffect(int weaponIndex)
     {
-        // ★ 关键细节：如果是本地玩家，刚才在 Update 里已经播过了，就别播第二次了
-        if (isLocalPlayer) return;
+        // // ★ 关键细节：如果是本地玩家，刚才在 Update 里已经播过了，就别播第二次了
+        // if (isLocalPlayer) return;
         // 触发事件
         OnWeaponFired?.Invoke(weaponIndex);
+        // --- 新增：触发近战动画逻辑 ---
+        if (hunterAnimator != null)
+        {
+            WeaponBase currentWeapon = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
+            
+            if (currentWeapon != null && currentWeapon.weaponName == "Fist") 
+            {
+                // 1. 设置布尔值，决定这次走左边还是右边的动画分支
+                hunterAnimator.SetBool("isPunchRight", nextPunchIsRight);
+
+                // 2. 触发攻击 Trigger
+                hunterAnimator.SetTrigger("Punch");
+
+                // 3. 切换状态：下次攻击换另一只手
+                nextPunchIsRight = !nextPunchIsRight;
+                
+                UnityEngine.Debug.Log($"[Animation] Punching side: {(nextPunchIsRight ? "Left" : "Right")}");
+            }
+        }
     }
 
     private void HandleCooldownUI()
@@ -9456,6 +9476,16 @@ public class LobbySettingsManager : MonoBehaviour
         BuildSettingsUI();
     }
 
+    // --- 【新增代码：检测键盘 Esc 输入】 ---
+    private void Update()
+    {
+        // 如果面板正处于打开状态，且玩家按下了 Esc 键
+        if (settingPanel.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+        {
+            // 调用原有的 TogglePanel 方法来关闭它
+            TogglePanel();
+        }
+    }
     public void TogglePanel()
     {
         bool isActive = !settingPanel.activeSelf;
@@ -9713,6 +9743,15 @@ public class LobbySkillManager : MonoBehaviour
 
         RefreshMainButtonUI();
     }
+    private void Update()
+    {
+        // 如果有任何一个子面板（技能或道具）打开，按 Esc 全部关闭
+        if (IsAnyPanelOpen() && Input.GetKeyDown(KeyCode.Escape))
+        {
+            CloseAllPanels();
+        }
+    }
+
     // 【新增方法】
     private void InitializeDefaultSettings()
     {
