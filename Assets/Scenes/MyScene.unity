@@ -63016,11 +63016,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2684066355735203988, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_Color.g
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2684066355735203988, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_Color.r
-      value: 1
+      value: 0.12656307
       objectReference: {fileID: 0}
     - target: {fileID: 2684066355735203988, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_Enabled
@@ -63304,7 +63304,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9124940431798131139, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
