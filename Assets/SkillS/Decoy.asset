@@ -15,5 +15,5 @@ MonoBehaviour:
   skillName: Decoy
   scriptClassName: WitchSkill_Decoy
   role: 1
-  icon: {fileID: 21300000, guid: 77d309f70a9634a1e85fbd0fdf86d39b, type: 3}
+  icon: {fileID: 21300000, guid: bbc91c6c9999e9a47a3e0348ce61dfb0, type: 3}
   description: DecoyDecoyDecoyDecoyDecoy
