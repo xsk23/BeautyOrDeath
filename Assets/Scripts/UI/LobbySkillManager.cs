@@ -42,7 +42,8 @@ public class LobbySkillManager : MonoBehaviour
     private void Start()
     {
         CloseAllPanels();
-
+        // --- 【核心修改：设置默认道具】 ---
+        InitializeDefaultSettings();
         // 绑定主按钮
         witchSkill1Btn.onClick.AddListener(() => OpenSelectionPanel(0));
         witchSkill2Btn.onClick.AddListener(() => OpenSelectionPanel(1));
@@ -58,7 +59,21 @@ public class LobbySkillManager : MonoBehaviour
 
         RefreshMainButtonUI();
     }
+    // 【新增方法】
+    private void InitializeDefaultSettings()
+    {
+        if (PlayerSettings.Instance == null) return;
 
+        // 1. 如果女巫道具为空，默认选第一个
+        if (string.IsNullOrEmpty(PlayerSettings.Instance.selectedWitchItemName) && allItems.Count > 0)
+        {
+            PlayerSettings.Instance.selectedWitchItemName = allItems[0].scriptClassName;
+            Debug.Log($"[Lobby] 为女巫自动选择了默认道具: {allItems[0].itemName}");
+        }
+        
+        // 2. (可选) 如果你希望技能也有默认值，可以在这里类似处理
+        // 但你在 PlayerSettings 里已经预设了 "WitchSkill_Mist" 等，所以通常不需要
+    }
     private void OpenSelectionPanel(int slotIndex)
     {
         // 如果点的是当前已经打开的槽位，则关闭它（开关逻辑）

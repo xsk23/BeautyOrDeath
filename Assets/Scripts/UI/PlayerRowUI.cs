@@ -6,6 +6,7 @@ public class PlayerRowUI : MonoBehaviour
 {
     public TextMeshProUGUI nameText;
     public TextMeshProUGUI statusText;
+    public UnityEngine.UI.Image readyCheckImage; // 【新增】拖入你新加的勾勾图片
     public TextMeshProUGUI pingText; // 【新增】拖入显示 Ping 的 TMP 文本
     public Button actionButton;       // 对应 Prefab 里的按钮
     public TextMeshProUGUI actionButtonText;     // 对应按钮里面的文字 (用于显示 Ready / Cancel)
@@ -45,8 +46,19 @@ public class PlayerRowUI : MonoBehaviour
         // nameText.color = isLocalPlayer ? Color.green : Color.white;
 
         // 状态显示
-        // statusText.text = isReady ? "<color=green>READY</color>" : "<color=red>WAITING</color>";   
-        statusText.text = isReady ? "<color=green><b>Y</b></color>" : "<color=red><b>N</b></color>";
+        // --- 【核心修改：状态切换逻辑】 ---
+        if (isReady)
+        {
+            // 准备好了：显示图片，隐藏文本（或者清空文本）
+            statusText.text = ""; 
+            if (readyCheckImage != null) readyCheckImage.gameObject.SetActive(true);
+        }
+        else
+        {
+            // 未准备：显示红色 X，隐藏图片
+            statusText.text = "<color=red><b>X</b></color>";
+            if (readyCheckImage != null) readyCheckImage.gameObject.SetActive(false);
+        }
         // 【新增】显示延迟逻辑
         if (pingText != null)
         {

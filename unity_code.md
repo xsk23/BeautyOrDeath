@@ -2470,6 +2470,7 @@ public abstract class GamePlayer : NetworkBehaviour
 
     // 【抽象方法】强制子类必须实现 Attack
     protected abstract void Attack();
+    [SyncVar] protected float syncedSpeed;// 让速度在全网同步
 
 
     // --------------------------------------------------------
@@ -3162,6 +3163,11 @@ public abstract class GamePlayer : NetworkBehaviour
             tv.ForceUpdateVisuals(); 
         }
     }
+    [Command]
+    protected void CmdUpdateAnimationSpeed(float speed)
+    {
+        syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
+    }
 }
 ```
 
@@ -3319,11 +3325,6 @@ public class HunterPlayer : GamePlayer
                 SceneScript.Instance.morphSlot.gameObject.SetActive(false);
             }
         }
-        // 手动触发一次，确保初始动画状态正确
-        if (hunterAnimator != null)
-        {
-            hunterAnimator.SetInteger("WeaponType", currentWeaponIndex);
-        }
     }
     public override void OnStartClient()
     {
@@ -3355,38 +3356,15 @@ public class HunterPlayer : GamePlayer
                 weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             }
         }
-        // 【新增】同步武器类型给状态机
-        // 假设索引 0 是拳头，1 是猎枪，2 是网筒
-        if (hunterAnimator != null)
-        {
-            hunterAnimator.SetInteger("WeaponType", newWeaponIndex);
-            
-            // 强制触发一次状态转换，让动画立即切换
-            hunterAnimator.Update(0); 
-        }
     }
     public override void Update()
     {
         base.Update();
-        // 无论是不是本地玩家，都要更新 Animator 的 Speed
-        if (hunterAnimator != null)
-        {
-            float speedMagnitude;
-            if (isLocalPlayer)
-            {
-                speedMagnitude = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
-            }
-            else
-            {
-                // 远程玩家通过位置差计算速度（代码参考你 WitchPlayer 里的实现）
-                float distance = Vector3.Distance(transform.position, lastPosition);
-                speedMagnitude = distance / Time.deltaTime;
-                lastPosition = transform.position;
-            }
-            hunterAnimator.SetFloat("Speed", speedMagnitude, 0.1f, Time.deltaTime);
-        }
         if (isLocalPlayer)
         {
+            // 1. 本地计算速度并发送给服务器
+            float horizontalSpeed = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            CmdUpdateAnimationSpeed(horizontalSpeed);
             // 切换武器
             if (Input.GetKeyDown(KeyCode.Alpha1))
             {
@@ -3430,6 +3408,12 @@ public class HunterPlayer : GamePlayer
             HandleCooldownUI();
             // 处决检查
             HandleExecutionCheck(Camera.main.transform.position, Camera.main.transform.forward);
+        }
+        // 2. 所有人（本地和远程）都根据同步的速度值更新 Animator
+        if (hunterAnimator != null)
+        {
+            // 注意：截图里参数名是小写 "speed"
+            hunterAnimator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
         }
     }
 
@@ -4590,8 +4574,6 @@ public class WitchPlayer : GamePlayer
     private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
     [SerializeField] private Animator animator; // 在Inspector中拖入你的Animator
-    [SyncVar] // 让速度在全网同步
-    private float syncedSpeed;
 
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
@@ -6537,11 +6519,7 @@ public class WitchPlayer : GamePlayer
             possessedTreeNetId = 0; // 清除 ID
         }
     }
-    [Command]
-    void CmdUpdateAnimationSpeed(float speed)
-    {
-        syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
-    }
+
 }
 ```
 
@@ -8175,7 +8153,10 @@ public class DecoyBehavior : NetworkBehaviour
     private Vector3 moveDir;
     private float verticalVelocity; // 垂直速度（处理重力）
     private float jitterTimer = 0f; // 随机转向计时器
+    public Animator animator;
 
+    [SyncVar]
+    private float syncedSpeed; // 同步速度值，确保所有客户端动画一致
     private void Awake()
     {
         cc = GetComponent<CharacterController>();
@@ -8231,7 +8212,9 @@ public class DecoyBehavior : NetworkBehaviour
 
         // 4. 执行移动 (利用 CharacterController 的碰撞处理)
         cc.Move(finalMove * Time.deltaTime);
-
+        // 【新增】在服务器端计算水平速度并赋值给同步变量
+        // cc.velocity 会根据实际物理移动返回速度
+        syncedSpeed = new Vector3(cc.velocity.x, 0, cc.velocity.z).magnitude;
         // 5. 让模型朝向移动方向
         // 只取水平方向，防止分身朝向地面或天空
         Vector3 faceDir = new Vector3(moveDir.x, 0, moveDir.z);
@@ -8240,10 +8223,34 @@ public class DecoyBehavior : NetworkBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(faceDir), Time.deltaTime * 5f);
         }
     }
+    // 注意：这里去掉了 [ServerCallback]，让所有客户端都运行
+    private void LateUpdate()
+    {
+        // 所有客户端根据同步过来的 syncedSpeed 来更新自己的动画机
+        UpdateAnimator();
+    }
 
+    // 【新增方法】更新动画参数
+    private void UpdateAnimator()
+    {
+        if (animator == null)
+        {
+            // 如果当前是人形态，尝试从 humanVisualRoot 获取
+            if (propID == -1 && humanVisualRoot != null)
+                animator = humanVisualRoot.GetComponentInChildren<Animator>();
+            // 如果是变身形态，动画器在生成的子物体上，会在 OnPropIDChanged 中处理
+        }
+
+        if (animator != null)
+        {
+            // 这里的 "speed" 必须对应你在 Animator 窗口创建的参数名（小写）
+            animator.SetFloat("speed", syncedSpeed);
+        }
+    }
     // --- 视觉同步逻辑 (保持不变) ---
     void OnPropIDChanged(int oldID, int newID)
     {
+        animator = null; // 重置引用，迫使 Update 重新获取新的动画器
         // 1. 清理旧的变身模型 (保留人形根物体和FX)
         foreach (Transform child in transform) {
             if (child.gameObject != humanVisualRoot && child.name != "FX")
@@ -8256,6 +8263,7 @@ public class DecoyBehavior : NetworkBehaviour
             if (humanVisualRoot != null)
             {
                 humanVisualRoot.SetActive(true);
+                animator = humanVisualRoot.GetComponentInChildren<Animator>(); // 重新获取巫师动画器
                 UpdateColliderDimensions(humanVisualRoot);
             }
         }
@@ -8269,7 +8277,8 @@ public class DecoyBehavior : NetworkBehaviour
                 GameObject visual = Instantiate(prefab, transform);
                 visual.transform.localPosition = Vector3.zero;
                 visual.transform.localRotation = Quaternion.identity;
-                
+                // 如果变身的物体（如小动物）带有 Animator，这里获取它
+                animator = visual.GetComponent<Animator>();                 
                 foreach(var c in visual.GetComponentsInChildren<Collider>()) c.enabled = false;
 
                 var pt = GetComponent<PropTarget>();
@@ -9687,7 +9696,8 @@ public class LobbySkillManager : MonoBehaviour
     private void Start()
     {
         CloseAllPanels();
-
+        // --- 【核心修改：设置默认道具】 ---
+        InitializeDefaultSettings();
         // 绑定主按钮
         witchSkill1Btn.onClick.AddListener(() => OpenSelectionPanel(0));
         witchSkill2Btn.onClick.AddListener(() => OpenSelectionPanel(1));
@@ -9703,7 +9713,21 @@ public class LobbySkillManager : MonoBehaviour
 
         RefreshMainButtonUI();
     }
+    // 【新增方法】
+    private void InitializeDefaultSettings()
+    {
+        if (PlayerSettings.Instance == null) return;
 
+        // 1. 如果女巫道具为空，默认选第一个
+        if (string.IsNullOrEmpty(PlayerSettings.Instance.selectedWitchItemName) && allItems.Count > 0)
+        {
+            PlayerSettings.Instance.selectedWitchItemName = allItems[0].scriptClassName;
+            Debug.Log($"[Lobby] 为女巫自动选择了默认道具: {allItems[0].itemName}");
+        }
+        
+        // 2. (可选) 如果你希望技能也有默认值，可以在这里类似处理
+        // 但你在 PlayerSettings 里已经预设了 "WitchSkill_Mist" 等，所以通常不需要
+    }
     private void OpenSelectionPanel(int slotIndex)
     {
         // 如果点的是当前已经打开的槽位，则关闭它（开关逻辑）

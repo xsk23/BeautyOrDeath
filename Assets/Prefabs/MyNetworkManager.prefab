@@ -206,10 +206,12 @@ MonoBehaviour:
   - {fileID: 2807449429036958551, guid: f0c16f0ea935ea64297ca1d4d55d9746, type: 3}
   - {fileID: 9069115365609291303, guid: 60f79905accf3b24fa0114b941f1aac0, type: 3}
   - {fileID: 5216212801046882302, guid: e8e7cac069975e14fb0f349c98e68e00, type: 3}
-  - {fileID: 2245718309650186862, guid: 09156d1f2fdbc5248a47280db2470be4, type: 3}
   - {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
   - {fileID: 7437291211915263204, guid: 634b8befe1a028a4589d4215135a37c1, type: 3}
   - {fileID: 1275068132262897948, guid: 3b490b52b8b695a4f88ac938390a9434, type: 3}
+  - {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
+  - {fileID: 4516135911683214189, guid: 348218fe718cc944381c6998b6eb70f9, type: 3}
+  - {fileID: 7364481315165733279, guid: 1e1bc73ecdb1c2140b9abc5b1b2801cd, type: 3}
   exceptionsDisconnect: 1
   snapshotSettings:
     bufferTimeMultiplier: 2
@@ -227,9 +229,9 @@ MonoBehaviour:
   timeInterpolationGui: 0
   gameSceneName: Assets/Scenes/MyScene.unity
   witchMalePrefab: {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
-  witchFemalePrefab: {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
-  hunterMalePrefab: {fileID: 4516135911683214189, guid: 34e398540f2f1b648a4c2e5307a27d45, type: 3}
-  hunterFemalePrefab: {fileID: 4516135911683214189, guid: 34e398540f2f1b648a4c2e5307a27d45, type: 3}
+  witchFemalePrefab: {fileID: 7364481315165733279, guid: 1e1bc73ecdb1c2140b9abc5b1b2801cd, type: 3}
+  hunterMalePrefab: {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
+  hunterFemalePrefab: {fileID: 4516135911683214189, guid: 348218fe718cc944381c6998b6eb70f9, type: 3}
   gameManagerPrefab: {fileID: 4317130386679613736, guid: dbcc69960cf8d9046b073d292c8b16f0, type: 3}
 --- !u!114 &6538974110224861687
 MonoBehaviour:
