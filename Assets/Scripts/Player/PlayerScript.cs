@@ -33,7 +33,7 @@ public class PlayerScript : NetworkBehaviour
     [SyncVar(hook = nameof(OnRoleChanged))]
     public PlayerRole role; // 角色类型
     [SyncVar] public Gender myGender = Gender.Male;
-
+    [SyncVar] public string selectedWitchItemName;
     private void OnPingChanged(int oldPing, int newPing)
     {
         // 当延迟变化时，刷新 UI 行
@@ -115,8 +115,17 @@ public class PlayerScript : NetworkBehaviour
         // 【新增】开始定期更新 Ping
         StartCoroutine(UpdatePingRoutine());
         CmdUpdateGender(PlayerSettings.Instance.selectedGender);
+        // 【新增】将本地选择的道具名同步给服务器
+        if (PlayerSettings.Instance != null)
+        {
+            CmdUpdateSelectedItem(PlayerSettings.Instance.selectedWitchItemName);
+        }
     }
-
+    [Command]
+    public void CmdUpdateSelectedItem(string itemName)
+    {
+        selectedWitchItemName = itemName;
+    }
     // 【新增】协程：每 2 秒更新一次延迟（不需要太频繁，节省带宽）
     private IEnumerator UpdatePingRoutine()
     {

@@ -335,10 +335,12 @@ public abstract class GamePlayer : NetworkBehaviour
         if (actuallyOnGround && velocity.y < 0) velocity.y = -2f;
         else velocity.y += gravity * Time.deltaTime;
 
-        // 注意：跳跃也需要判断 !isStunned
-        if (actuallyOnGround && !isStunned && !isViewLocked && Input.GetButtonDown("Jump"))
+        // 注意：跳跃需要判断是否满足基础条件 (如没有被眩晕)
+        if (actuallyOnGround && CanJump() && !isViewLocked && Input.GetButtonDown("Jump"))
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            // 【新增：调用钩子函数】
+            OnJumpTriggered(); 
         }
 
         controller.Move(velocity * Time.deltaTime);
@@ -356,7 +358,13 @@ public abstract class GamePlayer : NetworkBehaviour
             transform.Rotate(Vector3.up * mouseX);
         }
     }
-
+    // 判断当前状态是否允许起跳（子类可重写添加更多限制）
+    protected virtual bool CanJump()
+    {
+        return !isStunned; // 默认只要没被禁锢就能跳
+    }
+    // 【新增：添加钩子函数】
+    protected virtual void OnJumpTriggered() { }
     protected virtual void HandleMovement()
     {
         // 1. 更加精准的状态检测

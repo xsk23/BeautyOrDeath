@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
-
+using Mirror;
 public class LobbySkillManager : MonoBehaviour
 {
     public static LobbySkillManager Instance;
@@ -197,15 +197,36 @@ public class LobbySkillManager : MonoBehaviour
         {
             case 0: settings.selectedWitchSkillNames[0] = className; break;
             case 1: settings.selectedWitchSkillNames[1] = className; break;
-            case 2: settings.selectedWitchItemName = className; break;
+            case 2: 
+                settings.selectedWitchItemName = className; 
+                // 【核心修复】道具选择后立即同步
+                SyncItemToServer(className);
+                break;
             case 3: settings.selectedHunterSkillNames[0] = className; break;
             case 4: settings.selectedHunterSkillNames[1] = className; break;
         }
-
+        // 【新增】通知模型预览
+        if (LobbyModelPreview.Instance != null)
+        {
+            LobbyModelPreview.Instance.RefreshItemSelection();
+        }
         CloseAllPanels();
         RefreshMainButtonUI();
     }
-
+    // 辅助方法
+    // 确保这个方法也在 LobbySkillManager.cs 里的 case 2 逻辑中正确执行
+    private void SyncItemToServer(string className)
+    {
+        // 检查 NetworkClient 是否就绪
+        if (NetworkClient.active && NetworkClient.localPlayer != null)
+        {
+            var pScript = NetworkClient.localPlayer.GetComponent<PlayerScript>();
+            if (pScript != null)
+            {
+                pScript.CmdUpdateSelectedItem(className); // 现在这里可以访问了
+            }
+        }
+    }
     public void RefreshMainButtonUI()
     {
         if (PlayerSettings.Instance == null) return;

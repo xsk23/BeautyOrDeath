@@ -62,6 +62,7 @@ public class GameManager : NetworkBehaviour
     [Header("Physics Settings")]
     public LayerMask propLayer; // 用于检测树木/道具的层级
     public Dictionary<int, Gender> pendingGenders = new Dictionary<int, Gender>();
+    public Dictionary<int, string> pendingItems = new Dictionary<int, string>();
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -277,6 +278,7 @@ public class GameManager : NetworkBehaviour
         GameObject prefabToUse;
         if (netManager == null) return;
         int id = conn.connectionId;
+        string selectedItem = pendingItems.ContainsKey(id) ? pendingItems[id] : "";
         // ---------------------------------------------------------
         // 1. 决定角色 (Role) 和 名字 (Name)
         // ---------------------------------------------------------
@@ -307,7 +309,21 @@ public class GameManager : NetworkBehaviour
         // 根据角色和性别四选一
         if (role == PlayerRole.Witch)
         {
-            prefabToUse = (gender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+            switch (selectedItem)
+            {
+                case "InvisibilityCloak":
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMaleCloakPrefab : netManager.witchFemaleCloakPrefab;
+                    break;
+                case "LifeAmulet":
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMaleAmuletPrefab : netManager.witchFemaleAmuletPrefab;
+                    break;
+                case "MagicBroom":
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMaleBroomPrefab : netManager.witchFemaleBroomPrefab;
+                    break;
+                default: // 默认形态
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+                    break;
+            }
         }
         else
         {
@@ -487,6 +503,10 @@ public class GameManager : NetworkBehaviour
             var pScript = conn.identity.GetComponent<PlayerScript>();
             // 记录该连接选中的性别
             pendingGenders[conn.connectionId] = pScript.myGender;
+            // 【关键修改】记录玩家选择的道具
+            pendingItems[conn.connectionId] = pScript.selectedWitchItemName;
+            // 增加这一行日志，看看服务器在分配角色时抓到的是什么
+            Debug.Log($"[Server] 正在记录玩家 {pScript.playerName} 的道具选择: {pScript.selectedWitchItemName}");
         }
     }
 
@@ -566,7 +586,7 @@ public class GameManager : NetworkBehaviour
         pendingRoles.Clear();
         pendingNames.Clear();
         pendingColors.Clear();
-
+        pendingItems.Clear();
         Debug.Log("[GameManager] Game State and delivery counters have been fully reset.");
     }
     [Server] // 确保只在服务器运行

@@ -69,6 +69,7 @@ public class GameManager : NetworkBehaviour
     [Header("Physics Settings")]
     public LayerMask propLayer; // 用于检测树木/道具的层级
     public Dictionary<int, Gender> pendingGenders = new Dictionary<int, Gender>();
+    public Dictionary<int, string> pendingItems = new Dictionary<int, string>();
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -284,6 +285,7 @@ public class GameManager : NetworkBehaviour
         GameObject prefabToUse;
         if (netManager == null) return;
         int id = conn.connectionId;
+        string selectedItem = pendingItems.ContainsKey(id) ? pendingItems[id] : "";
         // ---------------------------------------------------------
         // 1. 决定角色 (Role) 和 名字 (Name)
         // ---------------------------------------------------------
@@ -314,7 +316,21 @@ public class GameManager : NetworkBehaviour
         // 根据角色和性别四选一
         if (role == PlayerRole.Witch)
         {
-            prefabToUse = (gender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+            switch (selectedItem)
+            {
+                case "InvisibilityCloak":
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMaleCloakPrefab : netManager.witchFemaleCloakPrefab;
+                    break;
+                case "LifeAmulet":
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMaleAmuletPrefab : netManager.witchFemaleAmuletPrefab;
+                    break;
+                case "MagicBroom":
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMaleBroomPrefab : netManager.witchFemaleBroomPrefab;
+                    break;
+                default: // 默认形态
+                    prefabToUse = (gender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+                    break;
+            }
         }
         else
         {
@@ -494,6 +510,10 @@ public class GameManager : NetworkBehaviour
             var pScript = conn.identity.GetComponent<PlayerScript>();
             // 记录该连接选中的性别
             pendingGenders[conn.connectionId] = pScript.myGender;
+            // 【关键修改】记录玩家选择的道具
+            pendingItems[conn.connectionId] = pScript.selectedWitchItemName;
+            // 增加这一行日志，看看服务器在分配角色时抓到的是什么
+            Debug.Log($"[Server] 正在记录玩家 {pScript.playerName} 的道具选择: {pScript.selectedWitchItemName}");
         }
     }
 
@@ -573,7 +593,7 @@ public class GameManager : NetworkBehaviour
         pendingRoles.Clear();
         pendingNames.Clear();
         pendingColors.Clear();
-
+        pendingItems.Clear();
         Debug.Log("[GameManager] Game State and delivery counters have been fully reset.");
     }
     [Server] // 确保只在服务器运行
@@ -701,7 +721,13 @@ public class MyNetworkManager : NetworkManager
     public GameObject witchFemalePrefab;
     public GameObject hunterMalePrefab ;
     public GameObject hunterFemalePrefab;
-
+    [Header("Role Prefabs (Special Variants)")]
+    public GameObject witchMaleCloakPrefab;
+    public GameObject witchFemaleCloakPrefab;
+    public GameObject witchMaleAmuletPrefab;    // 【新增】护符版男巫
+    public GameObject witchFemaleAmuletPrefab;  // 【新增】护符版女巫
+    public GameObject witchMaleBroomPrefab;     // 【新增】扫帚版男巫
+    public GameObject witchFemaleBroomPrefab;   // 【新增】扫帚版女巫
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
     public GameObject gameManagerPrefab; 
@@ -2313,7 +2339,7 @@ public class FistWeapon : WeaponBase
     private void Awake()
     {
         // 初始化默认值
-        if (damage == 0) damage = 10f;
+        damage = 5f;
         fireRate = 0.5f;
         weaponName = "Fist";
     }
@@ -2698,10 +2724,12 @@ public abstract class GamePlayer : NetworkBehaviour
         if (actuallyOnGround && velocity.y < 0) velocity.y = -2f;
         else velocity.y += gravity * Time.deltaTime;
 
-        // 注意：跳跃也需要判断 !isStunned
-        if (actuallyOnGround && !isStunned && !isViewLocked && Input.GetButtonDown("Jump"))
+        // 注意：跳跃需要判断是否满足基础条件 (如没有被眩晕)
+        if (actuallyOnGround && CanJump() && !isViewLocked && Input.GetButtonDown("Jump"))
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            // 【新增：调用钩子函数】
+            OnJumpTriggered(); 
         }
 
         controller.Move(velocity * Time.deltaTime);
@@ -2719,7 +2747,13 @@ public abstract class GamePlayer : NetworkBehaviour
             transform.Rotate(Vector3.up * mouseX);
         }
     }
-
+    // 判断当前状态是否允许起跳（子类可重写添加更多限制）
+    protected virtual bool CanJump()
+    {
+        return !isStunned; // 默认只要没被禁锢就能跳
+    }
+    // 【新增：添加钩子函数】
+    protected virtual void OnJumpTriggered() { }
     protected virtual void HandleMovement()
     {
         // 1. 更加精准的状态检测
@@ -3276,10 +3310,36 @@ public class HunterPlayer : GamePlayer
     // 【新增 1】定义记录上一帧位置的变量
     private Vector3 lastPosition;
     private bool nextPunchIsRight = false; // 记录左右交替的状态
+    [Header("Input Buffering")]
+    public float attackBufferTime = 0.2f; // 缓冲窗口大小：冷却结束前 0.2s 内的点击有效
+    private float lastAttackInputTime = -1f; // 上次尝试点击攻击的时间戳
+    [Header("Fist Melee Settings")]
+    public float fistAttackLockDuration = 1f; 
+    private float meleeLockEndTime = 0f; // 记录锁定结束的具体时间点
+    // 定义一个快捷属性判断是否处于锁定状态
+    private bool IsInMeleeLockout => Time.time < meleeLockEndTime;
+    // 【新增】重写父类的起跳许可，出拳硬直期间禁止起跳
+    protected override bool CanJump()
+    {
+        // 必须满足父类的条件（没被禁锢），且当前没有处于出拳硬直状态
+        return base.CanJump() && !IsInMeleeLockout;
+    }
     // 【新增】在初始化时赋值给父类的字段
     private void Awake()
     {
         goalText = "Hunt Down The Witch Until the Time Runs Out!";
+    }
+    // 1. 重写移动逻辑，在硬直期间强制输入为 0
+    protected override void HandleMovementOverride(Vector2 inputOverride)
+    {
+        if (IsInMeleeLockout)
+        {
+            inputOverride = Vector2.zero;
+            velocity.x = 0;
+            velocity.z = 0;
+            if (controller.isGrounded) velocity.y = -2f;
+        }
+        base.HandleMovementOverride(inputOverride);
     }
     public override void UpdateCameraView()
     {
@@ -3330,7 +3390,7 @@ public class HunterPlayer : GamePlayer
     public override void OnStartClient()
     {
         base.OnStartClient();
-        // 记录出生时的位置，防止 Update 第一帧计算出巨大的瞬移距离
+        // 记录出生时的位置，防止 00 第一帧计算出巨大的瞬移距离
         lastPosition = transform.position;
     }
     public override void OnStartServer()
@@ -3363,8 +3423,8 @@ public class HunterPlayer : GamePlayer
         base.Update();
         if (isLocalPlayer)
         {
-            // 1. 本地计算速度并发送给服务器
-            float horizontalSpeed = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            // 同步动画速度：如果处于锁定中，强制发 0
+            float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);
             // 切换武器
             if (Input.GetKeyDown(KeyCode.Alpha1))
@@ -3391,20 +3451,45 @@ public class HunterPlayer : GamePlayer
                 ChangeWeapon(nextIndex);
             }
             // 开火
+            // 1. 记录玩家的点击意图
             if (Input.GetMouseButtonDown(0))
+            {
+                lastAttackInputTime = Time.time;
+            }
+
+            // 2. 检测是否有“存着”的指令需要触发
+            if (Time.time - lastAttackInputTime <= attackBufferTime)
             {
                 WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
 
-                // 检查冷却
                 if (currentWeapon != null && currentWeapon.CanFire())
                 {
-                    currentWeapon.UpdateCooldown();
-                    // ★ 关键：这里只发送指令，具体逻辑多态分发
-                    CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
-                    //触发事件
-                    OnWeaponFired?.Invoke(currentWeaponIndex);
+                    // --- 【新增】：判断是否处于地面（结合原生判断与射线容错，防止下坡误判） ---
+                    bool isOnGround = controller.isGrounded || Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, (controller.height * 0.5f) + 0.3f, groundLayer);
+                    // 如果武器是拳头且在空中，则拦截攻击
+                    if (currentWeapon.weaponName == "Fist" && !isOnGround)
+                    {
+                        // 仅消耗掉输入缓冲，不执行射击指令（禁止空中出拳）
+                        lastAttackInputTime = -1f;
+                    }
+                    else
+                    {
+                        // 冷却刚好，立即执行！
+                        lastAttackInputTime = -1f; // 消耗掉这个缓冲，防止重复触发
+                        // --- 【核心修改】 ---
+                        if (currentWeapon.weaponName == "Fist")
+                        {
+                            // 每次攻击都刷新“结束时间”，确保连招期间全程原地不动
+                            meleeLockEndTime = Time.time + fistAttackLockDuration;
+                        }
+                        // ---------------------
+                        currentWeapon.UpdateCooldown();
+                        CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
+                        OnWeaponFired?.Invoke(currentWeaponIndex);
+                    }
                 }
             }
+
             // 处理冷却UI
             HandleCooldownUI();
             // 处决检查
@@ -3414,7 +3499,7 @@ public class HunterPlayer : GamePlayer
         if (hunterAnimator != null)
         {
             // 注意：截图里参数名是小写 "speed"
-            hunterAnimator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+            hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
         }
     }
 
@@ -3457,7 +3542,7 @@ public class HunterPlayer : GamePlayer
                 // 1. 设置布尔值，决定这次走左边还是右边的动画分支
                 hunterAnimator.SetBool("isPunchRight", nextPunchIsRight);
 
-                // 2. 触发攻击 Trigger
+                // 2. 触发攻击 Trigger0
                 hunterAnimator.SetTrigger("Punch");
 
                 // 3. 切换状态：下次攻击换另一只手
@@ -3607,6 +3692,44 @@ public class HunterPlayer : GamePlayer
             sceneScript.blindPanel.SetActive(true);
             yield return new WaitForSeconds(duration);
             sceneScript.blindPanel.SetActive(false);
+        }
+    }
+    // ----------------------------------------------------
+    // 跳跃动画触发
+    // ----------------------------------------------------
+
+    // 重写基类的跳跃钩子
+    protected override void OnJumpTriggered()
+    {
+        // 增加严格的落地判断：只有 CharacterController 认为在地面上，才发送跳跃指令
+        if (isLocalPlayer)
+        {
+            CmdTriggerJumpAnimation();
+        }
+    }
+
+    [Command]
+    void CmdTriggerJumpAnimation()
+    {
+        // 1. 在服务器端生成随机数 (0 或 1)
+        // 使用 Random.Range(0, 2) 会得到 0 或 1
+        int randomIndex = UnityEngine.Random.Range(0, 2);
+
+        // 2. 将随机索引传给 Rpc
+        RpcOnJump(randomIndex);
+    }
+
+    [ClientRpc]
+    void RpcOnJump(int index)
+    {
+        if (hunterAnimator != null)
+        {
+            // 3. 先设置随机索引，再触发 Trigger
+            hunterAnimator.SetInteger("JumpIndex", index);
+            hunterAnimator.SetTrigger("isJump");
+            
+            // 调试打印，方便你查看触发了哪一个
+            // Debug.Log($"[Jump] Triggered animation index: {index}");
         }
     }
 }
@@ -3996,7 +4119,7 @@ public class PlayerScript : NetworkBehaviour
     [SyncVar(hook = nameof(OnRoleChanged))]
     public PlayerRole role; // 角色类型
     [SyncVar] public Gender myGender = Gender.Male;
-
+    [SyncVar] public string selectedWitchItemName;
     private void OnPingChanged(int oldPing, int newPing)
     {
         // 当延迟变化时，刷新 UI 行
@@ -4078,8 +4201,17 @@ public class PlayerScript : NetworkBehaviour
         // 【新增】开始定期更新 Ping
         StartCoroutine(UpdatePingRoutine());
         CmdUpdateGender(PlayerSettings.Instance.selectedGender);
+        // 【新增】将本地选择的道具名同步给服务器
+        if (PlayerSettings.Instance != null)
+        {
+            CmdUpdateSelectedItem(PlayerSettings.Instance.selectedWitchItemName);
+        }
     }
-
+    [Command]
+    void CmdUpdateSelectedItem(string itemName)
+    {
+        selectedWitchItemName = itemName;
+    }
     // 【新增】协程：每 2 秒更新一次延迟（不需要太频繁，节省带宽）
     private IEnumerator UpdatePingRoutine()
     {
@@ -8907,6 +9039,8 @@ using Mirror;
 
 public class LobbyModelPreview : MonoBehaviour
 {
+    // 【新增】单例，方便 UI 脚本调用刷新
+    public static LobbyModelPreview Instance;
     [Header("UI Buttons")]
     public Button maleButton;
     public Button femaleButton;
@@ -8916,6 +9050,13 @@ public class LobbyModelPreview : MonoBehaviour
     public Animator witchFemale;
     public Animator hunterMale;
     public Animator hunterFemale;
+    [Header("Item Variants")]
+    public Animator witchMaleCloak;
+    public Animator witchFemaleCloak;
+    public Animator witchMaleAmulet;   // 【新增】
+    public Animator witchFemaleAmulet; // 【新增】
+    public Animator witchMaleBroom;    // 【新增】
+    public Animator witchFemaleBroom;  // 【新增】
 
     [Header("Movement Settings")]
     public float forwardZ = -1.5f; 
@@ -8924,10 +9065,16 @@ public class LobbyModelPreview : MonoBehaviour
 
     [Header("Rotation Settings")]
     public Vector3 facingRotation = new Vector3(0, 180, 0); // 如果模型背对镜头，修改这里的 Y
+    [Header("Config")]
+    public string cloakItemName = "InvisibilityCloak"; // 必须与 WitchItemData 里的类名一致
 
+    // 记录所有基础坐标
     private Vector3 wMaleBase, wFemaleBase, hMaleBase, hFemaleBase;
+    private Vector3 wMaleCloakBase, wFemaleCloakBase;
+    private Vector3 wMaleAmuletBase, wFemaleAmuletBase;
+    private Vector3 wMaleBroomBase, wFemaleBroomBase;
     private Gender currentGender;
-
+    private void Awake() => Instance = this; // 初始化单例
     private void Start()
     {
         // 1. 记录初始位置
@@ -8936,7 +9083,13 @@ public class LobbyModelPreview : MonoBehaviour
         wFemaleBase = witchFemale.transform.localPosition;
         hMaleBase = hunterMale.transform.localPosition;
         hFemaleBase = hunterFemale.transform.localPosition;
-
+        // 【新增】记录斗篷版位置
+        wMaleCloakBase = witchMaleCloak.transform.localPosition;
+        wFemaleCloakBase = witchFemaleCloak.transform.localPosition;
+        wMaleAmuletBase = witchMaleAmulet.transform.localPosition;
+        wFemaleAmuletBase = witchFemaleAmulet.transform.localPosition;
+        wMaleBroomBase = witchMaleBroom.transform.localPosition;
+        wFemaleBroomBase = witchFemaleBroom.transform.localPosition;
         // 2. 绑定按钮
         maleButton.onClick.AddListener(() => UpdateSelection(Gender.Male));
         femaleButton.onClick.AddListener(() => UpdateSelection(Gender.Female));
@@ -8945,7 +9098,11 @@ public class LobbyModelPreview : MonoBehaviour
         currentGender = PlayerSettings.Instance.selectedGender;
         ApplySelection(currentGender, true);
     }
-
+    // 【新增方法】供道具选择 UI 调用，当玩家切换道具时刷新模型
+    public void RefreshItemSelection()
+    {
+        ApplySelection(currentGender, false);
+    }
     private void UpdateSelection(Gender gender)
     {
         if (currentGender == gender) return;
@@ -8967,68 +9124,82 @@ public class LobbyModelPreview : MonoBehaviour
         // 按钮交互
         if (maleButton) maleButton.interactable = (gender != Gender.Male);
         if (femaleButton) femaleButton.interactable = (gender != Gender.Female);
-        
-        UpdateAnimatorParams();
 
         if (immediate)
         {
-            // 瞬间移动位置，防止第一帧看到错位
-            SetPos(witchMale.transform, wMaleBase, gender == Gender.Male);
-            SetPos(witchFemale.transform, wFemaleBase, gender == Gender.Female);
-            SetPos(hunterMale.transform, hMaleBase, gender == Gender.Male);
-            SetPos(hunterFemale.transform, hFemaleBase, gender == Gender.Female);
+            UpdateAllPositions(true);
         }
     }
+    private void UpdateAllPositions(bool immediate)
+    {
+        string selectedItem = PlayerSettings.Instance.selectedWitchItemName;
 
+        // --- 核心判定：男巫组 ---
+        // 只有选了对应的道具，该模型才会 SetActive(true)，并根据性别决定 forwardZ/backwardZ
+        HandleModelLogic(witchMale, wMaleBase, currentGender == Gender.Male, selectedItem == "", immediate);
+        HandleModelLogic(witchMaleCloak, wMaleCloakBase, currentGender == Gender.Male, selectedItem == "InvisibilityCloak", immediate);
+        HandleModelLogic(witchMaleAmulet, wMaleAmuletBase, currentGender == Gender.Male, selectedItem == "LifeAmulet", immediate);
+        HandleModelLogic(witchMaleBroom, wMaleBroomBase, currentGender == Gender.Male, selectedItem == "MagicBroom", immediate);
+
+        // --- 核心判定：女巫组 ---
+        HandleModelLogic(witchFemale, wFemaleBase, currentGender == Gender.Female, selectedItem == "", immediate);
+        HandleModelLogic(witchFemaleCloak, wFemaleCloakBase, currentGender == Gender.Female, selectedItem == "InvisibilityCloak", immediate);
+        HandleModelLogic(witchFemaleAmulet, wFemaleAmuletBase, currentGender == Gender.Female, selectedItem == "LifeAmulet", immediate);
+        HandleModelLogic(witchFemaleBroom, wFemaleBroomBase, currentGender == Gender.Female, selectedItem == "MagicBroom", immediate);
+
+        // 猎人保持原样
+        HandleModelLogic(hunterMale, hMaleBase, currentGender == Gender.Male, true, immediate);
+        HandleModelLogic(hunterFemale, hFemaleBase, currentGender == Gender.Female, true, immediate);
+    }
+    // 辅助方法：统一处理位置、动画和显隐
+    private void HandleModelLogic(Animator anim, Vector3 basePos, bool isGenderSelected, bool isItemMatch, bool immediate)
+    {
+        if (anim == null) return;
+
+        // 只有该性别的该道具模型应该显示
+        bool shouldBeVisible = isItemMatch;
+
+        if (anim.gameObject.activeSelf != shouldBeVisible)
+        {
+            anim.gameObject.SetActive(shouldBeVisible);
+            if (shouldBeVisible) anim.transform.localRotation = Quaternion.Euler(facingRotation);
+        }
+
+        if (!shouldBeVisible) return;
+
+        // 决定前后
+        Vector3 targetPos = GetTargetPos(basePos, isGenderSelected);
+
+        if (immediate)
+        {
+            anim.transform.localPosition = targetPos;
+            anim.transform.localRotation = Quaternion.Euler(facingRotation);
+        }
+        else
+        {
+            anim.transform.localPosition = Vector3.Lerp(anim.transform.localPosition, targetPos, Time.deltaTime * lerpSpeed);
+        }
+
+        anim.SetBool("IsSelected", isGenderSelected);
+    }
     private void Update()
     {
-        // 平滑移动逻辑
-        MoveModel(witchMale.transform, wMaleBase, currentGender == Gender.Male);
-        MoveModel(witchFemale.transform, wFemaleBase, currentGender == Gender.Female);
-        MoveModel(hunterMale.transform, hMaleBase, currentGender == Gender.Male);
-        MoveModel(hunterFemale.transform, hFemaleBase, currentGender == Gender.Female);
+        UpdateAllPositions(false);
     }
-
-    private void MoveModel(Transform trans, Vector3 basePos, bool isSelected)
-    {
-        Vector3 target = GetTargetPos(basePos, isSelected);
-        trans.localPosition = Vector3.Lerp(trans.localPosition, target, Time.deltaTime * lerpSpeed);
-    }
-
-    private void SetPos(Transform trans, Vector3 basePos, bool isSelected)
-    {
-        trans.localPosition = GetTargetPos(basePos, isSelected);
-    }
-
     private Vector3 GetTargetPos(Vector3 basePos, bool isSelected)
     {
         float offset = isSelected ? forwardZ : backwardZ;
         return new Vector3(basePos.x, basePos.y, basePos.z + offset);
     }
 
-    private void UpdateAnimatorParams()
-    {
-        SetAnim(witchMale, currentGender == Gender.Male);
-        SetAnim(witchFemale, currentGender == Gender.Female);
-        SetAnim(hunterMale, currentGender == Gender.Male);
-        SetAnim(hunterFemale, currentGender == Gender.Female);
-    }
-
-    private void SetAnim(Animator anim, bool isSelected)
-    {
-        if (anim == null) return;
-        anim.SetBool("IsSelected", isSelected);
-        // 【关键修复】强制 Animator 立即评估状态，而不是等下一帧
-        anim.Update(0); 
-    }
     // 新增：只在切换时调用的重置方法
     private void ResetAllRotations()
     {
         Quaternion fixedRot = Quaternion.Euler(facingRotation);
-        if (witchMale) witchMale.transform.localRotation = fixedRot;
-        if (witchFemale) witchFemale.transform.localRotation = fixedRot;
-        if (hunterMale) hunterMale.transform.localRotation = fixedRot;
-        if (hunterFemale) hunterFemale.transform.localRotation = fixedRot;
+        Animator[] all = { witchMale, witchFemale, hunterMale, hunterFemale, 
+                           witchMaleCloak, witchFemaleCloak, witchMaleAmulet, 
+                           witchFemaleAmulet, witchMaleBroom, witchFemaleBroom };
+        foreach (var a in all) if (a != null) a.transform.localRotation = fixedRot;
     }
 }
 ```
@@ -9686,7 +9857,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
-
+using Mirror;
 public class LobbySkillManager : MonoBehaviour
 {
     public static LobbySkillManager Instance;
@@ -9881,15 +10052,31 @@ public class LobbySkillManager : MonoBehaviour
         {
             case 0: settings.selectedWitchSkillNames[0] = className; break;
             case 1: settings.selectedWitchSkillNames[1] = className; break;
-            case 2: settings.selectedWitchItemName = className; break;
+            case 2: 
+                settings.selectedWitchItemName = className; 
+                // 【核心修复】道具选择后立即同步
+                SyncItemToServer(className);
+                break;
             case 3: settings.selectedHunterSkillNames[0] = className; break;
             case 4: settings.selectedHunterSkillNames[1] = className; break;
         }
-
+        // 【新增】通知模型预览
+        if (LobbyModelPreview.Instance != null)
+        {
+            LobbyModelPreview.Instance.RefreshItemSelection();
+        }
         CloseAllPanels();
         RefreshMainButtonUI();
     }
-
+    // 辅助方法
+    private void SyncItemToServer(string className)
+    {
+        if (NetworkClient.localPlayer != null)
+        {
+            var pScript = NetworkClient.localPlayer.GetComponent<PlayerScript>();
+            if (pScript != null) pScript.CmdUpdateSelectedItem(className);
+        }
+    }
     public void RefreshMainButtonUI()
     {
         if (PlayerSettings.Instance == null) return;
@@ -10358,6 +10545,29 @@ public class PlayMenu : MonoBehaviour
         SceneManager.LoadScene("StartMenu");
     } 
 }
+
+```
+
+## UI\removebg.py
+
+```python
+from PIL import Image
+from rembg import remove
+
+input_path = (
+    r"D:\Program Files\Downloads\grok-image-7d4303b7-815c-48ff-bba3-b4b7bcb55082 (1).png"
+)
+output_path = "Assets/Image/UI/Lobbyroom/grok-image-a69947ab-961a-4a52-b123c3a-a52d5d9ea77_outp123u123t.png"
+
+# 打开图片
+input_image = Image.open(input_path)
+
+# 移除背景
+output_image = remove(input_image)
+
+# 保存为 PNG（必须是 PNG 才能保留透明度）
+output_image.save(output_path)
+print(f"背景已移除，保存为 {output_path}")
 
 ```
 
@@ -11425,7 +11635,26 @@ public class WitchItemSelectionManager : MonoBehaviour
     private void Save()
     {
         if (currentSelection != null)
-            PlayerSettings.Instance.selectedWitchItemName = currentSelection.scriptClassName;
+        {
+            string className = currentSelection.scriptClassName;
+            PlayerSettings.Instance.selectedWitchItemName = className;
+
+            // 【核心修复】立即同步给服务器，不要等下次进大厅
+            if (NetworkClient.localPlayer != null)
+            {
+                var pScript = NetworkClient.localPlayer.GetComponent<PlayerScript>();
+                if (pScript != null)
+                {
+                    pScript.CmdUpdateSelectedItem(className);
+                    Debug.Log($"[UI] 正在向服务器同步选中的道具: {className}");
+                }
+            }
+
+            if (LobbyModelPreview.Instance != null)
+            {
+                LobbyModelPreview.Instance.RefreshItemSelection();
+            }
+        }
     }
 }
 ```

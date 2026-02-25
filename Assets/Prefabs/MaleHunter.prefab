@@ -351,6 +351,8 @@ MonoBehaviour:
   - {fileID: 8697314932901651437}
   currentWeaponIndex: 0
   hunterAnimator: {fileID: 8255049651056881087}
+  attackBufferTime: 0.2
+  fistAttackLockDuration: 0.6
 --- !u!114 &2353516808386118448
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1126,7 +1128,7 @@ PrefabInstance:
     - target: {fileID: 5866666021909216657, guid: edf5ff8937c1cfc4b88a3dbc3bbe9024, type: 3}
       propertyPath: m_Controller
       value: 
-      objectReference: {fileID: 9100000, guid: f830f9b9a02c55343b6ad96fbb97e63f, type: 2}
+      objectReference: {fileID: 9100000, guid: 157929db3080bd94f88a82d22e152943, type: 2}
     - target: {fileID: 5866666021909216657, guid: edf5ff8937c1cfc4b88a3dbc3bbe9024, type: 3}
       propertyPath: m_ApplyRootMotion
       value: 0

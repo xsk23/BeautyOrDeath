@@ -26,10 +26,33 @@ public class HunterPlayer : GamePlayer
     [Header("Input Buffering")]
     public float attackBufferTime = 0.2f; // 缓冲窗口大小：冷却结束前 0.2s 内的点击有效
     private float lastAttackInputTime = -1f; // 上次尝试点击攻击的时间戳
+    [Header("Fist Melee Settings")]
+    public float fistAttackLockDuration = 1f; 
+    private float meleeLockEndTime = 0f; // 记录锁定结束的具体时间点
+    // 定义一个快捷属性判断是否处于锁定状态
+    private bool IsInMeleeLockout => Time.time < meleeLockEndTime;
+    // 【新增】重写父类的起跳许可，出拳硬直期间禁止起跳
+    protected override bool CanJump()
+    {
+        // 必须满足父类的条件（没被禁锢），且当前没有处于出拳硬直状态
+        return base.CanJump() && !IsInMeleeLockout;
+    }
     // 【新增】在初始化时赋值给父类的字段
     private void Awake()
     {
         goalText = "Hunt Down The Witch Until the Time Runs Out!";
+    }
+    // 1. 重写移动逻辑，在硬直期间强制输入为 0
+    protected override void HandleMovementOverride(Vector2 inputOverride)
+    {
+        if (IsInMeleeLockout)
+        {
+            inputOverride = Vector2.zero;
+            velocity.x = 0;
+            velocity.z = 0;
+            if (controller.isGrounded) velocity.y = -2f;
+        }
+        base.HandleMovementOverride(inputOverride);
     }
     public override void UpdateCameraView()
     {
@@ -80,7 +103,7 @@ public class HunterPlayer : GamePlayer
     public override void OnStartClient()
     {
         base.OnStartClient();
-        // 记录出生时的位置，防止 Update 第一帧计算出巨大的瞬移距离
+        // 记录出生时的位置，防止 00 第一帧计算出巨大的瞬移距离
         lastPosition = transform.position;
     }
     public override void OnStartServer()
@@ -113,8 +136,8 @@ public class HunterPlayer : GamePlayer
         base.Update();
         if (isLocalPlayer)
         {
-            // 1. 本地计算速度并发送给服务器
-            float horizontalSpeed = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+            // 同步动画速度：如果处于锁定中，强制发 0
+            float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);
             // 切换武器
             if (Input.GetKeyDown(KeyCode.Alpha1))
@@ -154,12 +177,29 @@ public class HunterPlayer : GamePlayer
 
                 if (currentWeapon != null && currentWeapon.CanFire())
                 {
-                    // 冷却刚好，立即执行！
-                    lastAttackInputTime = -1f; // 消耗掉这个缓冲，防止重复触发
-                    
-                    currentWeapon.UpdateCooldown();
-                    CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
-                    OnWeaponFired?.Invoke(currentWeaponIndex);
+                    // --- 【新增】：判断是否处于地面（结合原生判断与射线容错，防止下坡误判） ---
+                    bool isOnGround = controller.isGrounded || Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, (controller.height * 0.5f) + 0.3f, groundLayer);
+                    // 如果武器是拳头且在空中，则拦截攻击
+                    if (currentWeapon.weaponName == "Fist" && !isOnGround)
+                    {
+                        // 仅消耗掉输入缓冲，不执行射击指令（禁止空中出拳）
+                        lastAttackInputTime = -1f;
+                    }
+                    else
+                    {
+                        // 冷却刚好，立即执行！
+                        lastAttackInputTime = -1f; // 消耗掉这个缓冲，防止重复触发
+                        // --- 【核心修改】 ---
+                        if (currentWeapon.weaponName == "Fist")
+                        {
+                            // 每次攻击都刷新“结束时间”，确保连招期间全程原地不动
+                            meleeLockEndTime = Time.time + fistAttackLockDuration;
+                        }
+                        // ---------------------
+                        currentWeapon.UpdateCooldown();
+                        CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
+                        OnWeaponFired?.Invoke(currentWeaponIndex);
+                    }
                 }
             }
 
@@ -172,7 +212,7 @@ public class HunterPlayer : GamePlayer
         if (hunterAnimator != null)
         {
             // 注意：截图里参数名是小写 "speed"
-            hunterAnimator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+            hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
         }
     }
 
@@ -215,7 +255,7 @@ public class HunterPlayer : GamePlayer
                 // 1. 设置布尔值，决定这次走左边还是右边的动画分支
                 hunterAnimator.SetBool("isPunchRight", nextPunchIsRight);
 
-                // 2. 触发攻击 Trigger
+                // 2. 触发攻击 Trigger0
                 hunterAnimator.SetTrigger("Punch");
 
                 // 3. 切换状态：下次攻击换另一只手
@@ -365,6 +405,44 @@ public class HunterPlayer : GamePlayer
             sceneScript.blindPanel.SetActive(true);
             yield return new WaitForSeconds(duration);
             sceneScript.blindPanel.SetActive(false);
+        }
+    }
+    // ----------------------------------------------------
+    // 跳跃动画触发
+    // ----------------------------------------------------
+
+    // 重写基类的跳跃钩子
+    protected override void OnJumpTriggered()
+    {
+        // 增加严格的落地判断：只有 CharacterController 认为在地面上，才发送跳跃指令
+        if (isLocalPlayer)
+        {
+            CmdTriggerJumpAnimation();
+        }
+    }
+
+    [Command]
+    void CmdTriggerJumpAnimation()
+    {
+        // 1. 在服务器端生成随机数 (0 或 1)
+        // 使用 Random.Range(0, 2) 会得到 0 或 1
+        int randomIndex = UnityEngine.Random.Range(0, 2);
+
+        // 2. 将随机索引传给 Rpc
+        RpcOnJump(randomIndex);
+    }
+
+    [ClientRpc]
+    void RpcOnJump(int index)
+    {
+        if (hunterAnimator != null)
+        {
+            // 3. 先设置随机索引，再触发 Trigger
+            hunterAnimator.SetInteger("JumpIndex", index);
+            hunterAnimator.SetTrigger("isJump");
+            
+            // 调试打印，方便你查看触发了哪一个
+            // Debug.Log($"[Jump] Triggered animation index: {index}");
         }
     }
 }
