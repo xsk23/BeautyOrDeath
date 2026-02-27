@@ -67,6 +67,8 @@ public class GameManager : NetworkBehaviour
     public VictoryAnimData witchVictoryData;   // 拖入巫师胜利的 SO
     public VictoryAnimData hunterVictoryData;  // 拖入猎人胜利的 SO
     public float victoryModelSpacing = 2.0f;   // 胜利者之间的间隔
+    [Header("音频设置")]
+    public AudioSource victoryAudioSource; // 在 Inspector 中把 GameManager 身上挂的 AudioSource 拖进来
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -275,6 +277,7 @@ public class GameManager : NetworkBehaviour
             restartCountdown--;
             // 因为 restartCountdown 是 SyncVar，改变它会自动同步到所有客户端的 SceneScript
         }
+        RpcStopVictoryMusic(); // 先通知所有客户端停掉音乐
         ResetGame();
         NetworkManager.singleton.ServerChangeScene(MyNetworkManager.singleton.onlineScene);
     }
@@ -343,6 +346,27 @@ public class GameManager : NetworkBehaviour
         if (localPlayer != null)
         {
             localPlayer.GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        }
+        // --- 新增：音乐播放逻辑 ---
+        // 1. 获取胜利者人数（这里假设是基于当前阵营的存活/参与人数）
+        // 注意：这里的 winnersCount 必须和生成模型时的人数一致
+        List<GamePlayer> winners = new List<GamePlayer>();
+        foreach (var p in GamePlayer.AllPlayers)
+        {
+            if (p != null && p.playerRole == winner) winners.Add(p);
+        }
+        if (animData != null)
+        {
+            GroupDanceConfig config = animData.GetConfigForCount(winners.Count);
+            
+            // 3. 播放音乐
+            if (config.victoryMusic != null && victoryAudioSource != null)
+            {
+                victoryAudioSource.clip = config.victoryMusic;
+                victoryAudioSource.loop = true; // 舞蹈通常是循环的
+                victoryAudioSource.Play();
+                Debug.Log($"[Victory] Playing music: {config.victoryMusic.name} for {winners.Count} players.");
+            }
         }
     }
 
@@ -433,6 +457,11 @@ public class GameManager : NetworkBehaviour
             if (anim != null)
             {
                 anim.runtimeAnimatorController = anims[positionIndex];
+                // ==========================================
+                // 【新增修改】开启 Root Motion
+                // ==========================================
+                anim.applyRootMotion = true; 
+                // ==========================================
                 Debug.Log($"[Victory] Applied Controller {positionIndex} to {targetObj.name}");
             }
         }
@@ -804,7 +833,16 @@ public class GameManager : NetworkBehaviour
             Debug.LogError($"[Server] 找不到名为 '{portalSpawnGroupName}' 的物体或其没有子物体！");
         }
     }
-
+    // 1. 增加一个停止音乐的客户端指令
+    [ClientRpc]
+    private void RpcStopVictoryMusic()
+    {
+        if (victoryAudioSource != null)
+        {
+            victoryAudioSource.Stop();
+            Debug.Log("[Victory] Music stopped by Server.");
+        }
+    }
     public void ResetGame()
     {
         // 重置基础状态
@@ -843,6 +881,10 @@ public class GameManager : NetworkBehaviour
         }
         // 清理全局玩家列表中的无效引用
         GamePlayer.AllPlayers.Clear(); // 彻底清空，因为回到大厅后所有人都会重新生成
+        if (victoryAudioSource != null)
+        {
+            victoryAudioSource.Stop();
+        }
         Debug.Log("[GameManager] Game State and delivery counters have been fully reset.");
     }
     [Server] // 确保只在服务器运行
@@ -890,7 +932,7 @@ public class GameManager : NetworkBehaviour
         // 【新增】双重保险：确保开始时计数器为 0
         deliveredTreesCount = 0;
         totalRequiredTrees = 0;
-
+        RpcStopVictoryMusic(); // 确保新对局开始时没有残留音乐
         // 3. 改变游戏状态
         gameStartTimer = Time.time; // 记录开始时间
         SetGameState(GameState.InGame);

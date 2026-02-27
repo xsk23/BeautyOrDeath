@@ -6,6 +6,7 @@ public struct GroupDanceConfig
 {
     public int playerCount; 
     public RuntimeAnimatorController[] individualAnimators; 
+    public AudioClip victoryMusic; // <--- 新增：该人数舞蹈对应的背景音乐
 }
 
 [CreateAssetMenu(fileName = "VictoryAnimData", menuName = "Game/Victory Animation Data")]
@@ -17,13 +18,20 @@ public class VictoryAnimData : ScriptableObject
     [Header("群舞配置列表")]
     public List<GroupDanceConfig> groupDances;
 
-    public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
+    // 获取特定人数的完整配置
+    public GroupDanceConfig GetConfigForCount(int count)
     {
         foreach (var dance in groupDances)
         {
-            if (dance.playerCount == count) return dance.individualAnimators;
+            if (dance.playerCount == count) return dance;
         }
-        if (groupDances.Count > 0) return groupDances[0].individualAnimators;
-        return null;
+        // 兜底返回第一个
+        return groupDances.Count > 0 ? groupDances[0] : default;
+    }
+
+    // 为了兼容你现有的代码，保留这个方法（可选）
+    public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
+    {
+        return GetConfigForCount(count).individualAnimators;
     }
 }

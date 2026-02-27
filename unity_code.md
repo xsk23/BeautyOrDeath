@@ -74,6 +74,8 @@ public class GameManager : NetworkBehaviour
     public VictoryAnimData witchVictoryData;   // 拖入巫师胜利的 SO
     public VictoryAnimData hunterVictoryData;  // 拖入猎人胜利的 SO
     public float victoryModelSpacing = 2.0f;   // 胜利者之间的间隔
+    [Header("音频设置")]
+    public AudioSource victoryAudioSource; // 在 Inspector 中把 GameManager 身上挂的 AudioSource 拖进来
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -351,6 +353,27 @@ public class GameManager : NetworkBehaviour
         {
             localPlayer.GetComponent<TeamVision>()?.ForceUpdateVisuals();
         }
+        // --- 新增：音乐播放逻辑 ---
+        // 1. 获取胜利者人数（这里假设是基于当前阵营的存活/参与人数）
+        // 注意：这里的 winnersCount 必须和生成模型时的人数一致
+        List<GamePlayer> winners = new List<GamePlayer>();
+        foreach (var p in GamePlayer.AllPlayers)
+        {
+            if (p != null && p.playerRole == winner) winners.Add(p);
+        }
+        if (animData != null)
+        {
+            GroupDanceConfig config = animData.GetConfigForCount(winners.Count);
+            
+            // 3. 播放音乐
+            if (config.victoryMusic != null && victoryAudioSource != null)
+            {
+                victoryAudioSource.clip = config.victoryMusic;
+                victoryAudioSource.loop = true; // 舞蹈通常是循环的
+                victoryAudioSource.Play();
+                Debug.Log($"[Victory] Playing music: {config.victoryMusic.name} for {winners.Count} players.");
+            }
+        }
     }
 
 
@@ -440,6 +463,11 @@ public class GameManager : NetworkBehaviour
             if (anim != null)
             {
                 anim.runtimeAnimatorController = anims[positionIndex];
+                // ==========================================
+                // 【新增修改】开启 Root Motion
+                // ==========================================
+                anim.applyRootMotion = true; 
+                // ==========================================
                 Debug.Log($"[Victory] Applied Controller {positionIndex} to {targetObj.name}");
             }
         }
@@ -460,11 +488,23 @@ public class GameManager : NetworkBehaviour
     [ClientRpc]
     private void RpcHideOriginalPlayers()
     {
-        foreach (var p in GamePlayer.AllPlayers)
+        // 静态列表在跨局时非常容易残留 Missing Reference
+        for (int i = GamePlayer.AllPlayers.Count - 1; i >= 0; i--)
         {
-            // 彻底隐藏本体模型，只看表演模型
+            var p = GamePlayer.AllPlayers[i];
+            
+            // 【关键修复】: 必须检查 p 是否还存在于 Unity 内存中
+            if (p == null || p.gameObject == null) 
+            {
+                GamePlayer.AllPlayers.RemoveAt(i);
+                continue;
+            }
+
             Renderer[] rs = p.GetComponentsInChildren<Renderer>();
-            foreach (var r in rs) r.enabled = false;
+            foreach (var r in rs)
+            {
+                if (r != null) r.enabled = false;
+            }
         }
     }
 
@@ -835,6 +875,12 @@ public class GameManager : NetworkBehaviour
                 c.a = 0.5f; // 恢复为你原始的遮罩透明度（例如 0.5f）
                 panelImage.color = c;
             }
+        }
+        // 清理全局玩家列表中的无效引用
+        GamePlayer.AllPlayers.Clear(); // 彻底清空，因为回到大厅后所有人都会重新生成
+        if (victoryAudioSource != null)
+        {
+            victoryAudioSource.Stop();
         }
         Debug.Log("[GameManager] Game State and delivery counters have been fully reset.");
     }
@@ -2732,7 +2778,19 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 生命周期
     // --------------------------------------------------------
-
+    // 在 OnDestroy 中确保移除自己（你代码里写了 OnStopClient，但 OnDestroy 更保险）
+    private void OnDestroy()
+    {
+        if (AllPlayers.Contains(this))
+        {
+            AllPlayers.Remove(this);
+        }
+    }
+    // 在静态构造或合适的地方提供一个清理方法
+    public static void CleanupDeadReferences()
+    {
+        AllPlayers.RemoveAll(p => p == null || p.gameObject == null);
+    }
     // 服务器初始化角色
     public override void OnStartServer()
     {
@@ -5140,9 +5198,14 @@ public class WitchPlayer : GamePlayer
         }
 
         // 所有人（包括本地和远程客户端）都根据同步的速度值更新动画
+        // 修改这段逻辑
         if (!isMorphed && animator != null)
         {
-            animator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+            // 增加参数检查，防止报错
+            if (HasParameter(animator, "speed"))
+            {
+                animator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+            }
         }
         // --- 新增：本地玩家更新 UI 冷却进度 ---
         if (isLocalPlayer && SceneScript.Instance != null && SceneScript.Instance.morphSlot != null)
@@ -5201,7 +5264,16 @@ public class WitchPlayer : GamePlayer
             );
         }
     }
-
+    // 建议在类中添加一个辅助方法
+    private bool HasParameter(Animator anim, string paramName)
+    {
+        if (anim == null) return false;
+        foreach (AnimatorControllerParameter param in anim.parameters)
+        {
+            if (param.name == paramName) return true;
+        }
+        return false;
+    }
     // =========================================================
     // 【修改】重写 HandleMovementOverride 实现“抢方向盘”
     // =========================================================
@@ -9210,6 +9282,108 @@ public class CameraData : ScriptableObject
 }
 ```
 
+## UI\edit_video.py
+
+```python
+from moviepy import VideoFileClip
+
+
+def trim_video(input_path, output_path, start_time, end_time=None):
+    """
+    裁剪视频并保存
+    input_path: 输入视频路径
+    output_path: 输出视频路径
+    start_time: 开始时间 (秒，或字符串 "00:00:13")
+    end_time: 结束时间 (秒，或字符串 "00:00:30")，若为 None 则到结尾
+    """
+    try:
+        # 使用 with 自动管理资源
+        with VideoFileClip(input_path) as video:
+            # 1. 截取指定时段
+            # MoviePy 2.x 使用 subclipped
+            # MoviePy 1.x 使用 subclip
+            trimmed_clip = video.subclipped(start_time, end_time)
+
+            # 2. 导出视频
+            # codec="libx264" 是最通用的 MP4 编码
+            # audio_codec="aac" 确保音频也正确编码
+            trimmed_clip.write_videofile(
+                output_path, codec="libx264", audio_codec="aac"
+            )
+
+        print(f"裁剪成功！视频已保存至: {output_path}")
+    except Exception as e:
+        print(f"裁剪失败: {e}")
+
+
+# --- 使用示例 ---
+
+# 你的原始视频路径
+input_video = r"E:\downloads\b\jilejingtu.mp4"
+# 裁剪后的保存路径
+output_video = r"E:\downloads\b\jilejingtu_trimmed.mp4"
+
+# 裁剪从第 13 秒到第 30 秒
+trim_video(input_video, output_video, start_time=18, end_time=38)
+
+```
+
+## UI\extract_bgm.py
+
+```python
+from moviepy import VideoFileClip
+
+
+def extract_audio_segment(video_path, output_audio_path, start_time, end_time=None):
+    """
+    video_path: 视频文件路径
+    output_audio_path: 输出音频路径
+    start_time: 开始时间，可以是秒数 (例如 10) 或者是 (分, 秒) 或者是 "00:00:10"
+    end_time: 结束时间，如果不传则截取到视频结束
+    """
+    try:
+        # 使用 with 自动管理资源
+        with VideoFileClip(video_path) as video:
+            # 1. 截取指定时段的视频流
+            # subclipped 是 MoviePy 2.x 的新用法
+            # 如果是旧版本(1.x)，请把 subclipped 改为 subclip
+            segment = video.subclipped(start_time, end_time)
+
+            # 2. 提取该段的音频
+            audio = segment.audio
+
+            if audio is None:
+                print("该视频片段没有音轨！")
+                return
+
+            # 3. 写入文件
+            audio.write_audiofile(output_audio_path)
+
+            # 注意：segment 是 video 的一个视图，
+            # 在 with 语句结束时，video 会被自动关闭
+
+        print(f"提取成功！片段音频已保存至: {output_audio_path}")
+    except Exception as e:
+        print(f"提取失败: {e}")
+
+
+# --- 使用示例 ---
+
+# 路径
+input_video = r"E:\downloads\b\jinitaimei.mp4"
+output_audio = r"E:\downloads\b\jinitaimei_segment.mp3"
+
+# 示例 1: 从第 5 秒开始，到第 15 秒结束
+extract_audio_segment(input_video, output_audio, start_time=13, end_time=30)
+
+# 示例 2: 从第 1 分 20 秒开始，直到视频结束
+# extract_audio_segment(input_video, output_audio, start_time="00:01:20")
+
+# 示例 3: 使用元组 (分, 秒)
+# extract_audio_segment(input_video, output_audio, start_time=(1, 30), end_time=(2, 0))
+
+```
+
 ## UI\GameChatUI.cs
 
 ```csharp
@@ -12135,6 +12309,7 @@ public struct GroupDanceConfig
 {
     public int playerCount; 
     public RuntimeAnimatorController[] individualAnimators; 
+    public AudioClip victoryMusic; // <--- 新增：该人数舞蹈对应的背景音乐
 }
 
 [CreateAssetMenu(fileName = "VictoryAnimData", menuName = "Game/Victory Animation Data")]
@@ -12146,14 +12321,21 @@ public class VictoryAnimData : ScriptableObject
     [Header("群舞配置列表")]
     public List<GroupDanceConfig> groupDances;
 
-    public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
+    // 获取特定人数的完整配置
+    public GroupDanceConfig GetConfigForCount(int count)
     {
         foreach (var dance in groupDances)
         {
-            if (dance.playerCount == count) return dance.individualAnimators;
+            if (dance.playerCount == count) return dance;
         }
-        if (groupDances.Count > 0) return groupDances[0].individualAnimators;
-        return null;
+        // 兜底返回第一个
+        return groupDances.Count > 0 ? groupDances[0] : default;
+    }
+
+    // 为了兼容你现有的代码，保留这个方法（可选）
+    public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
+    {
+        return GetConfigForCount(count).individualAnimators;
     }
 }
 ```

@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8331450777150584183}
   - component: {fileID: 3026572181363098866}
+  - component: {fileID: 3517813825471518379}
   m_Layer: 6
   m_Name: item2
   m_TagString: Untagged
@@ -52,6 +53,23 @@ MonoBehaviour:
   cooldown: 0
   nextUseTime: 0
   doubleJumpForceMultiplier: 1
+--- !u!114 &3517813825471518379
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 594789975083360991}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b91ecbcc199f4492b9a91e820070131, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneId: 0
+  _assetId: 1917595749
+  serverOnly: 0
+  visibility: 0
+  hasSpawned: 0
 --- !u!1 &3957304955172766634
 GameObject:
   m_ObjectHideFlags: 0
@@ -62,6 +80,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6378993636168888252}
   - component: {fileID: 3711029388806391232}
+  - component: {fileID: 6468691695579840402}
   m_Layer: 6
   m_Name: item3
   m_TagString: Untagged
@@ -104,6 +123,23 @@ MonoBehaviour:
   cooldown: 0
   nextUseTime: 0
   protectionWindow: 30
+--- !u!114 &6468691695579840402
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3957304955172766634}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b91ecbcc199f4492b9a91e820070131, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneId: 0
+  _assetId: 1917595749
+  serverOnly: 0
+  visibility: 0
+  hasSpawned: 0
 --- !u!1 &5128789261052258260
 GameObject:
   m_ObjectHideFlags: 0
@@ -148,6 +184,7 @@ GameObject:
   m_Component:
   - component: {fileID: 4920637391429938810}
   - component: {fileID: 308312391317200969}
+  - component: {fileID: 4815712179222434483}
   m_Layer: 6
   m_Name: item1
   m_TagString: Untagged
@@ -192,3 +229,20 @@ MonoBehaviour:
   duration: 5
   speedMultiplier: 1.5
   witchScreamSound: {fileID: 0}
+--- !u!114 &4815712179222434483
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5353880699947731148}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b91ecbcc199f4492b9a91e820070131, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneId: 0
+  _assetId: 1917595749
+  serverOnly: 0
+  visibility: 0
+  hasSpawned: 0
