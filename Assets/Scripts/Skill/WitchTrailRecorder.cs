@@ -37,12 +37,8 @@ public class WitchTrailRecorder : NetworkBehaviour
     [Server]
     private void RecordSnapshot()
     {
-        // 2. 如果已经死亡，不记录（但在调试阶段，我们打印一下）
-        if (witchPlayer.isPermanentDead) 
-        {
-            // Debug.LogWarning($"[Recorder] {name} is dead, skipping record.");
-            return;
-        }
+        // 如果已经死亡，不记录
+        if (witchPlayer.isPermanentDead) return;
 
         TrailSnapshot snap = new TrailSnapshot
         {

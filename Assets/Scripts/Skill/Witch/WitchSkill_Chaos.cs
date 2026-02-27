@@ -54,26 +54,49 @@ public class WitchSkill_Chaos : SkillBase
             float angleY = Mathf.Sin(timeParam * 0.5f) * 45f;
             treeTrans.rotation = originalRot * Quaternion.Euler(angleX, angleY, angleZ);
 
-            // 3. 【新增】将附近的猎人撞得动来动去
+            // 3. 将附近的猎人撞得动来动去
             Collider[] colliders = Physics.OverlapSphere(treeTrans.position, 3.5f); // 碰撞检测范围稍大
             foreach(var col in colliders)
             {
                 HunterPlayer hunter = col.GetComponent<HunterPlayer>() ?? col.GetComponentInParent<HunterPlayer>();
                 if (hunter != null)
                 {
-                    CharacterController cc = hunter.GetComponent<CharacterController>();
-                    if (cc != null)
+                    // CharacterController cc = hunter.GetComponent<CharacterController>();
+                    // if (cc != null)
+                    // {
+                    //     // 计算弹开方向（从树的中心往外推）
+                    //     Vector3 pushDir = hunter.transform.position - treeTrans.position;
+                    //     pushDir.y = 0; // 只在水平面上施加撞击力，以免把猎人拍到地下
+                        
+                    //     // 稍微加点噪音让推力更不可预测
+                    //     pushDir += new Vector3(Random.Range(-0.5f, 0.5f), 0, Random.Range(-0.5f, 0.5f));
+                    //     pushDir.Normalize();
+
+                    //     // 强行移动 CC 模拟撞击效果
+                    //     cc.Move(pushDir * pushForce * Time.deltaTime);
+                    // }
+
+                    if (hunter.connectionToClient != null) 
                     {
                         // 计算弹开方向（从树的中心往外推）
                         Vector3 pushDir = hunter.transform.position - treeTrans.position;
-                        pushDir.y = 0; // 只在水平面上施加撞击力，以免把猎人拍到地下
-                        
-                        // 稍微加点噪音让推力更不可预测
+                        pushDir.y = 0; 
                         pushDir += new Vector3(Random.Range(-0.5f, 0.5f), 0, Random.Range(-0.5f, 0.5f));
                         pushDir.Normalize();
 
-                        // 强行移动 CC 模拟撞击效果
-                        cc.Move(pushDir * pushForce * Time.deltaTime);
+                        // 因为是在协程里每帧调用，推力需要适配 Time.deltaTime，并且可以适当放大 force
+                        Vector3 appliedForce = pushDir * pushForce * Time.deltaTime * 10f; 
+
+                        // 通知猎人的客户端，让他自己推自己
+                        hunter.TargetApplyKnockback(hunter.connectionToClient, appliedForce);
+                    }
+                    else if (hunter.isLocalPlayer) 
+                    {
+                        // 如果猎人就是 Host 房主，直接走本地函数
+                        Vector3 pushDir = hunter.transform.position - treeTrans.position;
+                        pushDir.y = 0; 
+                        pushDir.Normalize();
+                        hunter.TargetApplyKnockback(null, pushDir * pushForce * Time.deltaTime * 10f);
                     }
                 }
             }
