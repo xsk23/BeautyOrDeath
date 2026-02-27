@@ -61,6 +61,12 @@ MonoBehaviour:
   propLayer:
     serializedVersion: 2
     m_Bits: 8
+  victoryAnimator1: {fileID: 9100000, guid: d7dd2cb567fbe414299cfb9b910f1a80, type: 2}
+  victoryAnimator2: {fileID: 9100000, guid: 13dfdaaf20b095648a386f5a99aef24c, type: 2}
+  witchVictoryCameraData: {fileID: 11400000, guid: e8e009618d02cd14e8a0e1f93a438ca5, type: 2}
+  witchVictoryData: {fileID: 11400000, guid: 5c0d0ab273695b348ae9b751d0812bd3, type: 2}
+  hunterVictoryData: {fileID: 11400000, guid: 5141f5e6bb9f13e44bfd3669ba593ab0, type: 2}
+  victoryModelSpacing: 2
 --- !u!114 &2205238953590382908
 MonoBehaviour:
   m_ObjectHideFlags: 0

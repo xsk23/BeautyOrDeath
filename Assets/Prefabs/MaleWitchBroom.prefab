@@ -762,6 +762,7 @@ MonoBehaviour:
   requiredClicks: 2
   maxTrapTime: 6
   currentClicks: 0
+  myGender: 0
   syncedSkill1Name: 
   syncedSkill2Name: 
   caughtInTrapNetId: 0
@@ -836,7 +837,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: db296b91de1d68b4ca659f8cd0b2bbe8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetRenderer: {fileID: 0}
+  targetRenderer: {fileID: 8931914062396260619}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
   nameTextObject: {fileID: 1515058495162728281}
 --- !u!114 &1498090036183238577
@@ -898,6 +899,7 @@ MonoBehaviour:
   triggerKey: 113
   radius: 15
   duration: 5
+  pushForce: 15
 --- !u!114 &1307720245990462372
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1382,6 +1384,11 @@ Transform:
 --- !u!1 &5204337938728403755 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: f66ce990569a0f049b20182244dd682e, type: 3}
+  m_PrefabInstance: {fileID: 4969981785031310970}
+  m_PrefabAsset: {fileID: 0}
+--- !u!137 &8931914062396260619 stripped
+SkinnedMeshRenderer:
+  m_CorrespondingSourceObject: {fileID: -4680255284025622671, guid: f66ce990569a0f049b20182244dd682e, type: 3}
   m_PrefabInstance: {fileID: 4969981785031310970}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &8682422978302555440

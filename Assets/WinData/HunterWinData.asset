@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ecd800c22d499a46b826c07f66c3958, type: 3}
+  m_Name: HunterWinData
+  m_EditorClassIdentifier: 
+  cameraSettings: {fileID: 11400000, guid: e8e009618d02cd14e8a0e1f93a438ca5, type: 2}
+  groupDances:
+  - playerCount: 2
+    individualAnimators:
+    - {fileID: 9100000, guid: d7dd2cb567fbe414299cfb9b910f1a80, type: 2}
+    - {fileID: 9100000, guid: 13dfdaaf20b095648a386f5a99aef24c, type: 2}

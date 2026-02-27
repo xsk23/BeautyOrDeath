@@ -38,6 +38,12 @@ public class PlayerOutline : MonoBehaviour
 
     public void SetOutline(bool active, Color color)
     {
+        // --- 【新增：游戏结束强制关闭】 ---
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            active = false;
+        }
+        // ---------------------------------
         if (targetRenderer == null || outlineInstance == null) return;
 
         // 检查材质是否丢失
@@ -102,9 +108,11 @@ public class PlayerOutline : MonoBehaviour
         // 增加一个安全检查：确保新传入的不是名字物体
         if (nameTextObject != null && newRenderer.transform.IsChildOf(nameTextObject.transform)) return;
 
+        // 如果当前正在显示高亮，先移除旧的引用（如果旧的没被销毁）
+        // 使用 try-catch 或 null 检查防止因物体已 Destroy 导致的报错
         if (isVisible && targetRenderer != null)
         {
-            RemoveMaterial(outlineInstance);
+            try { RemoveMaterial(outlineInstance); } catch { }
         }
 
         targetRenderer = newRenderer;

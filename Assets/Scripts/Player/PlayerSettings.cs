@@ -28,6 +28,10 @@ public class PlayerSettings : MonoBehaviour
             selectedHunterSkillNames.Add("HunterSkill_Trap");
             selectedHunterSkillNames.Add("HunterSkill_Scan");
         }
+        // 核心修改：在 Awake 阶段就锁定默认值，不要等 UI 脚本初始化
+        if (string.IsNullOrEmpty(selectedWitchItemName)) {
+            selectedWitchItemName = "InvisibilityCloak"; // 或者你想要的默认类名
+        }
         DontDestroyOnLoad(gameObject);
     }
 

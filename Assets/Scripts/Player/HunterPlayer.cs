@@ -56,10 +56,13 @@ public class HunterPlayer : GamePlayer
     }
     public override void UpdateCameraView()
     {
+        // 【核心修复】：如果游戏已经结束，绝对不要去动相机，否则会把相机从胜利点抓回来
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            return;
         if (isFirstPerson)
         {
             Camera.main.transform.SetParent(transform);
-            Camera.main.transform.localPosition = new Vector3(0, 1.31f, 0.304f);
+            Camera.main.transform.localPosition = new Vector3(0.01f, 1.12f, 0.59f);
             Camera.main.transform.localRotation = Quaternion.identity;  
         }
         else

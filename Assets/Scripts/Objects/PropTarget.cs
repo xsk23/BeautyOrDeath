@@ -188,7 +188,14 @@ public class PropTarget : NetworkBehaviour
     public void SetHighlight(bool active)
     {
         if (allLODRenderers == null) return;
-
+        // --- 【新增：游戏结束强制关闭】 ---
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            active = false;
+            isScouted = false; // 确保侦察状态不干扰
+            isLocalTempRevealed = false; // 确保临时透视不干扰
+        }
+        // ---------------------------------
         // 获取本地玩家身份
         var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
         bool isWitch = localPlayer != null && localPlayer.playerRole == PlayerRole.Witch;
@@ -219,29 +226,6 @@ public class PropTarget : NetworkBehaviour
         if (shouldShow) UpdateColorAndZTest(active);
     }
 
-    // public void SetHighlight(bool active)
-    // {
-    //     // 【增强安全检查】
-    //     if (allLODRenderers == null || 
-    //         highlightedMaterialsList.Count != allLODRenderers.Length || 
-    //         originalMaterialsList.Count != allLODRenderers.Length) 
-    //     {
-    //         return;
-    //     }
-        
-    //     if (isHighlighted == active) return;
-    //     isHighlighted = active;
-
-    //     for (int i = 0; i < allLODRenderers.Length; i++)
-    //     {
-    //         var renderer = allLODRenderers[i];
-    //         // 即使渲染器没激活也要切换材质，否则 LOD 切换后显示的是旧材质
-    //         if (renderer == null) continue;
-            
-    //         // 现在这里绝对不会报错了，因为列表长度是强制对齐的
-    //         renderer.materials = active ? highlightedMaterialsList[i] : originalMaterialsList[i];
-    //     }
-    // }
     void OnDestroy()
     {
         if (outlineInstance != null) Destroy(outlineInstance);

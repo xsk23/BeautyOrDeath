@@ -70,6 +70,10 @@ public class GameManager : NetworkBehaviour
     public LayerMask propLayer; // 用于检测树木/道具的层级
     public Dictionary<int, Gender> pendingGenders = new Dictionary<int, Gender>();
     public Dictionary<int, string> pendingItems = new Dictionary<int, string>();
+    [Header("胜利表现配置")]
+    public VictoryAnimData witchVictoryData;   // 拖入巫师胜利的 SO
+    public VictoryAnimData hunterVictoryData;  // 拖入猎人胜利的 SO
+    public float victoryModelSpacing = 2.0f;   // 胜利者之间的间隔
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -238,12 +242,234 @@ public class GameManager : NetworkBehaviour
         if (currentState == GameState.GameOver) return;
 
         gameWinner = winner;
-        SetGameState(GameState.GameOver);
+        // SetGameState(GameState.GameOver);
         
-        // 开始重启倒计时协程
-        StartCoroutine(RestartRoutine());
+        // 开启新的胜利序列协程
+        StartCoroutine(VictorySequenceRoutine(winner));
+    }
+    [Server]
+    private IEnumerator VictorySequenceRoutine(PlayerRole winner)
+    {
+        // --- 新增：转场前的倒计时 UI 表现 ---
+        for (int i = 3; i > 0; i--)
+        {
+            RpcUpdateVictoryTransitionUI(winner, i);
+            yield return new WaitForSeconds(1f);
+        }
+        // 【新增】转场开始时，正式进入 GameOver 状态
+        SetGameState(GameState.GameOver);
+        // 统计胜利者与失败者
+        List<GamePlayer> winners = new List<GamePlayer>();
+        List<GamePlayer> losers = new List<GamePlayer>();
+        foreach (var p in GamePlayer.AllPlayers)
+        {
+            if (p == null) continue;
+            if (p.playerRole == winner) winners.Add(p);
+            else losers.Add(p);
+        }
+
+        // 2. 通知所有客户端切换相机 (传入胜方以便客户端选配置)
+        RpcNotifyVictorySequence(winner);
+
+        // 生成胜利舞台模型（包含胜方和败方）
+        SetupVictoryStage(winner, winners, losers);
+
+        // 【核心修复】：在这里实现真正的 20 秒倒计时同步
+        restartCountdown = 20; 
+        while (restartCountdown > 0)
+        {
+            yield return new WaitForSeconds(1f);
+            restartCountdown--;
+            // 因为 restartCountdown 是 SyncVar，改变它会自动同步到所有客户端的 SceneScript
+        }
+        ResetGame();
+        NetworkManager.singleton.ServerChangeScene(MyNetworkManager.singleton.onlineScene);
+    }
+    [ClientRpc]
+    private void RpcUpdateVictoryTransitionUI(PlayerRole winner, int seconds)
+    {
+        if (SceneScript.Instance == null) return;
+        SceneScript.Instance.gameResultPanel.SetActive(true);
+        string teamName = (winner == PlayerRole.Witch) ? "<color=#FF00FF>WITCHES</color>" : "<color=#00FFFF>HUNTERS</color>";
+        SceneScript.Instance.gameResultText.text = $"{teamName} TRIUMPH!";
+        SceneScript.Instance.gameRestartText.text = $"Moving to Victory Zone in {seconds}...";
     }
 
+    [ClientRpc]
+    private void RpcNotifyVictorySequence(PlayerRole winner)
+    {
+        Camera mainCam = Camera.main;
+        if (mainCam == null) return;
+
+        mainCam.transform.SetParent(null);
+
+        // 获取对应的胜利配置
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+
+        // 【核心修改】：从 CameraData 资源读取位置和旋转
+        if (animData != null && animData.cameraSettings != null)
+        {
+            mainCam.transform.position = animData.cameraSettings.position;
+            mainCam.transform.rotation = Quaternion.Euler(animData.cameraSettings.eulerRotation);
+            Debug.Log($"[Victory] Camera applied from CameraData Asset: {animData.cameraSettings.name}");
+        }
+
+        // 2. UI 深度清理
+        if (SceneScript.Instance != null)
+        {
+            // --- 调用刚才写的方法隐藏所有 HUD ---
+            SceneScript.Instance.HideHUDForVictory();
+
+            // --- 处理结算面板 ---
+            SceneScript.Instance.gameResultPanel.SetActive(true); 
+
+            // 隐藏胜利大标题文字 (按照你的需求)
+            if (SceneScript.Instance.gameResultText != null)
+            {
+                SceneScript.Instance.gameResultText.gameObject.SetActive(false);
+            }
+
+            // 背景设为全透明 (按照你的需求)
+            UnityEngine.UI.Image panelImage = SceneScript.Instance.gameResultPanel.GetComponent<UnityEngine.UI.Image>();
+            if (panelImage != null)
+            {
+                Color c = panelImage.color;
+                c.a = 0f; 
+                panelImage.color = c;
+            }
+            
+            // 确保重启倒计时文本是可见的（因为它通常在 ResultPanel 下面）
+            if (SceneScript.Instance.gameRestartText != null)
+            {
+                SceneScript.Instance.gameRestartText.gameObject.SetActive(true);
+            }
+        }
+        var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        if (localPlayer != null) localPlayer.isPermanentDead = true; 
+        // --- 【新增：立即刷新本地所有视觉脚本】 ---
+        if (localPlayer != null)
+        {
+            localPlayer.GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        }
+    }
+
+
+    [Server]
+    private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers)
+    {
+        GameObject stageCenter = GameObject.Find("VictoryStageCenter");
+        Vector3 centerPos = stageCenter ? stageCenter.transform.position : new Vector3(-180, 10, 140);
+        
+        // 获取配置数据中的相机位置，用于让模型面朝相机
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+        if (animData == null || animData.cameraSettings == null) return;
+
+        RpcHideOriginalPlayers();
+        MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
+        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(winners.Count);
+
+        // --- 1. 生成胜利者 (中间排列，面朝相机) ---
+        float tightSpacing = 1.1f; // 间距从 2.0 缩小到 1.1，肩膀挨着肩膀
+        for (int i = 0; i < winners.Count; i++)
+        {
+            float offset = (i - (winners.Count - 1) / 2f) * tightSpacing;
+            Vector3 spawnPos = centerPos + (stageCenter.transform.right * offset);
+            
+            // 【核心修改】：计算指向 CameraData 中定义的相机位置的旋转
+            Vector3 dirToCam = (animData.cameraSettings.position - spawnPos).normalized;
+            dirToCam.y = 0;
+            Quaternion lookRotation = Quaternion.LookRotation(dirToCam);
+
+            GameObject prefab = GetVictoryPrefab(winners[i], netManager);
+            if (prefab != null)
+            {
+                GameObject displayObj = Instantiate(prefab, spawnPos, lookRotation);
+                NetworkServer.Spawn(displayObj);
+                RpcApplyVictoryAnimation(displayObj, winners.Count, i, winner);
+            }
+        }
+
+        // --- 2. 失败者生成 (核心修改：侧身朝向) ---
+        for (int j = 0; j < losers.Count; j++)
+        {
+            bool isLeft = (j % 2 == 0);
+            // 站位更紧凑：侧向距离 2.2 -> 1.8，深度距离 1.5 -> 1.2
+            float sideOffset = isLeft ? -1.8f : 1.8f; 
+            float depthOffset = 1.2f + (j / 2) * 0.7f; 
+            
+            Vector3 loserSpawnPos = centerPos + (stageCenter.transform.right * sideOffset) - (stageCenter.transform.forward * depthOffset);
+            
+            // --- 计算侧身旋转 ---
+            Vector3 dirToWinners = (centerPos - loserSpawnPos).normalized; // 指向舞台中心的向量
+            Vector3 dirToCam = (animData.cameraSettings.position - loserSpawnPos).normalized; // 指向相机的向量
+            
+            // 使用 Slerp 进行混合：0.4f 代表 40% 看向相机，60% 看向中心
+            // 这样会产生一种“斜对着镜头”的高级感
+            Vector3 blendedDir = Vector3.Slerp(dirToWinners, dirToCam, 0.4f);
+            blendedDir.y = 0; // 确保不仰头或低头
+            
+            Quaternion loserRot = Quaternion.LookRotation(blendedDir);
+
+            GameObject lPrefab = GetVictoryPrefab(losers[j], netManager);
+            if (lPrefab != null)
+            {
+                GameObject loserObj = Instantiate(lPrefab, loserSpawnPos, loserRot);
+                Animator anim = loserObj.GetComponentInChildren<Animator>();
+                if (anim != null) anim.enabled = false; 
+
+                NetworkServer.Spawn(loserObj);
+            }
+        }
+    }
+    [ClientRpc]
+    private void RpcApplyVictoryAnimation(GameObject targetObj, int totalWinners, int positionIndex, PlayerRole winner)
+    {
+        if (targetObj == null) return;
+
+        // 客户端根据胜方选择对应的配置资源
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+        if (animData == null) return;
+
+        // 根据人数获取这一组舞蹈
+        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(totalWinners);
+
+        if (anims != null && positionIndex < anims.Length)
+        {
+            // 在子物体中寻找并应用
+            Animator anim = targetObj.GetComponentInChildren<Animator>();
+            if (anim != null)
+            {
+                anim.runtimeAnimatorController = anims[positionIndex];
+                Debug.Log($"[Victory] Applied Controller {positionIndex} to {targetObj.name}");
+            }
+        }
+    }
+    // 辅助方法：获取胜利者对应的 Prefab
+    private GameObject GetVictoryPrefab(GamePlayer player, MyNetworkManager netManager)
+    {
+        if (player.playerRole == PlayerRole.Witch)
+        {
+            return (player.myGender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+        }
+        else
+        {
+            return (player.myGender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
+        }
+    }
+
+    [ClientRpc]
+    private void RpcHideOriginalPlayers()
+    {
+        foreach (var p in GamePlayer.AllPlayers)
+        {
+            // 彻底隐藏本体模型，只看表演模型
+            Renderer[] rs = p.GetComponentsInChildren<Renderer>();
+            foreach (var r in rs) r.enabled = false;
+        }
+    }
+
+    // 辅助消息
+    public struct RpcSetVisibleMsg : NetworkMessage { public bool visible; }
     [Server]
     private IEnumerator RestartRoutine()
     {
@@ -414,6 +640,7 @@ public class GameManager : NetworkBehaviour
         {
             playerScript.playerName = pName;
             playerScript.playerRole = role;
+            playerScript.myGender = gender; // 【新增这一行】将上面获取到的 gender 赋给角色脚本
 
             // 2. 【核心】在这里应用刚才抢救下来的内部变量
             playerScript.manaRegenRate = this.manaRegenInternal;
@@ -594,6 +821,21 @@ public class GameManager : NetworkBehaviour
         pendingNames.Clear();
         pendingColors.Clear();
         pendingItems.Clear();
+
+        // 恢复 UI 状态（仅在客户端执行）
+        if (isClient && SceneScript.Instance != null)
+        {
+            if (SceneScript.Instance.gameResultText != null)
+                SceneScript.Instance.gameResultText.gameObject.SetActive(true);
+
+            UnityEngine.UI.Image panelImage = SceneScript.Instance.gameResultPanel.GetComponent<UnityEngine.UI.Image>();
+            if (panelImage != null)
+            {
+                Color c = panelImage.color;
+                c.a = 0.5f; // 恢复为你原始的遮罩透明度（例如 0.5f）
+                panelImage.color = c;
+            }
+        }
         Debug.Log("[GameManager] Game State and delivery counters have been fully reset.");
     }
     [Server] // 确保只在服务器运行
@@ -1820,7 +2062,14 @@ public class PropTarget : NetworkBehaviour
     public void SetHighlight(bool active)
     {
         if (allLODRenderers == null) return;
-
+        // --- 【新增：游戏结束强制关闭】 ---
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            active = false;
+            isScouted = false; // 确保侦察状态不干扰
+            isLocalTempRevealed = false; // 确保临时透视不干扰
+        }
+        // ---------------------------------
         // 获取本地玩家身份
         var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
         bool isWitch = localPlayer != null && localPlayer.playerRole == PlayerRole.Witch;
@@ -1851,29 +2100,6 @@ public class PropTarget : NetworkBehaviour
         if (shouldShow) UpdateColorAndZTest(active);
     }
 
-    // public void SetHighlight(bool active)
-    // {
-    //     // 【增强安全检查】
-    //     if (allLODRenderers == null || 
-    //         highlightedMaterialsList.Count != allLODRenderers.Length || 
-    //         originalMaterialsList.Count != allLODRenderers.Length) 
-    //     {
-    //         return;
-    //     }
-        
-    //     if (isHighlighted == active) return;
-    //     isHighlighted = active;
-
-    //     for (int i = 0; i < allLODRenderers.Length; i++)
-    //     {
-    //         var renderer = allLODRenderers[i];
-    //         // 即使渲染器没激活也要切换材质，否则 LOD 切换后显示的是旧材质
-    //         if (renderer == null) continue;
-            
-    //         // 现在这里绝对不会报错了，因为列表长度是强制对齐的
-    //         renderer.materials = active ? highlightedMaterialsList[i] : originalMaterialsList[i];
-    //     }
-    // }
     void OnDestroy()
     {
         if (outlineInstance != null) Destroy(outlineInstance);
@@ -2339,7 +2565,7 @@ public class FistWeapon : WeaponBase
     private void Awake()
     {
         // 初始化默认值
-        damage = 5f;
+        damage = 10f;
         fireRate = 0.5f;
         weaponName = "Fist";
     }
@@ -2416,11 +2642,15 @@ public abstract class GamePlayer : NetworkBehaviour
     public int requiredClicks = 2; // 需要按多少次空格才能挣脱
     public float maxTrapTime = 6.0f; // 6秒后还没挣脱就释放
 
+    [Header("外部受力(击退)")]
+    protected Vector3 impact = Vector3.zero;
+
     [SyncVar]
     public int currentClicks = 0; // 当前挣扎次数
     private float trapTimer = 0f;// 计时器
 
     [Header("同步属性")]
+    [SyncVar] public Gender myGender = Gender.Male;
     [SyncVar] public string syncedSkill1Name = "";
     [SyncVar] public string syncedSkill2Name = "";
     [SyncVar] public uint caughtInTrapNetId = 0; // 记录当前是被哪个陷阱抓住了
@@ -2592,13 +2822,39 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 逻辑循环
     // --------------------------------------------------------
-
+    // 2. 在 GamePlayer.cs 底部添加对应的 Command
+    [Command]
+    private void CmdDebugTriggerWin(PlayerRole winner)
+    {
+        //改成英文debug
+        Debug.Log($"[DEBUG] Server received win request from player {playerName}: {winner}");
+        
+        // 调用 GameManager 的服务器结束逻辑
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.ServerEndGame(winner);
+        }
+    }
 
     public virtual void Update()
     {
         // 只有本地玩家能控制移动
         if (isLocalPlayer)
         {
+            // ================== 【调试按键接口】 ==================
+            // 允许 Client 玩家通过 Command 请求服务器结束游戏
+            if (Application.isEditor || Debug.isDebugBuild)
+            {
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    CmdDebugTriggerWin(PlayerRole.Witch);
+                }
+                if (Input.GetKeyDown(KeyCode.O))
+                {
+                    CmdDebugTriggerWin(PlayerRole.Hunter);
+                }
+            }
+            // ====================================================
             // 【新增】如果引用为空，尝试再次查找（防空指针）
             if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
             if (gameChatUI == null) gameChatUI = FindObjectOfType<GameChatUI>();
@@ -2680,6 +2936,9 @@ public abstract class GamePlayer : NetworkBehaviour
     // 新增方法：根据视角更新相机位置
     public virtual void UpdateCameraView()
     {
+        // 如果游戏已经结束，不再强制控制相机位置
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            return;
         if (isFirstPerson)
         {
             Camera.main.transform.SetParent(transform);
@@ -2707,6 +2966,14 @@ public abstract class GamePlayer : NetworkBehaviour
         // 只有在聊天或者打开菜单时才锁定视角
         bool isViewLocked = isChatting || (sceneScript != null && sceneScript.pauseMenuPanel.activeSelf);
 
+        // 【新增】应用击退外力 (在计算 targetVelocity 之前)
+        if (impact.magnitude > 0.2f)
+        {
+            controller.Move(impact * Time.deltaTime);
+            // 摩擦力衰减（数值越大停得越快，5f 适合比较滑行的击退）
+            impact = Vector3.Lerp(impact, Vector3.zero, 5f * Time.deltaTime); 
+        }
+
         // 3. 移动计算 (inputOverride 如果是 zero，这里会自动处理减速)
         Vector3 inputDir = (transform.right * inputOverride.x + transform.forward * inputOverride.y);
         if (inputDir.magnitude > 1f) inputDir.Normalize();
@@ -2733,6 +3000,11 @@ public abstract class GamePlayer : NetworkBehaviour
         }
 
         controller.Move(velocity * Time.deltaTime);
+
+        // 【核心修复】：如果游戏结束，彻底禁止脚本触摸 Camera.main
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            return;
+
 
         // 5. 【核心修改】旋转视角逻辑
         // 只要视角没被锁定（聊天/菜单），即使处于 stunned 状态，也可以转头
@@ -3202,6 +3474,14 @@ public abstract class GamePlayer : NetworkBehaviour
     {
         syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
     }
+
+    //新增 TargetRpc 接收击退力
+    [TargetRpc]
+    public void TargetApplyKnockback(NetworkConnection target, Vector3 force)
+    {
+        // 将外力叠加到当前的 impact 上
+        impact += force;
+    }
 }
 ```
 
@@ -3343,10 +3623,13 @@ public class HunterPlayer : GamePlayer
     }
     public override void UpdateCameraView()
     {
+        // 【核心修复】：如果游戏已经结束，绝对不要去动相机，否则会把相机从胜利点抓回来
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            return;
         if (isFirstPerson)
         {
             Camera.main.transform.SetParent(transform);
-            Camera.main.transform.localPosition = new Vector3(0, 1.31f, 0.304f);
+            Camera.main.transform.localPosition = new Vector3(0.01f, 1.12f, 0.59f);
             Camera.main.transform.localRotation = Quaternion.identity;  
         }
         else
@@ -4208,7 +4491,7 @@ public class PlayerScript : NetworkBehaviour
         }
     }
     [Command]
-    void CmdUpdateSelectedItem(string itemName)
+    public void CmdUpdateSelectedItem(string itemName)
     {
         selectedWitchItemName = itemName;
     }
@@ -4488,6 +4771,10 @@ public class PlayerSettings : MonoBehaviour
             selectedHunterSkillNames.Clear();
             selectedHunterSkillNames.Add("HunterSkill_Trap");
             selectedHunterSkillNames.Add("HunterSkill_Scan");
+        }
+        // 核心修改：在 Awake 阶段就锁定默认值，不要等 UI 脚本初始化
+        if (string.IsNullOrEmpty(selectedWitchItemName)) {
+            selectedWitchItemName = "InvisibilityCloak"; // 或者你想要的默认类名
         }
         DontDestroyOnLoad(gameObject);
     }
@@ -4800,7 +5087,11 @@ public class WitchPlayer : GamePlayer
         // 如果永久死亡，跳过所有交互逻辑，只保留基础移动（基类 HandleMovement）
         if (isPermanentDead)
         {
-            base.Update(); // 允许观察者移动
+            // 只有非游戏结束状态才允许基础 Update 里的相机逻辑
+            if (GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
+            {
+                base.Update();
+            }
             return;
         }
         // =========================================================
@@ -4900,9 +5191,9 @@ public class WitchPlayer : GamePlayer
         HandleItemActivation(); // 处理道具使用输入
 
         // --- 在 Update 的最后添加平滑移动逻辑 ---
-        if (isLocalPlayer && Camera.main != null)
+        // 【核心修复】：增加 GameOver 判断，防止插值逻辑把相机拉回玩家身边
+        if (isLocalPlayer && Camera.main != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
         {
-            // 使用 Lerp 插值实现平滑过渡，Time.deltaTime * 5f 是平滑速度
             Camera.main.transform.localPosition = Vector3.Lerp(
                 Camera.main.transform.localPosition, 
                 targetCamPos, 
@@ -5454,14 +5745,38 @@ public class WitchPlayer : GamePlayer
                 // 实在找不到 Mesh，回退到 BoxCollider
                 if (humanBoxCollider != null) humanBoxCollider.enabled = true;
             }
-            // 7. 刷新轮廓
+            // 7. 刷新轮廓 (修改此段)
             var outline = GetComponent<PlayerOutline>();
             if (outline != null && currentVisualProp != null) 
             {
-                Renderer r = currentVisualProp.GetComponentInChildren<Renderer>();
-                outline.RefreshRenderer(r); 
-            }
+                // 【核心修复】：健壮的 Renderer 查找逻辑
+                Renderer[] allRenderers = currentVisualProp.GetComponentsInChildren<Renderer>();
+                Renderer targetR = null;
 
+                // 优先级 1：寻找名字里带 LOD0 的（针对分层级模型）
+                foreach (var r in allRenderers)
+                {
+                    if (r is ParticleSystemRenderer) continue;
+                    if (r.name.Contains("LOD0")) { targetR = r; break; }
+                }
+
+                // 优先级 2：如果没有 LOD0，找第一个非粒子的渲染器（针对单模型物体）
+                if (targetR == null)
+                {
+                    foreach (var r in allRenderers)
+                    {
+                        if (r is ParticleSystemRenderer) continue;
+                        targetR = r;
+                        break;
+                    }
+                }
+                
+                if (targetR != null) 
+                {
+                    outline.RefreshRenderer(targetR); 
+                }
+            }
+            
             // 8. 【新增】启用我的 PropTarget，允许别人瞄准我变身后的模型
             myPropTarget.enabled = true;
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
@@ -5788,11 +6103,20 @@ public class WitchPlayer : GamePlayer
         // 4. 视觉恢复
         if (humanModelGroup != null)
         {
-            bool shouldShow = !isStealthed || isLocalPlayer;
             humanModelGroup.SetActive(true);
             Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
-            foreach (var r in humanRenderers) r.enabled = shouldShow;
+            foreach (var r in humanRenderers) r.enabled = true;
+            
+            // 【核心修复】：重新从人类模型组里提取主渲染器
+            // 巫师模型通常由 SkinnedMeshRenderer 组成
+            foreach (var r in humanRenderers)
+            {
+                if (r is ParticleSystemRenderer) continue;
+                myRenderer = r; // 重新给 myRenderer 赋值，确保它是活的
+                break;
+            }
         }
+
         if (HideGroup != null) HideGroup.SetActive(true);
 
         // 5. 【核心修复】恢复 CC 原始参数
@@ -5823,8 +6147,9 @@ public class WitchPlayer : GamePlayer
         }
         // 确保描边脚本重新指向人类的 Renderer (myRenderer 是tripo_node上的)
         var outline = GetComponent<PlayerOutline>();
-        if (outline != null)
+        if (outline != null && myRenderer != null)
         {
+            // 确保 outline 脚本指向新的（恢复的）人类渲染器
             outline.RefreshRenderer(myRenderer); 
         }
 
@@ -6242,10 +6567,15 @@ public class WitchPlayer : GamePlayer
     private void UpdateStealthVisuals(bool isStealth)
     {
         if (isLocalPlayer) return;
-        bool isVisible = !isStealth;
+        // 【核心修复 1】：获取当前看着屏幕的本地玩家，判断是不是队友
+        GamePlayer myLocalViewPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        bool isTeammate = (myLocalViewPlayer != null && myLocalViewPlayer.playerRole == PlayerRole.Witch);
 
-        // 1. 隐藏头顶名字
-        if (nameText != null) nameText.gameObject.SetActive(isVisible);
+        // 猎人看隐身是不可见(!isStealth)，女巫看隐身的队友永远是可见(true)
+        bool isVisible = isTeammate ? true : !isStealth;
+
+        // 1. 隐藏头顶名字（隐身时，连队友也暂时不看名字，全靠高亮颜色认人）
+        if (nameText != null) nameText.gameObject.SetActive(isVisible && !isStealth);
 
         // 2. 根据当前形态隐藏对应的模型
         if (isMorphed)
@@ -6272,8 +6602,8 @@ public class WitchPlayer : GamePlayer
         }
 
         // 3. 隐藏描边
-        var outline = GetComponent<PlayerOutline>();
-        if (outline != null) outline.enabled = isVisible;
+        // var outline = GetComponent<PlayerOutline>();
+        // if (outline != null) outline.enabled = isVisible;
     }
     // 服务器端：由传送门调用
     [Server]
@@ -6379,7 +6709,7 @@ public class WitchPlayer : GamePlayer
         {
             // --- 人类状态：恢复默认 ---
             if (isFirstPerson)
-                targetCamPos = new Vector3(0, 1.055f, 0.278f);
+                targetCamPos = new Vector3(0.079f, 1.055f, 0.663f);
             else
                 targetCamPos = new Vector3(0, 2.405f, -3.631f);
         }
@@ -7173,12 +7503,8 @@ public class WitchTrailRecorder : NetworkBehaviour
     [Server]
     private void RecordSnapshot()
     {
-        // 2. 如果已经死亡，不记录（但在调试阶段，我们打印一下）
-        if (witchPlayer.isPermanentDead) 
-        {
-            // Debug.LogWarning($"[Recorder] {name} is dead, skipping record.");
-            return;
-        }
+        // 如果已经死亡，不记录
+        if (witchPlayer.isPermanentDead) return;
 
         TrailSnapshot snap = new TrailSnapshot
         {
@@ -7259,6 +7585,10 @@ public class DogSkillBehavior : NetworkBehaviour
     public LayerMask targetLayer;    // 目标层级
     public float lifeTime = 10f;     // 存活时间
 
+    [Header("全图追踪设置")]
+    public float globalTrackTime = 3f; // 前t秒即使找不到也会往大致方向跑
+    public float directionNoiseAngle = 20f; // 大致方向的角度偏移
+
     [Header("视觉设置")]
     public int segments = 50;        // 圆的平滑度（段数）
     public float lineWidth = 0.2f;   // 线条宽度
@@ -7270,8 +7600,12 @@ public class DogSkillBehavior : NetworkBehaviour
     private bool hasFoundWitch = false;
     private Transform targetWitch;
     
-    // 【新增】LineRenderer 引用
+    // LineRenderer 引用
     private LineRenderer lineRenderer;
+
+    private float trackTimer = 0f;
+    private float updateDirTimer = 0f;
+    private Vector3 trackDirection;
 
     private void Awake()
     {
@@ -7304,7 +7638,6 @@ public class DogSkillBehavior : NetworkBehaviour
         }
     }
 
-    // 将原来的 Update 逻辑提取出来，保持整洁
     [Server]
     private void ServerUpdateLogic()
     {
@@ -7319,8 +7652,11 @@ public class DogSkillBehavior : NetworkBehaviour
         Vector3 lookTarget = transform.position + transform.forward * 5f; 
         bool isRun = false;
 
+        trackTimer += Time.deltaTime;
+
         if (targetWitch != null)
         {
+            // 在侦测范围内找到了！精确追踪
             float dist = Vector3.Distance(transform.position, targetWitch.position);
             lookTarget = targetWitch.position;
 
@@ -7343,11 +7679,66 @@ public class DogSkillBehavior : NetworkBehaviour
         }
         else
         {
-            inputAxis = new Vector2(0, 1f); 
-            isRun = true;
+            // 没找到，检查是否在 t 秒内执行大致方向追踪
+            if (trackTimer <= globalTrackTime)
+            {
+                updateDirTimer -= Time.deltaTime;
+                // 每隔1秒计算一次带噪音的方向，防止目标移动过快丢失
+                if (updateDirTimer <= 0f)
+                {
+                    Transform nearestWitch = GetNearestWitchGlobal();
+                    if (nearestWitch != null)
+                    {
+                        Vector3 dir = (nearestWitch.position - transform.position).normalized;
+                        dir.y = 0;
+                        if (dir == Vector3.zero) dir = transform.forward;
+                        
+                        // 加入噪音偏移
+                        float noise = UnityEngine.Random.Range(-directionNoiseAngle, directionNoiseAngle);
+                        trackDirection = Quaternion.Euler(0, noise, 0) * dir;
+                    }
+                    else
+                    {
+                        trackDirection = transform.forward; // 场上没女巫时直走
+                    }
+                    updateDirTimer = 1.0f; // 重置1秒倒计时
+                }
+                
+                // 朝着带噪音的大致方向跑并看向那里
+                lookTarget = transform.position + trackDirection * 5f;
+                inputAxis = new Vector2(0, 1f);
+                isRun = true;
+            }
+            else
+            {
+                // 时间到了也没找到，就普通的往前走
+                lookTarget = transform.position + transform.forward * 5f;
+                inputAxis = new Vector2(0, 1f); 
+                isRun = true;
+            }
         }
 
         mover.SetInput(inputAxis, lookTarget, isRun, false);
+    }
+
+    [Server]
+    private Transform GetNearestWitchGlobal()
+    {
+        float minDist = float.MaxValue;
+        Transform bestTarget = null;
+        foreach (var player in GamePlayer.AllPlayers)
+        {
+            if (player is WitchPlayer witch && !witch.isPermanentDead && !witch.isInvulnerable)
+            {
+                float d = Vector3.Distance(transform.position, witch.transform.position);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    bestTarget = witch.transform;
+                }
+            }
+        }
+        return bestTarget;
     }
 
     [Server]
@@ -7387,10 +7778,6 @@ public class DogSkillBehavior : NetworkBehaviour
         Debug.Log("Dog: Bark! Found Witch!");
     }
 
-    // =========================================================
-    // 【新增】画圈圈的核心逻辑
-    // =========================================================
-    
     private void SetupLineRenderer()
     {
         lineRenderer.useWorldSpace = true; // 使用世界坐标，防止狗歪了圈也歪了
@@ -7399,7 +7786,7 @@ public class DogSkillBehavior : NetworkBehaviour
         lineRenderer.positionCount = segments + 1; // +1 是为了闭合圆
         lineRenderer.loop = true;
         
-        // 设置材质颜色 (如果没有材质，可能会显示粉色方块，后面步骤会教你设置)
+        // 设置材质颜色 
         lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
         lineRenderer.startColor = circleColor;
         lineRenderer.endColor = circleColor;
@@ -7418,15 +7805,10 @@ public class DogSkillBehavior : NetworkBehaviour
 
         for (int i = 0; i < segments + 1; i++)
         {
-            // 1. 计算圆周上的点 (局部坐标)
-            // x = sin(angle) * r
-            // z = cos(angle) * r
             float x = Mathf.Sin(Mathf.Deg2Rad * angle) * detectRadius;
             float z = Mathf.Cos(Mathf.Deg2Rad * angle) * detectRadius;
 
-            // 2. 转换为世界坐标
             // 以狗的中心为原点，加上偏移量
-            // Y 轴设为 transform.position.y + 0.2f，稍微离地一点点，防止和地面穿插（Z-Fighting）
             Vector3 pos = new Vector3(x, 0.2f, z) + transform.position;
 
             lineRenderer.SetPosition(i, pos);
@@ -7500,6 +7882,8 @@ public class HunterSkill_Scan : SkillBase
     public float visualDuration = 2f; 
     public ScanMode currentMode = ScanMode.Ghost; 
 
+    [Header("视觉过滤")]
+    public float minVisualDistance = 1.0f; // 距离小于1米就不生成新的残影模型
 
     [Header("生成节奏")]
     public float spawnInterval = 0.5f; // 【新增】每个残影之间生成的间隔时间
@@ -7590,11 +7974,12 @@ public class HunterSkill_Scan : SkillBase
         StartCoroutine(SpawnTrailsSequentially(groups));
     }
 
+
     private IEnumerator SpawnTrailsSequentially(WitchTrailGroup[] groups)
     {
         if (groups.Length == 0) yield break;
 
-        // 找到所有女巫中最长的一条轨迹长度
+        // 1. 找到所有女巫中最长的一条轨迹长度
         int maxTrails = 0;
         foreach (var group in groups)
         {
@@ -7602,44 +7987,91 @@ public class HunterSkill_Scan : SkillBase
                 maxTrails = group.trails.Length;
         }
 
-        // 按时间顺序（从最老的点到最新的点）逐个遍历
+        // 2. 【新增】为每个女巫准备独立的状态追踪器
+        Vector3[] lastSpawnedPos = new Vector3[groups.Length];
+        int[] lastPropIDs = new int[groups.Length];
+        int[] stackedCounts = new int[groups.Length];
+
+        // 初始化追踪器
+        for (int w = 0; w < groups.Length; w++)
+        {
+            lastSpawnedPos[w] = new Vector3(9999f, 9999f, 9999f); // 初始设为极远的点
+            lastPropIDs[w] = -999;
+            stackedCounts[w] = 0;
+        }
+
+        // 3. 按时间顺序逐个遍历
         for (int i = 0; i < maxTrails; i++)
         {
             bool spawnedAny = false;
 
-            // 同时遍历所有女巫，确保她们的痕迹是同步向前推进的
-            foreach (var group in groups)
+            // 同时遍历所有女巫
+            for (int w = 0; w < groups.Length; w++)
             {
-                // 如果这个女巫在当前时间节点有痕迹，则生成
+                var group = groups[w];
+                
+                // 如果这个女巫在当前时间节点有痕迹
                 if (i < group.trails.Length)
                 {
-                    if (currentMode == ScanMode.Footprints)
-                        SpawnFootprint(group.trails[i], group.trailColor);
-                    else
-                        SpawnGhost(group.trails[i], group.trailColor);
+                    TrailSnapshot currentSnap = group.trails[i];
 
-                    spawnedAny = true;
+                    // 【核心过滤逻辑】计算与上一次生成点的距离
+                    float distSqr = Vector3.SqrMagnitude(currentSnap.position - lastSpawnedPos[w]);
+                    // 判断变身形态是否发生了改变（即使在原地，只要变身了也应该生成新残影）
+                    bool propChanged = currentSnap.propID != lastPropIDs[w];
+
+                    // 如果距离大于阈值，或者形态改变了，才生成！
+                    if (distSqr >= (minVisualDistance * minVisualDistance) || propChanged)
+                    {
+                        GameObject spawnedObj = null;
+
+                        if (currentMode == ScanMode.Footprints)
+                            spawnedObj = SpawnFootprint(currentSnap, group.trailColor);
+                        else
+                            spawnedObj = SpawnGhost(currentSnap, group.trailColor);
+
+                        // 【进阶视觉表现】如果女巫在之前的位置蹲了很久（重叠次数多），可以把这个新残影放大！
+                        if (spawnedObj != null && stackedCounts[w] >= 4)
+                        {
+                            // 例如：原地呆了 4 个快照(2秒)以上，残影变大 1.3 倍，提示猎人她在这里龟缩过
+                            spawnedObj.transform.localScale *= 1.3f;
+                        }
+
+                        // 更新追踪器状态
+                        lastSpawnedPos[w] = currentSnap.position;
+                        lastPropIDs[w] = currentSnap.propID;
+                        stackedCounts[w] = 0; // 重置重叠计数
+
+                        spawnedAny = true;
+                    }
+                    else
+                    {
+                        // 如果距离太近（原地发呆），不生成模型，但增加重叠计数
+                        stackedCounts[w]++;
+                    }
                 }
             }
 
             // 只要这一步生成了任何东西，就等待一段时间再生成下一个
             if (spawnedAny)
             {
-                // 越靠近最新的点，间隔可以越短，表现出追踪的紧迫感（可选）
                 yield return new WaitForSeconds(spawnInterval);
             }
         }
     }
 
-    private void SpawnFootprint(TrailSnapshot trail, Color color)
+    
+    private GameObject SpawnFootprint(TrailSnapshot trail, Color color)
     {
-        if (footprintPrefab == null) return;
+        if (footprintPrefab == null) return null;
         GameObject fp = Instantiate(footprintPrefab, trail.position + Vector3.up * 0.1f, trail.rotation);
         
         SetupFireflyVisual(fp, color);
+        return fp; // 返回生成的对象
     }
 
-    private void SpawnGhost(TrailSnapshot trail, Color color)
+   
+    private GameObject SpawnGhost(TrailSnapshot trail, Color color)
     {
         GameObject ghostObj = null;
 
@@ -7664,7 +8096,89 @@ public class HunterSkill_Scan : SkillBase
         {
             SetupFireflyVisual(ghostObj, color);
         }
+
+        return ghostObj; // 返回生成的对象
     }
+
+    
+
+
+
+    // private IEnumerator SpawnTrailsSequentially(WitchTrailGroup[] groups)
+    // {
+    //     if (groups.Length == 0) yield break;
+
+    //     // 找到所有女巫中最长的一条轨迹长度
+    //     int maxTrails = 0;
+    //     foreach (var group in groups)
+    //     {
+    //         if (group.trails.Length > maxTrails)
+    //             maxTrails = group.trails.Length;
+    //     }
+
+    //     // 按时间顺序（从最老的点到最新的点）逐个遍历
+    //     for (int i = 0; i < maxTrails; i++)
+    //     {
+    //         bool spawnedAny = false;
+
+    //         // 同时遍历所有女巫，确保她们的痕迹是同步向前推进的
+    //         foreach (var group in groups)
+    //         {
+    //             // 如果这个女巫在当前时间节点有痕迹，则生成
+    //             if (i < group.trails.Length)
+    //             {
+    //                 if (currentMode == ScanMode.Footprints)
+    //                     SpawnFootprint(group.trails[i], group.trailColor);
+    //                 else
+    //                     SpawnGhost(group.trails[i], group.trailColor);
+
+    //                 spawnedAny = true;
+    //             }
+    //         }
+
+    //         // 只要这一步生成了任何东西，就等待一段时间再生成下一个
+    //         if (spawnedAny)
+    //         {
+    //             // 越靠近最新的点，间隔可以越短，表现出追踪的紧迫感（可选）
+    //             yield return new WaitForSeconds(spawnInterval);
+    //         }
+    //     }
+    // }
+
+    // private void SpawnFootprint(TrailSnapshot trail, Color color)
+    // {
+    //     if (footprintPrefab == null) return;
+    //     GameObject fp = Instantiate(footprintPrefab, trail.position + Vector3.up * 0.1f, trail.rotation);
+        
+    //     SetupFireflyVisual(fp, color);
+    // }
+
+    // private void SpawnGhost(TrailSnapshot trail, Color color)
+    // {
+    //     GameObject ghostObj = null;
+
+    //     if (trail.propID >= 0)
+    //     {
+    //         if (PropDatabase.Instance != null && PropDatabase.Instance.GetPropPrefab(trail.propID, out GameObject prefab))
+    //         {
+    //             ghostObj = Instantiate(prefab, trail.position, trail.rotation);
+    //             CleanupGhostObject(ghostObj);
+    //         }
+    //     }
+    //     else 
+    //     {
+    //         if (humanGhostPrefab != null)
+    //         {
+    //             ghostObj = Instantiate(humanGhostPrefab, trail.position, trail.rotation);
+    //             CleanupGhostObject(ghostObj); 
+    //         }
+    //     }
+
+    //     if (ghostObj != null)
+    //     {
+    //         SetupFireflyVisual(ghostObj, color);
+    //     }
+    // }
 
     private void CleanupGhostObject(GameObject obj)
     {
@@ -7700,117 +8214,6 @@ public class HunterSkill_Scan : SkillBase
     }
 
 
-    // private void ShowTrailsLocal(WitchTrailGroup[] groups)
-    // {
-    //     if (groups.Length == 0) return;
-    //     Debug.Log($"[Client] Displaying trails for {groups.Length} witches.");
-        
-    //     // --- 双层循环 ---
-    //     // 外层：遍历不同的女巫
-    //     foreach (var group in groups)
-    //     {
-    //         TrailSnapshot[] trails = group.trails;
-    //         Color groupColor = group.trailColor;
-
-    //         // 内层：遍历该女巫的轨迹点
-    //         for (int i = 0; i < trails.Length; i++)
-    //         {
-    //             // 核心修复：透明度计算现在是基于“当前女巫的轨迹长度”
-    //             // 这样每个女巫最新的点都是最清晰的 (maxAlpha)
-    //             float t = (trails.Length > 1) ? (float)i / (trails.Length - 1) : 1f;
-    //             float alpha = Mathf.Lerp(minAlpha, maxAlpha, t);
-
-    //             // 生成时传入 颜色 和 透明度
-    //             if (currentMode == ScanMode.Footprints)
-    //             {
-    //                 SpawnFootprint(trails[i], groupColor, alpha);
-    //             }
-    //             else
-    //             {
-    //                 SpawnGhost(trails[i], groupColor, alpha);
-    //             }
-    //         }
-    //     }
-    // }
-
-    // private void SpawnFootprint(TrailSnapshot trail, Color color, float alpha)
-    // {
-    //     if (footprintPrefab == null) return;
-    //     GameObject fp = Instantiate(footprintPrefab, trail.position + Vector3.up * 0.1f, trail.rotation);
-        
-    //     ApplyGhostMaterial(fp, color, alpha);
-        
-    //     Destroy(fp, visualDuration);
-    // }
-
-    // private void SpawnGhost(TrailSnapshot trail, Color color, float alpha)
-    // {
-    //     GameObject ghostObj = null;
-
-    //     if (trail.propID >= 0)
-    //     {
-    //         if (PropDatabase.Instance != null && PropDatabase.Instance.GetPropPrefab(trail.propID, out GameObject prefab))
-    //         {
-    //             ghostObj = Instantiate(prefab, trail.position, trail.rotation);
-    //             CleanupGhostObject(ghostObj);
-    //         }
-    //     }
-    //     else 
-    //     {
-    //         if (humanGhostPrefab != null)
-    //         {
-    //             ghostObj = Instantiate(humanGhostPrefab, trail.position, trail.rotation);
-    //             CleanupGhostObject(ghostObj); 
-    //         }
-    //     }
-
-    //     if (ghostObj != null)
-    //     {
-    //         ApplyGhostMaterial(ghostObj, color, alpha);
-    //         Destroy(ghostObj, visualDuration);
-    //     }
-    // }
-
-    // private void CleanupGhostObject(GameObject obj)
-    // {
-    //     foreach (var c in obj.GetComponentsInChildren<Collider>()) Destroy(c);
-    //     foreach (var rb in obj.GetComponentsInChildren<Rigidbody>()) Destroy(rb);
-    //     foreach (var script in obj.GetComponentsInChildren<MonoBehaviour>()) Destroy(script);
-    //     foreach (var ps in obj.GetComponentsInChildren<ParticleSystem>()) Destroy(ps);
-    //     foreach (var anim in obj.GetComponentsInChildren<Animator>()) Destroy(anim);
-        
-    //     obj.layer = LayerMask.NameToLayer("Ignore Raycast");
-    //     foreach(Transform t in obj.GetComponentsInChildren<Transform>()) 
-    //         t.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
-    // }
-
-    // 【修改】现在接受 Color 参数，而不仅仅是 alpha
-    // private void ApplyGhostMaterial(GameObject obj, Color baseColor, float alphaValue)
-    // {
-    //     if (ghostMaterial == null) return;
-
-    //     Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
-    //     MaterialPropertyBlock propBlock = new MaterialPropertyBlock();
-
-    //     foreach (var r in renderers)
-    //     {
-    //         Material[] newMats = new Material[r.sharedMaterials.Length];
-    //         for (int i = 0; i < newMats.Length; i++) newMats[i] = ghostMaterial;
-    //         r.sharedMaterials = newMats;
-    //         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-    //         r.GetPropertyBlock(propBlock);
-
-    //         // 使用传入的 baseColor (区分女巫) 并应用 alpha (区分新旧)
-    //         Color finalColor = baseColor;
-    //         finalColor.a = alphaValue;
-
-    //         propBlock.SetColor(ColorPropID, finalColor);
-    //         propBlock.SetColor(BaseColorPropID, finalColor);
-
-    //         r.SetPropertyBlock(propBlock);
-    //     }
-    // }
 }
 ```
 
@@ -8556,19 +8959,20 @@ public class MistBehavior : NetworkBehaviour
 ## Skill\Witch\WitchSkill_Chaos.cs
 
 ```csharp
-    using UnityEngine;
+using UnityEngine;
 using Mirror;
 using System.Collections;
-
 
 public class WitchSkill_Chaos : SkillBase
 {
     public float radius = 15f;
     public float duration = 5f;
+    public float pushForce = 15f; // 【新增】撞击猎人的力度
 
     protected override void OnCast()
     {
         Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} used skill: Chaos! Disturbing nearby trees.</color>");
+        
         // 找到周围的普通树
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
         foreach (var hit in hits)
@@ -8587,16 +8991,83 @@ public class WitchSkill_Chaos : SkillBase
     {
         float timer = 0f;
         Vector3 originalPos = treeTrans.position;
+        Quaternion originalRot = treeTrans.rotation;
         
+        // 分配一个随机种子，让每棵树扭动的频率和路径不同
+        float randomSeed = Random.Range(0f, 100f);
+
         while (timer < duration)
         {
             timer += Time.deltaTime;
-            // 简单的位移噪点
-            Vector3 offset = new Vector3(Mathf.Sin(Time.time * 5 + treeTrans.GetInstanceID()), 0, Mathf.Cos(Time.time * 5)) * 0.5f;
+            
+            // 1. 更加剧烈和多方位的空间位移
+            float timeParam = Time.time * 20f + randomSeed; // 加快晃动频率
+            float offsetX = Mathf.Sin(timeParam) * 1.5f + Mathf.PerlinNoise(timeParam, 0) * 2f - 1f;
+            float offsetZ = Mathf.Cos(timeParam * 1.2f) * 1.5f + Mathf.PerlinNoise(0, timeParam) * 2f - 1f;
+            float offsetY = Mathf.Abs(Mathf.Sin(timeParam * 2f)) * 0.8f; // 轻微向上跳跃
+
+            Vector3 offset = new Vector3(offsetX, offsetY, offsetZ);
             treeTrans.position = originalPos + offset;
+
+            // 2. 剧烈旋转（模拟左右前后摇摆，增加视觉冲击）
+            float angleX = Mathf.Sin(timeParam * 0.8f) * 25f;
+            float angleZ = Mathf.Cos(timeParam * 0.9f) * 25f;
+            float angleY = Mathf.Sin(timeParam * 0.5f) * 45f;
+            treeTrans.rotation = originalRot * Quaternion.Euler(angleX, angleY, angleZ);
+
+            // 3. 将附近的猎人撞得动来动去
+            Collider[] colliders = Physics.OverlapSphere(treeTrans.position, 3.5f); // 碰撞检测范围稍大
+            foreach(var col in colliders)
+            {
+                HunterPlayer hunter = col.GetComponent<HunterPlayer>() ?? col.GetComponentInParent<HunterPlayer>();
+                if (hunter != null)
+                {
+                    // CharacterController cc = hunter.GetComponent<CharacterController>();
+                    // if (cc != null)
+                    // {
+                    //     // 计算弹开方向（从树的中心往外推）
+                    //     Vector3 pushDir = hunter.transform.position - treeTrans.position;
+                    //     pushDir.y = 0; // 只在水平面上施加撞击力，以免把猎人拍到地下
+                        
+                    //     // 稍微加点噪音让推力更不可预测
+                    //     pushDir += new Vector3(Random.Range(-0.5f, 0.5f), 0, Random.Range(-0.5f, 0.5f));
+                    //     pushDir.Normalize();
+
+                    //     // 强行移动 CC 模拟撞击效果
+                    //     cc.Move(pushDir * pushForce * Time.deltaTime);
+                    // }
+
+                    if (hunter.connectionToClient != null) 
+                    {
+                        // 计算弹开方向（从树的中心往外推）
+                        Vector3 pushDir = hunter.transform.position - treeTrans.position;
+                        pushDir.y = 0; 
+                        pushDir += new Vector3(Random.Range(-0.5f, 0.5f), 0, Random.Range(-0.5f, 0.5f));
+                        pushDir.Normalize();
+
+                        // 因为是在协程里每帧调用，推力需要适配 Time.deltaTime，并且可以适当放大 force
+                        Vector3 appliedForce = pushDir * pushForce * Time.deltaTime * 10f; 
+
+                        // 通知猎人的客户端，让他自己推自己
+                        hunter.TargetApplyKnockback(hunter.connectionToClient, appliedForce);
+                    }
+                    else if (hunter.isLocalPlayer) 
+                    {
+                        // 如果猎人就是 Host 房主，直接走本地函数
+                        Vector3 pushDir = hunter.transform.position - treeTrans.position;
+                        pushDir.y = 0; 
+                        pushDir.Normalize();
+                        hunter.TargetApplyKnockback(null, pushDir * pushForce * Time.deltaTime * 10f);
+                    }
+                }
+            }
+
             yield return null;
         }
+        
+        // 结束时恢复原样
         treeTrans.position = originalPos;
+        treeTrans.rotation = originalRot;
     }
 }
 ```
@@ -8723,6 +9194,19 @@ public class WitchSkill_Mist : SkillBase
         // 3. 网络同步
         NetworkServer.Spawn(mist);
     }
+}
+```
+
+## UI\CameraData.cs
+
+```csharp
+using UnityEngine;
+
+[CreateAssetMenu(fileName = "VictoryCameraData", menuName = "Game/Camera Data")]
+public class CameraData : ScriptableObject
+{
+    public Vector3 position;
+    public Vector3 eulerRotation; // 使用欧拉角方便在 Inspector 调整
 }
 ```
 
@@ -10069,12 +10553,17 @@ public class LobbySkillManager : MonoBehaviour
         RefreshMainButtonUI();
     }
     // 辅助方法
+    // 确保这个方法也在 LobbySkillManager.cs 里的 case 2 逻辑中正确执行
     private void SyncItemToServer(string className)
     {
-        if (NetworkClient.localPlayer != null)
+        // 检查 NetworkClient 是否就绪
+        if (NetworkClient.active && NetworkClient.localPlayer != null)
         {
             var pScript = NetworkClient.localPlayer.GetComponent<PlayerScript>();
-            if (pScript != null) pScript.CmdUpdateSelectedItem(className);
+            if (pScript != null)
+            {
+                pScript.CmdUpdateSelectedItem(className); // 现在这里可以访问了
+            }
         }
     }
     public void RefreshMainButtonUI()
@@ -10288,6 +10777,12 @@ public class PlayerOutline : MonoBehaviour
 
     public void SetOutline(bool active, Color color)
     {
+        // --- 【新增：游戏结束强制关闭】 ---
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            active = false;
+        }
+        // ---------------------------------
         if (targetRenderer == null || outlineInstance == null) return;
 
         // 检查材质是否丢失
@@ -10352,9 +10847,11 @@ public class PlayerOutline : MonoBehaviour
         // 增加一个安全检查：确保新传入的不是名字物体
         if (nameTextObject != null && newRenderer.transform.IsChildOf(nameTextObject.transform)) return;
 
+        // 如果当前正在显示高亮，先移除旧的引用（如果旧的没被销毁）
+        // 使用 try-catch 或 null 检查防止因物体已 Destroy 导致的报错
         if (isVisible && targetRenderer != null)
         {
-            RemoveMaterial(outlineInstance);
+            try { RemoveMaterial(outlineInstance); } catch { }
         }
 
         targetRenderer = newRenderer;
@@ -10726,6 +11223,47 @@ public class SceneScript : MonoBehaviour
         }
 
     }
+    public void HideHUDForVictory()
+    {
+        // 隐藏基础信息
+        if (RoleText != null) RoleText.gameObject.SetActive(false);
+        if (NameText != null) NameText.gameObject.SetActive(false);
+        if (WeaponText != null) WeaponText.gameObject.SetActive(false);
+        if (PlayerCountText != null) PlayerCountText.gameObject.SetActive(false);
+        if (GameTime != null) GameTime.gameObject.SetActive(false);
+        if (GoalText != null) GoalText.gameObject.SetActive(false);
+        if (Crosshair != null) Crosshair.SetActive(false);
+        
+        // 隐藏状态条
+        if (HealthSlider != null)
+        {
+            HealthSlider.gameObject.SetActive(false); 
+            HealthSlider.gameObject.transform.parent.gameObject.SetActive(false); // 同时隐藏父物体，防止残留背景
+        } 
+        if (ManaSlider != null){} ManaSlider.gameObject.SetActive(false);
+        {
+            ManaSlider.gameObject.SetActive(false);
+            ManaSlider.gameObject.transform.parent.gameObject.SetActive(false); // 同时隐藏父物体，防止残留背景
+        }
+        
+        // 隐藏所有技能槽位
+        if (skillSlots != null)
+        {
+            foreach (var slot in skillSlots)
+            {
+                if (slot != null) slot.gameObject.SetActive(false);
+            }
+        }
+        
+        // 隐藏道具和变身槽
+        if (itemSlot != null) itemSlot.gameObject.SetActive(false);
+        if (morphSlot != null) morphSlot.gameObject.SetActive(false);
+        
+        // 隐藏其他可能的提示文本
+        if (RunText != null) RunText.gameObject.SetActive(false);
+        if (ExecutionText != null) ExecutionText.gameObject.SetActive(false);
+        if (blindPanel != null) blindPanel.SetActive(false);
+    }
 
     private void Update()
     {
@@ -10737,9 +11275,11 @@ public class SceneScript : MonoBehaviour
         // 如果处于 GameOver 状态，更新重启倒计时文字
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
-            if (gameRestartText != null)
+            // 【修改建议】只有当开始 20 秒倒计时后（即 restartCountdown 发生变化且不为默认大值时）才覆盖
+            // 或者直接依靠 GameManager 的状态控制
+            if (gameRestartText != null && GameManager.Instance.restartCountdown < 20)
             {
-                gameRestartText.text = $"Returning to Lobby in {GameManager.Instance.restartCountdown}...";
+                gameRestartText.text = $"<color=white>Returning to Lobby in </color><color=orange>{GameManager.Instance.restartCountdown}</color>";
             }
         }
     }
@@ -10939,7 +11479,20 @@ public class SceneScript : MonoBehaviour
             NetworkManager.singleton.StopServer();
         }
     }
+    public void ShowVictoryUI(PlayerRole winner)
+    {
+        gameResultPanel.SetActive(true);
+        gameResultText.text = (winner == PlayerRole.Witch) ? "WITCHES TRIUMPH!" : "HUNTERS TRIUMPH!";
+        
+        // 3秒后自动隐藏结果文字，展示风景
+        StartCoroutine(FadeOutResultText());
+    }
 
+    private IEnumerator FadeOutResultText()
+    {
+        yield return new WaitForSeconds(3f);
+        gameResultText.gameObject.SetActive(false);
+    }
 }
 
 ```
@@ -11419,12 +11972,35 @@ public class TeamVision : NetworkBehaviour
     private void UpdateAllOutlines()
     {
         if (localPlayer == null) return;
-        
+        // --- 【新增：胜利区域清理逻辑】 ---
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            // 1. 清理所有玩家的描边
+            foreach (var p in GamePlayer.AllPlayers)
+            {
+                if (p != null)
+                {
+                    var outline = p.GetComponent<PlayerOutline>();
+                    if (outline != null) outline.SetOutline(false, Color.clear);
+                    if (p.nameText != null) p.nameText.gameObject.SetActive(false);
+                }
+            }
+            // 2. 清理场景中所有道具/树木的高亮
+            PropTarget[] allProps = Object.FindObjectsOfType<PropTarget>();
+            foreach (var prop in allProps)
+            {
+                if (prop != null) prop.SetHighlight(false);
+            }
+            return; // 直接跳出，不再执行后续的高亮逻辑
+        }
+        // ---------------------------------
+
         // 1. 处理玩家描边
         foreach (var targetPlayer in GamePlayer.AllPlayers)
         {
             if (targetPlayer == null || targetPlayer == localPlayer) continue;
-
+            // 关键补丁：如果角色还没同步好(None)，跳过本次循环，等下一秒再试
+            if (targetPlayer.playerRole == PlayerRole.None) continue;
             var outline = targetPlayer.GetComponent<PlayerOutline>();
             if (outline == null) continue;
 
@@ -11451,6 +12027,9 @@ public class TeamVision : NetworkBehaviour
                     targetPlayer.nameText.gameObject.SetActive(shouldShowName);
                 }
                 Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
+                outline.SetOutline(true, c);
+                // 即使脚本被别人关了，这里也强行打开
+                if (!outline.enabled) outline.enabled = true; 
                 outline.SetOutline(true, c);
             }
             else
@@ -11545,6 +12124,40 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
 }
 ```
 
+## UI\VictoryAnimData.cs
+
+```csharp
+using UnityEngine;
+using System.Collections.Generic;
+
+[System.Serializable]
+public struct GroupDanceConfig
+{
+    public int playerCount; 
+    public RuntimeAnimatorController[] individualAnimators; 
+}
+
+[CreateAssetMenu(fileName = "VictoryAnimData", menuName = "Game/Victory Animation Data")]
+public class VictoryAnimData : ScriptableObject
+{
+    [Header("相机配置资源")]
+    public CameraData cameraSettings; // <--- 关键修改：直接拖入你的 CameraData 资源
+
+    [Header("群舞配置列表")]
+    public List<GroupDanceConfig> groupDances;
+
+    public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
+    {
+        foreach (var dance in groupDances)
+        {
+            if (dance.playerCount == count) return dance.individualAnimators;
+        }
+        if (groupDances.Count > 0) return groupDances[0].individualAnimators;
+        return null;
+    }
+}
+```
+
 ## UI\WitchItemSelectionManager.cs
 
 ```csharp
@@ -11553,7 +12166,7 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using System.Linq;
-
+using Mirror;
 public class WitchItemSelectionManager : MonoBehaviour
 {
     [Header("Data")]

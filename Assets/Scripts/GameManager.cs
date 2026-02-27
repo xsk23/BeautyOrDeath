@@ -63,6 +63,10 @@ public class GameManager : NetworkBehaviour
     public LayerMask propLayer; // 用于检测树木/道具的层级
     public Dictionary<int, Gender> pendingGenders = new Dictionary<int, Gender>();
     public Dictionary<int, string> pendingItems = new Dictionary<int, string>();
+    [Header("胜利表现配置")]
+    public VictoryAnimData witchVictoryData;   // 拖入巫师胜利的 SO
+    public VictoryAnimData hunterVictoryData;  // 拖入猎人胜利的 SO
+    public float victoryModelSpacing = 2.0f;   // 胜利者之间的间隔
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -231,12 +235,246 @@ public class GameManager : NetworkBehaviour
         if (currentState == GameState.GameOver) return;
 
         gameWinner = winner;
-        SetGameState(GameState.GameOver);
+        // SetGameState(GameState.GameOver);
         
-        // 开始重启倒计时协程
-        StartCoroutine(RestartRoutine());
+        // 开启新的胜利序列协程
+        StartCoroutine(VictorySequenceRoutine(winner));
+    }
+    [Server]
+    private IEnumerator VictorySequenceRoutine(PlayerRole winner)
+    {
+        // --- 新增：转场前的倒计时 UI 表现 ---
+        for (int i = 3; i > 0; i--)
+        {
+            RpcUpdateVictoryTransitionUI(winner, i);
+            yield return new WaitForSeconds(1f);
+        }
+        // 【新增】转场开始时，正式进入 GameOver 状态
+        SetGameState(GameState.GameOver);
+        // 统计胜利者与失败者
+        List<GamePlayer> winners = new List<GamePlayer>();
+        List<GamePlayer> losers = new List<GamePlayer>();
+        foreach (var p in GamePlayer.AllPlayers)
+        {
+            if (p == null) continue;
+            if (p.playerRole == winner) winners.Add(p);
+            else losers.Add(p);
+        }
+
+        // 2. 通知所有客户端切换相机 (传入胜方以便客户端选配置)
+        RpcNotifyVictorySequence(winner);
+
+        // 生成胜利舞台模型（包含胜方和败方）
+        SetupVictoryStage(winner, winners, losers);
+
+        // 【核心修复】：在这里实现真正的 20 秒倒计时同步
+        restartCountdown = 20; 
+        while (restartCountdown > 0)
+        {
+            yield return new WaitForSeconds(1f);
+            restartCountdown--;
+            // 因为 restartCountdown 是 SyncVar，改变它会自动同步到所有客户端的 SceneScript
+        }
+        ResetGame();
+        NetworkManager.singleton.ServerChangeScene(MyNetworkManager.singleton.onlineScene);
+    }
+    [ClientRpc]
+    private void RpcUpdateVictoryTransitionUI(PlayerRole winner, int seconds)
+    {
+        if (SceneScript.Instance == null) return;
+        SceneScript.Instance.gameResultPanel.SetActive(true);
+        string teamName = (winner == PlayerRole.Witch) ? "<color=#FF00FF>WITCHES</color>" : "<color=#00FFFF>HUNTERS</color>";
+        SceneScript.Instance.gameResultText.text = $"{teamName} TRIUMPH!";
+        SceneScript.Instance.gameRestartText.text = $"Moving to Victory Zone in {seconds}...";
     }
 
+    [ClientRpc]
+    private void RpcNotifyVictorySequence(PlayerRole winner)
+    {
+        Camera mainCam = Camera.main;
+        if (mainCam == null) return;
+
+        mainCam.transform.SetParent(null);
+
+        // 获取对应的胜利配置
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+
+        // 【核心修改】：从 CameraData 资源读取位置和旋转
+        if (animData != null && animData.cameraSettings != null)
+        {
+            mainCam.transform.position = animData.cameraSettings.position;
+            mainCam.transform.rotation = Quaternion.Euler(animData.cameraSettings.eulerRotation);
+            Debug.Log($"[Victory] Camera applied from CameraData Asset: {animData.cameraSettings.name}");
+        }
+
+        // 2. UI 深度清理
+        if (SceneScript.Instance != null)
+        {
+            // --- 调用刚才写的方法隐藏所有 HUD ---
+            SceneScript.Instance.HideHUDForVictory();
+
+            // --- 处理结算面板 ---
+            SceneScript.Instance.gameResultPanel.SetActive(true); 
+
+            // 隐藏胜利大标题文字 (按照你的需求)
+            if (SceneScript.Instance.gameResultText != null)
+            {
+                SceneScript.Instance.gameResultText.gameObject.SetActive(false);
+            }
+
+            // 背景设为全透明 (按照你的需求)
+            UnityEngine.UI.Image panelImage = SceneScript.Instance.gameResultPanel.GetComponent<UnityEngine.UI.Image>();
+            if (panelImage != null)
+            {
+                Color c = panelImage.color;
+                c.a = 0f; 
+                panelImage.color = c;
+            }
+            
+            // 确保重启倒计时文本是可见的（因为它通常在 ResultPanel 下面）
+            if (SceneScript.Instance.gameRestartText != null)
+            {
+                SceneScript.Instance.gameRestartText.gameObject.SetActive(true);
+            }
+        }
+        var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        if (localPlayer != null) localPlayer.isPermanentDead = true; 
+        // --- 【新增：立即刷新本地所有视觉脚本】 ---
+        if (localPlayer != null)
+        {
+            localPlayer.GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        }
+    }
+
+
+    [Server]
+    private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers)
+    {
+        GameObject stageCenter = GameObject.Find("VictoryStageCenter");
+        Vector3 centerPos = stageCenter ? stageCenter.transform.position : new Vector3(-180, 10, 140);
+        
+        // 获取配置数据中的相机位置，用于让模型面朝相机
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+        if (animData == null || animData.cameraSettings == null) return;
+
+        RpcHideOriginalPlayers();
+        MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
+        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(winners.Count);
+
+        // --- 1. 生成胜利者 (中间排列，面朝相机) ---
+        float tightSpacing = 1.1f; // 间距从 2.0 缩小到 1.1，肩膀挨着肩膀
+        for (int i = 0; i < winners.Count; i++)
+        {
+            float offset = (i - (winners.Count - 1) / 2f) * tightSpacing;
+            Vector3 spawnPos = centerPos + (stageCenter.transform.right * offset);
+            
+            // 【核心修改】：计算指向 CameraData 中定义的相机位置的旋转
+            Vector3 dirToCam = (animData.cameraSettings.position - spawnPos).normalized;
+            dirToCam.y = 0;
+            Quaternion lookRotation = Quaternion.LookRotation(dirToCam);
+
+            GameObject prefab = GetVictoryPrefab(winners[i], netManager);
+            if (prefab != null)
+            {
+                GameObject displayObj = Instantiate(prefab, spawnPos, lookRotation);
+                NetworkServer.Spawn(displayObj);
+                RpcApplyVictoryAnimation(displayObj, winners.Count, i, winner);
+            }
+        }
+
+        // --- 2. 失败者生成 (核心修改：侧身朝向) ---
+        for (int j = 0; j < losers.Count; j++)
+        {
+            bool isLeft = (j % 2 == 0);
+            // 站位更紧凑：侧向距离 2.2 -> 1.8，深度距离 1.5 -> 1.2
+            float sideOffset = isLeft ? -1.8f : 1.8f; 
+            float depthOffset = 1.2f + (j / 2) * 0.7f; 
+            
+            Vector3 loserSpawnPos = centerPos + (stageCenter.transform.right * sideOffset) - (stageCenter.transform.forward * depthOffset);
+            
+            // --- 计算侧身旋转 ---
+            Vector3 dirToWinners = (centerPos - loserSpawnPos).normalized; // 指向舞台中心的向量
+            Vector3 dirToCam = (animData.cameraSettings.position - loserSpawnPos).normalized; // 指向相机的向量
+            
+            // 使用 Slerp 进行混合：0.4f 代表 40% 看向相机，60% 看向中心
+            // 这样会产生一种“斜对着镜头”的高级感
+            Vector3 blendedDir = Vector3.Slerp(dirToWinners, dirToCam, 0.4f);
+            blendedDir.y = 0; // 确保不仰头或低头
+            
+            Quaternion loserRot = Quaternion.LookRotation(blendedDir);
+
+            GameObject lPrefab = GetVictoryPrefab(losers[j], netManager);
+            if (lPrefab != null)
+            {
+                GameObject loserObj = Instantiate(lPrefab, loserSpawnPos, loserRot);
+                Animator anim = loserObj.GetComponentInChildren<Animator>();
+                if (anim != null) anim.enabled = false; 
+
+                NetworkServer.Spawn(loserObj);
+            }
+        }
+    }
+    [ClientRpc]
+    private void RpcApplyVictoryAnimation(GameObject targetObj, int totalWinners, int positionIndex, PlayerRole winner)
+    {
+        if (targetObj == null) return;
+
+        // 客户端根据胜方选择对应的配置资源
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+        if (animData == null) return;
+
+        // 根据人数获取这一组舞蹈
+        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(totalWinners);
+
+        if (anims != null && positionIndex < anims.Length)
+        {
+            // 在子物体中寻找并应用
+            Animator anim = targetObj.GetComponentInChildren<Animator>();
+            if (anim != null)
+            {
+                anim.runtimeAnimatorController = anims[positionIndex];
+                Debug.Log($"[Victory] Applied Controller {positionIndex} to {targetObj.name}");
+            }
+        }
+    }
+    // 辅助方法：获取胜利者对应的 Prefab
+    private GameObject GetVictoryPrefab(GamePlayer player, MyNetworkManager netManager)
+    {
+        if (player.playerRole == PlayerRole.Witch)
+        {
+            return (player.myGender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+        }
+        else
+        {
+            return (player.myGender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
+        }
+    }
+
+    [ClientRpc]
+    private void RpcHideOriginalPlayers()
+    {
+        // 静态列表在跨局时非常容易残留 Missing Reference
+        for (int i = GamePlayer.AllPlayers.Count - 1; i >= 0; i--)
+        {
+            var p = GamePlayer.AllPlayers[i];
+            
+            // 【关键修复】: 必须检查 p 是否还存在于 Unity 内存中
+            if (p == null || p.gameObject == null) 
+            {
+                GamePlayer.AllPlayers.RemoveAt(i);
+                continue;
+            }
+
+            Renderer[] rs = p.GetComponentsInChildren<Renderer>();
+            foreach (var r in rs)
+            {
+                if (r != null) r.enabled = false;
+            }
+        }
+    }
+
+    // 辅助消息
+    public struct RpcSetVisibleMsg : NetworkMessage { public bool visible; }
     [Server]
     private IEnumerator RestartRoutine()
     {
@@ -407,6 +645,7 @@ public class GameManager : NetworkBehaviour
         {
             playerScript.playerName = pName;
             playerScript.playerRole = role;
+            playerScript.myGender = gender; // 【新增这一行】将上面获取到的 gender 赋给角色脚本
 
             // 2. 【核心】在这里应用刚才抢救下来的内部变量
             playerScript.manaRegenRate = this.manaRegenInternal;
@@ -587,6 +826,23 @@ public class GameManager : NetworkBehaviour
         pendingNames.Clear();
         pendingColors.Clear();
         pendingItems.Clear();
+
+        // 恢复 UI 状态（仅在客户端执行）
+        if (isClient && SceneScript.Instance != null)
+        {
+            if (SceneScript.Instance.gameResultText != null)
+                SceneScript.Instance.gameResultText.gameObject.SetActive(true);
+
+            UnityEngine.UI.Image panelImage = SceneScript.Instance.gameResultPanel.GetComponent<UnityEngine.UI.Image>();
+            if (panelImage != null)
+            {
+                Color c = panelImage.color;
+                c.a = 0.5f; // 恢复为你原始的遮罩透明度（例如 0.5f）
+                panelImage.color = c;
+            }
+        }
+        // 清理全局玩家列表中的无效引用
+        GamePlayer.AllPlayers.Clear(); // 彻底清空，因为回到大厅后所有人都会重新生成
         Debug.Log("[GameManager] Game State and delivery counters have been fully reset.");
     }
     [Server] // 确保只在服务器运行
