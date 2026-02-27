@@ -142,7 +142,7 @@ public class TeamVision : NetworkBehaviour
                 {
                     var outline = p.GetComponent<PlayerOutline>();
                     if (outline != null) outline.SetOutline(false, Color.clear);
-                    if (p.nameText != null) p.nameText.gameObject.SetActive(false);
+                    if (p.nameText != null) p.nameText.gameObject.SetActive(true);
                 }
             }
             // 2. 清理场景中所有道具/树木的高亮

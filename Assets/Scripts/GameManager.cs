@@ -402,7 +402,10 @@ public class GameManager : NetworkBehaviour
             {
                 GameObject displayObj = Instantiate(prefab, spawnPos, lookRotation);
                 NetworkServer.Spawn(displayObj);
+                // 【新增】应用动画和名字
                 RpcApplyVictoryAnimation(displayObj, winners.Count, i, winner);
+                // 【新增】同步名字
+                RpcSetVictoryModelName(displayObj, winners[i].playerName, winners[i].playerRole);
             }
         }
 
@@ -435,8 +438,53 @@ public class GameManager : NetworkBehaviour
                 if (anim != null) anim.enabled = false; 
 
                 NetworkServer.Spawn(loserObj);
+                // 【新增】即便失败者没有动画，也显示名字
+                RpcSetVictoryModelName(loserObj, losers[j].playerName, losers[j].playerRole);
             }
         }
+    }
+    // 【新增 Rpc】专门用于在客户端设置展示物体的名字
+    [ClientRpc]
+    private void RpcSetVictoryModelName(GameObject modelObj, string pName, PlayerRole role)
+    {
+        if (modelObj == null) return;
+
+        // 1. 寻找名字组件
+        TMPro.TextMeshPro textComp = modelObj.GetComponentInChildren<TMPro.TextMeshPro>();
+        if (textComp != null)
+        {
+            textComp.text = pName;
+            textComp.gameObject.SetActive(true);
+            textComp.color = (role == PlayerRole.Witch) ? Color.magenta : Color.cyan;
+
+            // 2. 寻找动画模型中的骨骼（比如头部）
+            // 建议在 Animator 所在的物体下寻找
+            Transform headBone = FindRecursive(modelObj.transform, "CC_Base_Spine01"); 
+            
+            // 如果没找到名为 "Head" 的，尝试寻找通用节点
+            if (headBone == null) headBone = modelObj.GetComponentInChildren<Animator>().GetBoneTransform(HumanBodyBones.Head);
+
+            // 3. 挂载跟随逻辑
+            if (headBone != null)
+            {
+                VictoryNameFollow follower = textComp.gameObject.GetComponent<VictoryNameFollow>();
+                if (follower == null) follower = textComp.gameObject.AddComponent<VictoryNameFollow>();
+                
+                follower.targetBone = headBone;
+                follower.offset = new Vector3(0, -0.6f, 0); // 根据模型大小微调
+            }
+        }
+    }
+    // 辅助方法：递归查找指定名称的子物体
+    private Transform FindRecursive(Transform parent, string name)
+    {
+        foreach (Transform child in parent)
+        {
+            if (child.name.Contains(name)) return child;
+            Transform result = FindRecursive(child, name);
+            if (result != null) return result;
+        }
+        return null;
     }
     [ClientRpc]
     private void RpcApplyVictoryAnimation(GameObject targetObj, int totalWinners, int positionIndex, PlayerRole winner)

@@ -1753,7 +1753,12 @@ public class WitchPlayer : GamePlayer
         // 隐藏原始渲染器
         if (myRenderer != null) myRenderer.enabled = false;
         // 隐藏名字
-        if (nameText != null) nameText.gameObject.SetActive(false);
+        // 只有在非结算状态下才隐藏名字，结算时（VictoryZone）名字必须留着
+        if (nameText != null) 
+        {
+            bool isVictorySequence = GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver;
+            nameText.gameObject.SetActive(isVictorySequence); 
+        }
 
         // 2. 禁用交互：修改物理层级
         // 建议在 Unity 中创建一个 Layer 叫 "Spectator"，并在 Physics Matrix 中设置它不与 Player 碰撞

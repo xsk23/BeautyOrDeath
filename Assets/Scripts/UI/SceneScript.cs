@@ -104,7 +104,16 @@ public class SceneScript : MonoBehaviour
         if (NameText != null) NameText.gameObject.SetActive(false);
         if (WeaponText != null) WeaponText.gameObject.SetActive(false);
         if (PlayerCountText != null) PlayerCountText.gameObject.SetActive(false);
-        if (GameTime != null) GameTime.gameObject.SetActive(false);
+        if (GameTime != null)
+        {
+            GameTime.gameObject.SetActive(false);
+            // 如果有父物体（比如背景），也一起隐藏
+            if (GameTime.transform.parent != null)
+            {
+                GameTime.transform.parent.gameObject.SetActive(false);
+            }
+        }
+        
         if (GoalText != null) GoalText.gameObject.SetActive(false);
         if (Crosshair != null) Crosshair.SetActive(false);
         

@@ -307,6 +307,7 @@ MonoBehaviour:
   requiredClicks: 2
   maxTrapTime: 6
   currentClicks: 0
+  myGender: 0
   syncedSkill1Name: 
   syncedSkill2Name: 
   caughtInTrapNetId: 0
@@ -601,6 +602,7 @@ MonoBehaviour:
   scanRadius: 30
   visualDuration: 5
   currentMode: 1
+  minVisualDistance: 1
   spawnInterval: 0.3
   minAlpha: 0.1
   maxAlpha: 0.8

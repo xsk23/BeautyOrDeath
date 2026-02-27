@@ -284,6 +284,7 @@ public class GameManager : NetworkBehaviour
             restartCountdown--;
             // 因为 restartCountdown 是 SyncVar，改变它会自动同步到所有客户端的 SceneScript
         }
+        RpcStopVictoryMusic(); // 先通知所有客户端停掉音乐
         ResetGame();
         NetworkManager.singleton.ServerChangeScene(MyNetworkManager.singleton.onlineScene);
     }
@@ -408,7 +409,10 @@ public class GameManager : NetworkBehaviour
             {
                 GameObject displayObj = Instantiate(prefab, spawnPos, lookRotation);
                 NetworkServer.Spawn(displayObj);
+                // 【新增】应用动画和名字
                 RpcApplyVictoryAnimation(displayObj, winners.Count, i, winner);
+                // 【新增】同步名字
+                RpcSetVictoryModelName(displayObj, winners[i].playerName, winners[i].playerRole);
             }
         }
 
@@ -441,9 +445,36 @@ public class GameManager : NetworkBehaviour
                 if (anim != null) anim.enabled = false; 
 
                 NetworkServer.Spawn(loserObj);
+                // 【新增】即便失败者没有动画，也显示名字
+                RpcSetVictoryModelName(loserObj, losers[j].playerName, losers[j].playerRole);
             }
         }
     }
+    // 【新增 Rpc】专门用于在客户端设置展示物体的名字
+    [ClientRpc]
+    private void RpcSetVictoryModelName(GameObject modelObj, string pName, PlayerRole role)
+    {
+        if (modelObj == null) return;
+
+        // 寻找头顶的 TextMeshPro 组件 (对应 GamePlayer 里的 nameText 结构)
+        TMPro.TextMeshPro textComp = modelObj.GetComponentInChildren<TMPro.TextMeshPro>();
+        
+        if (textComp != null)
+        {
+            textComp.text = pName;
+            textComp.gameObject.SetActive(true); // 确保它是激活的
+            
+            // 设置颜色（可选，例如胜利方绿色，失败方红色，或保持阵营色）
+            // 这里我们根据阵营上色，方便分辨
+            textComp.color = (role == PlayerRole.Witch) ? Color.magenta : Color.cyan;
+            
+            // 旋转修正：确保名字面向胜利时的相机
+            // 因为模型已经面向相机了，名字通常作为子物体会自动面向，
+            // 如果名字反了，可以取消下面这行的注释：
+            // textComp.transform.rotation = Camera.main.transform.rotation;
+        }
+    }
+
     [ClientRpc]
     private void RpcApplyVictoryAnimation(GameObject targetObj, int totalWinners, int positionIndex, PlayerRole winner)
     {
@@ -839,7 +870,16 @@ public class GameManager : NetworkBehaviour
             Debug.LogError($"[Server] 找不到名为 '{portalSpawnGroupName}' 的物体或其没有子物体！");
         }
     }
-
+    // 1. 增加一个停止音乐的客户端指令
+    [ClientRpc]
+    private void RpcStopVictoryMusic()
+    {
+        if (victoryAudioSource != null)
+        {
+            victoryAudioSource.Stop();
+            Debug.Log("[Victory] Music stopped by Server.");
+        }
+    }
     public void ResetGame()
     {
         // 重置基础状态
@@ -929,7 +969,7 @@ public class GameManager : NetworkBehaviour
         // 【新增】双重保险：确保开始时计数器为 0
         deliveredTreesCount = 0;
         totalRequiredTrees = 0;
-
+        RpcStopVictoryMusic(); // 确保新对局开始时没有残留音乐
         // 3. 改变游戏状态
         gameStartTimer = Time.time; // 记录开始时间
         SetGameState(GameState.InGame);
@@ -6720,7 +6760,12 @@ public class WitchPlayer : GamePlayer
         // 隐藏原始渲染器
         if (myRenderer != null) myRenderer.enabled = false;
         // 隐藏名字
-        if (nameText != null) nameText.gameObject.SetActive(false);
+        // 只有在非结算状态下才隐藏名字，结算时（VictoryZone）名字必须留着
+        if (nameText != null) 
+        {
+            bool isVictorySequence = GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver;
+            nameText.gameObject.SetActive(isVictorySequence); 
+        }
 
         // 2. 禁用交互：修改物理层级
         // 建议在 Unity 中创建一个 Layer 叫 "Spectator"，并在 Physics Matrix 中设置它不与 Player 碰撞
@@ -9370,11 +9415,11 @@ def extract_audio_segment(video_path, output_audio_path, start_time, end_time=No
 # --- 使用示例 ---
 
 # 路径
-input_video = r"E:\downloads\b\jinitaimei.mp4"
-output_audio = r"E:\downloads\b\jinitaimei_segment.mp3"
+input_video = r"E:\downloads\b\dance1.mp4"
+output_audio = r"E:\downloads\b\dance1.mp3"
 
 # 示例 1: 从第 5 秒开始，到第 15 秒结束
-extract_audio_segment(input_video, output_audio, start_time=13, end_time=30)
+extract_audio_segment(input_video, output_audio, start_time=0, end_time=20)
 
 # 示例 2: 从第 1 分 20 秒开始，直到视频结束
 # extract_audio_segment(input_video, output_audio, start_time="00:01:20")
@@ -11404,7 +11449,16 @@ public class SceneScript : MonoBehaviour
         if (NameText != null) NameText.gameObject.SetActive(false);
         if (WeaponText != null) WeaponText.gameObject.SetActive(false);
         if (PlayerCountText != null) PlayerCountText.gameObject.SetActive(false);
-        if (GameTime != null) GameTime.gameObject.SetActive(false);
+        if (GameTime != null)
+        {
+            GameTime.gameObject.SetActive(false);
+            // 如果有父物体（比如背景），也一起隐藏
+            if (GameTime.transform.parent != null)
+            {
+                GameTime.transform.parent.gameObject.SetActive(false);
+            }
+        }
+        
         if (GoalText != null) GoalText.gameObject.SetActive(false);
         if (Crosshair != null) Crosshair.SetActive(false);
         
@@ -12156,7 +12210,7 @@ public class TeamVision : NetworkBehaviour
                 {
                     var outline = p.GetComponent<PlayerOutline>();
                     if (outline != null) outline.SetOutline(false, Color.clear);
-                    if (p.nameText != null) p.nameText.gameObject.SetActive(false);
+                    if (p.nameText != null) p.nameText.gameObject.SetActive(true);
                 }
             }
             // 2. 清理场景中所有道具/树木的高亮
