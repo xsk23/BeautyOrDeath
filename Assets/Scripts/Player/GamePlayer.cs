@@ -27,6 +27,9 @@ public abstract class GamePlayer : NetworkBehaviour
     public int requiredClicks = 2; // 需要按多少次空格才能挣脱
     public float maxTrapTime = 6.0f; // 6秒后还没挣脱就释放
 
+    [Header("外部受力(击退)")]
+    protected Vector3 impact = Vector3.zero;
+
     [SyncVar]
     public int currentClicks = 0; // 当前挣扎次数
     private float trapTimer = 0f;// 计时器
@@ -317,6 +320,14 @@ public abstract class GamePlayer : NetworkBehaviour
         // 2. 这里的 isInputLocked 只决定是否可以进行【旋转视角】
         // 只有在聊天或者打开菜单时才锁定视角
         bool isViewLocked = isChatting || (sceneScript != null && sceneScript.pauseMenuPanel.activeSelf);
+
+        // 【新增】应用击退外力 (在计算 targetVelocity 之前)
+        if (impact.magnitude > 0.2f)
+        {
+            controller.Move(impact * Time.deltaTime);
+            // 摩擦力衰减（数值越大停得越快，5f 适合比较滑行的击退）
+            impact = Vector3.Lerp(impact, Vector3.zero, 5f * Time.deltaTime); 
+        }
 
         // 3. 移动计算 (inputOverride 如果是 zero，这里会自动处理减速)
         Vector3 inputDir = (transform.right * inputOverride.x + transform.forward * inputOverride.y);
@@ -812,5 +823,13 @@ public abstract class GamePlayer : NetworkBehaviour
     protected void CmdUpdateAnimationSpeed(float speed)
     {
         syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
+    }
+
+    //新增 TargetRpc 接收击退力
+    [TargetRpc]
+    public void TargetApplyKnockback(NetworkConnection target, Vector3 force)
+    {
+        // 将外力叠加到当前的 impact 上
+        impact += force;
     }
 }
