@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 6182276307200312261}
   - component: {fileID: 8377226405294211074}
   - component: {fileID: 6538974110224861687}
+  - component: {fileID: 5653304604687655996}
   m_Layer: 0
   m_Name: MyNetworkManager
   m_TagString: Untagged
@@ -51,7 +52,7 @@ MonoBehaviour:
   editorAutoStart: 0
   sendRate: 60
   offlineScene: Assets/Scenes/StartMenu.unity
-  onlineScene: Assets/Scenes/LobbyRoom.unity
+  onlineScene: Assets/Scenes/ConnectRoom.unity
   offlineSceneLoadDelay: 0
   transport: {fileID: 6538974110224861687}
   networkAddress: localhost
@@ -245,7 +246,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b0fecffa3f624585964b0d0eb21b18e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  port: 7777
+  port: 7770
   DualMode: 1
   NoDelay: 1
   Interval: 10
@@ -262,3 +263,18 @@ MonoBehaviour:
   debugLog: 0
   statisticsGUI: 0
   statisticsLog: 0
+--- !u!114 &5653304604687655996
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3021481133476499243}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01f246abfc49ca7418f08e26bfedebca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  publicIP: 127.0.0.1
+  startPort: 7771
+  endPort: 7780

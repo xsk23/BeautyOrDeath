@@ -7,6 +7,7 @@ using UnityEngine.UI;
 public class StartMenu : MonoBehaviour
 {
     NetworkManager manager;
+    public GameObject networkManagerPrefab;
     public NetworkManagerHUD_UGUI networkHUD;  // 如果你還在使用這個 HUD
     [Header("Player Name Input")]
     public TMP_InputField inputFieldPlayerName;   // ← 拖進來
@@ -18,7 +19,21 @@ public class StartMenu : MonoBehaviour
     private const string REMOTE_SERVER_IP = "101.42.183.176";
     private void Start()
     {
-        manager = FindObjectOfType<NetworkManager>();
+        if (manager == null)
+        {
+            // 嘗試在場景中找到已存在的 NetworkManager
+            manager = FindObjectOfType<NetworkManager>();
+            if (manager == null)
+            {
+                // 如果找不到，則實例化一個新的
+                GameObject obj = Instantiate(networkManagerPrefab);
+                manager = obj.GetComponent<NetworkManager>();
+                if (manager == null)
+                {
+                    Debug.LogError("NetworkManager component not found on the instantiated prefab!");
+                }
+            }
+        }
         // 如果之前有存過名字，可以預填
         if (PlayerSettings.Instance != null && !string.IsNullOrEmpty(PlayerSettings.Instance.PlayerName))
         {
@@ -42,7 +57,7 @@ public class StartMenu : MonoBehaviour
     {
         if (joinButton == null) return;
 
-        bool hasName = inputFieldPlayerName != null 
+        bool hasName = inputFieldPlayerName != null
             && !string.IsNullOrWhiteSpace(inputFieldPlayerName.text.Trim());
 
         joinButton.interactable = hasName;
@@ -82,13 +97,13 @@ public class StartMenu : MonoBehaviour
         // }
         // --- 2. 设置 IP 地址 ---
         // 0: Localhost, 1: Server (根据你在 Inspector 里 Dropdown 选项的顺序)
-        if (networkDropdown.value == 0) 
+        if (networkDropdown.value == 0)
         {
             // 选项 0: Localhost
-            manager.networkAddress = "localhost"; 
+            manager.networkAddress = "localhost";
             Debug.Log($"[Connect] Mode: Localhost ({manager.networkAddress})");
         }
-        else 
+        else
         {
             // 选项 1: Server
             manager.networkAddress = REMOTE_SERVER_IP;
@@ -104,10 +119,10 @@ public class StartMenu : MonoBehaviour
     {
         Debug.Log("玩家選擇退出遊戲");
 
-    #if UNITY_EDITOR
+#if UNITY_EDITOR
         UnityEditor.EditorApplication.ExitPlaymode();  // 在 Editor 裡停止 Play 模式
-    #else
+#else
         Application.Quit();  // 建置後真正退出
-    #endif
+#endif
     }
 }
