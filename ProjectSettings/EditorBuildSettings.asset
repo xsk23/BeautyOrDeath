@@ -32,4 +32,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/LobbyRoom.unity
     guid: fe0ab8ffbc37b6d4794a0d0ccc688cde
+  - enabled: 1
+    path: Assets/Scenes/ConnectRoom.unity
+    guid: 74614ed7f6c39c9419c2038935e7f898
   m_configObjects: {}

@@ -22,6 +22,10 @@ public class HunterPlayer : GamePlayer
     [SerializeField] private Animator hunterAnimator; // 在 Inspector 中拖入猎人的 Animator
     // 【新增 1】定义记录上一帧位置的变量
     private Vector3 lastPosition;
+    private bool nextPunchIsRight = false; // 记录左右交替的状态
+    [Header("Input Buffering")]
+    public float attackBufferTime = 0.2f; // 缓冲窗口大小：冷却结束前 0.2s 内的点击有效
+    private float lastAttackInputTime = -1f; // 上次尝试点击攻击的时间戳
     // 【新增】在初始化时赋值给父类的字段
     private void Awake()
     {
@@ -137,20 +141,28 @@ public class HunterPlayer : GamePlayer
                 ChangeWeapon(nextIndex);
             }
             // 开火
+            // 1. 记录玩家的点击意图
             if (Input.GetMouseButtonDown(0))
+            {
+                lastAttackInputTime = Time.time;
+            }
+
+            // 2. 检测是否有“存着”的指令需要触发
+            if (Time.time - lastAttackInputTime <= attackBufferTime)
             {
                 WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
 
-                // 检查冷却
                 if (currentWeapon != null && currentWeapon.CanFire())
                 {
+                    // 冷却刚好，立即执行！
+                    lastAttackInputTime = -1f; // 消耗掉这个缓冲，防止重复触发
+                    
                     currentWeapon.UpdateCooldown();
-                    // ★ 关键：这里只发送指令，具体逻辑多态分发
                     CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
-                    //触发事件
                     OnWeaponFired?.Invoke(currentWeaponIndex);
                 }
             }
+
             // 处理冷却UI
             HandleCooldownUI();
             // 处决检查
@@ -189,10 +201,29 @@ public class HunterPlayer : GamePlayer
     [ClientRpc]
     void RpcFireEffect(int weaponIndex)
     {
-        // ★ 关键细节：如果是本地玩家，刚才在 Update 里已经播过了，就别播第二次了
-        if (isLocalPlayer) return;
+        // // ★ 关键细节：如果是本地玩家，刚才在 Update 里已经播过了，就别播第二次了
+        // if (isLocalPlayer) return;
         // 触发事件
         OnWeaponFired?.Invoke(weaponIndex);
+        // --- 新增：触发近战动画逻辑 ---
+        if (hunterAnimator != null)
+        {
+            WeaponBase currentWeapon = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
+            
+            if (currentWeapon != null && currentWeapon.weaponName == "Fist") 
+            {
+                // 1. 设置布尔值，决定这次走左边还是右边的动画分支
+                hunterAnimator.SetBool("isPunchRight", nextPunchIsRight);
+
+                // 2. 触发攻击 Trigger
+                hunterAnimator.SetTrigger("Punch");
+
+                // 3. 切换状态：下次攻击换另一只手
+                nextPunchIsRight = !nextPunchIsRight;
+                
+                UnityEngine.Debug.Log($"[Animation] Punching side: {(nextPunchIsRight ? "Left" : "Right")}");
+            }
+        }
     }
 
     private void HandleCooldownUI()
