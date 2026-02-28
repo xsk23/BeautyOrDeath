@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using System.Linq;
-
+using Mirror;
 public class WitchItemSelectionManager : MonoBehaviour
 {
     [Header("Data")]
@@ -85,6 +85,25 @@ public class WitchItemSelectionManager : MonoBehaviour
     private void Save()
     {
         if (currentSelection != null)
-            PlayerSettings.Instance.selectedWitchItemName = currentSelection.scriptClassName;
+        {
+            string className = currentSelection.scriptClassName;
+            PlayerSettings.Instance.selectedWitchItemName = className;
+
+            // 【核心修复】立即同步给服务器，不要等下次进大厅
+            if (NetworkClient.localPlayer != null)
+            {
+                var pScript = NetworkClient.localPlayer.GetComponent<PlayerScript>();
+                if (pScript != null)
+                {
+                    pScript.CmdUpdateSelectedItem(className);
+                    Debug.Log($"[UI] 正在向服务器同步选中的道具: {className}");
+                }
+            }
+
+            if (LobbyModelPreview.Instance != null)
+            {
+                LobbyModelPreview.Instance.RefreshItemSelection();
+            }
+        }
     }
 }

@@ -13,7 +13,7 @@ public class FistWeapon : WeaponBase
     private void Awake()
     {
         // 初始化默认值
-        damage = 5f;
+        damage = 10f;
         fireRate = 0.5f;
         weaponName = "Fist";
     }

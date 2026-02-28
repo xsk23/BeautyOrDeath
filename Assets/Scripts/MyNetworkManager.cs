@@ -22,7 +22,13 @@ public class MyNetworkManager : NetworkManager
     public GameObject witchFemalePrefab;
     public GameObject hunterMalePrefab;
     public GameObject hunterFemalePrefab;
-
+    [Header("Role Prefabs (Special Variants)")]
+    public GameObject witchMaleCloakPrefab;
+    public GameObject witchFemaleCloakPrefab;
+    public GameObject witchMaleAmuletPrefab;    // 【新增】护符版男巫
+    public GameObject witchFemaleAmuletPrefab;  // 【新增】护符版女巫
+    public GameObject witchMaleBroomPrefab;     // 【新增】扫帚版男巫
+    public GameObject witchFemaleBroomPrefab;   // 【新增】扫帚版女巫
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
     public GameObject gameManagerPrefab;

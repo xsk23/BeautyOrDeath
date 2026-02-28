@@ -178,7 +178,11 @@ public class WitchPlayer : GamePlayer
         // 如果永久死亡，跳过所有交互逻辑，只保留基础移动（基类 HandleMovement）
         if (isPermanentDead)
         {
-            base.Update(); // 允许观察者移动
+            // 只有非游戏结束状态才允许基础 Update 里的相机逻辑
+            if (GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
+            {
+                base.Update();
+            }
             return;
         }
         // =========================================================
@@ -227,9 +231,14 @@ public class WitchPlayer : GamePlayer
         }
 
         // 所有人（包括本地和远程客户端）都根据同步的速度值更新动画
+        // 修改这段逻辑
         if (!isMorphed && animator != null)
         {
-            animator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+            // 增加参数检查，防止报错
+            if (HasParameter(animator, "speed"))
+            {
+                animator.SetFloat("speed", syncedSpeed, 0.1f, Time.deltaTime);
+            }
         }
         // --- 新增：本地玩家更新 UI 冷却进度 ---
         if (isLocalPlayer && SceneScript.Instance != null && SceneScript.Instance.morphSlot != null)
@@ -278,9 +287,9 @@ public class WitchPlayer : GamePlayer
         HandleItemActivation(); // 处理道具使用输入
 
         // --- 在 Update 的最后添加平滑移动逻辑 ---
-        if (isLocalPlayer && Camera.main != null)
+        // 【核心修复】：增加 GameOver 判断，防止插值逻辑把相机拉回玩家身边
+        if (isLocalPlayer && Camera.main != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
         {
-            // 使用 Lerp 插值实现平滑过渡，Time.deltaTime * 5f 是平滑速度
             Camera.main.transform.localPosition = Vector3.Lerp(
                 Camera.main.transform.localPosition, 
                 targetCamPos, 
@@ -288,7 +297,16 @@ public class WitchPlayer : GamePlayer
             );
         }
     }
-
+    // 建议在类中添加一个辅助方法
+    private bool HasParameter(Animator anim, string paramName)
+    {
+        if (anim == null) return false;
+        foreach (AnimatorControllerParameter param in anim.parameters)
+        {
+            if (param.name == paramName) return true;
+        }
+        return false;
+    }
     // =========================================================
     // 【修改】重写 HandleMovementOverride 实现“抢方向盘”
     // =========================================================
@@ -832,14 +850,38 @@ public class WitchPlayer : GamePlayer
                 // 实在找不到 Mesh，回退到 BoxCollider
                 if (humanBoxCollider != null) humanBoxCollider.enabled = true;
             }
-            // 7. 刷新轮廓
+            // 7. 刷新轮廓 (修改此段)
             var outline = GetComponent<PlayerOutline>();
             if (outline != null && currentVisualProp != null) 
             {
-                Renderer r = currentVisualProp.GetComponentInChildren<Renderer>();
-                outline.RefreshRenderer(r); 
-            }
+                // 【核心修复】：健壮的 Renderer 查找逻辑
+                Renderer[] allRenderers = currentVisualProp.GetComponentsInChildren<Renderer>();
+                Renderer targetR = null;
 
+                // 优先级 1：寻找名字里带 LOD0 的（针对分层级模型）
+                foreach (var r in allRenderers)
+                {
+                    if (r is ParticleSystemRenderer) continue;
+                    if (r.name.Contains("LOD0")) { targetR = r; break; }
+                }
+
+                // 优先级 2：如果没有 LOD0，找第一个非粒子的渲染器（针对单模型物体）
+                if (targetR == null)
+                {
+                    foreach (var r in allRenderers)
+                    {
+                        if (r is ParticleSystemRenderer) continue;
+                        targetR = r;
+                        break;
+                    }
+                }
+                
+                if (targetR != null) 
+                {
+                    outline.RefreshRenderer(targetR); 
+                }
+            }
+            
             // 8. 【新增】启用我的 PropTarget，允许别人瞄准我变身后的模型
             myPropTarget.enabled = true;
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
@@ -1166,11 +1208,20 @@ public class WitchPlayer : GamePlayer
         // 4. 视觉恢复
         if (humanModelGroup != null)
         {
-            bool shouldShow = !isStealthed || isLocalPlayer;
             humanModelGroup.SetActive(true);
             Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
-            foreach (var r in humanRenderers) r.enabled = shouldShow;
+            foreach (var r in humanRenderers) r.enabled = true;
+            
+            // 【核心修复】：重新从人类模型组里提取主渲染器
+            // 巫师模型通常由 SkinnedMeshRenderer 组成
+            foreach (var r in humanRenderers)
+            {
+                if (r is ParticleSystemRenderer) continue;
+                myRenderer = r; // 重新给 myRenderer 赋值，确保它是活的
+                break;
+            }
         }
+
         if (HideGroup != null) HideGroup.SetActive(true);
 
         // 5. 【核心修复】恢复 CC 原始参数
@@ -1201,8 +1252,9 @@ public class WitchPlayer : GamePlayer
         }
         // 确保描边脚本重新指向人类的 Renderer (myRenderer 是tripo_node上的)
         var outline = GetComponent<PlayerOutline>();
-        if (outline != null)
+        if (outline != null && myRenderer != null)
         {
+            // 确保 outline 脚本指向新的（恢复的）人类渲染器
             outline.RefreshRenderer(myRenderer); 
         }
 
@@ -1620,10 +1672,15 @@ public class WitchPlayer : GamePlayer
     private void UpdateStealthVisuals(bool isStealth)
     {
         if (isLocalPlayer) return;
-        bool isVisible = !isStealth;
+        // 【核心修复 1】：获取当前看着屏幕的本地玩家，判断是不是队友
+        GamePlayer myLocalViewPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        bool isTeammate = (myLocalViewPlayer != null && myLocalViewPlayer.playerRole == PlayerRole.Witch);
 
-        // 1. 隐藏头顶名字
-        if (nameText != null) nameText.gameObject.SetActive(isVisible);
+        // 猎人看隐身是不可见(!isStealth)，女巫看隐身的队友永远是可见(true)
+        bool isVisible = isTeammate ? true : !isStealth;
+
+        // 1. 隐藏头顶名字（隐身时，连队友也暂时不看名字，全靠高亮颜色认人）
+        if (nameText != null) nameText.gameObject.SetActive(isVisible && !isStealth);
 
         // 2. 根据当前形态隐藏对应的模型
         if (isMorphed)
@@ -1650,8 +1707,8 @@ public class WitchPlayer : GamePlayer
         }
 
         // 3. 隐藏描边
-        var outline = GetComponent<PlayerOutline>();
-        if (outline != null) outline.enabled = isVisible;
+        // var outline = GetComponent<PlayerOutline>();
+        // if (outline != null) outline.enabled = isVisible;
     }
     // 服务器端：由传送门调用
     [Server]
@@ -1696,7 +1753,12 @@ public class WitchPlayer : GamePlayer
         // 隐藏原始渲染器
         if (myRenderer != null) myRenderer.enabled = false;
         // 隐藏名字
-        if (nameText != null) nameText.gameObject.SetActive(false);
+        // 只有在非结算状态下才隐藏名字，结算时（VictoryZone）名字必须留着
+        if (nameText != null) 
+        {
+            bool isVictorySequence = GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver;
+            nameText.gameObject.SetActive(isVictorySequence); 
+        }
 
         // 2. 禁用交互：修改物理层级
         // 建议在 Unity 中创建一个 Layer 叫 "Spectator"，并在 Physics Matrix 中设置它不与 Player 碰撞
@@ -1757,7 +1819,7 @@ public class WitchPlayer : GamePlayer
         {
             // --- 人类状态：恢复默认 ---
             if (isFirstPerson)
-                targetCamPos = new Vector3(0, 1.055f, 0.278f);
+                targetCamPos = new Vector3(0.079f, 1.055f, 0.663f);
             else
                 targetCamPos = new Vector3(0, 2.405f, -3.631f);
         }

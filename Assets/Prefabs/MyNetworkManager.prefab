@@ -60,7 +60,7 @@ MonoBehaviour:
   disconnectInactiveConnections: 0
   disconnectInactiveTimeout: 60
   authenticator: {fileID: 0}
-  playerPrefab: {fileID: 2245718309650186862, guid: 6d86e0dbc6f0da54fad0ec35a93210b6, type: 3}
+  playerPrefab: {fileID: 2245718309650186862, guid: d69057712a57c0a4492ff79137a60982, type: 3}
   autoCreatePlayer: 1
   playerSpawnMethod: 1
   spawnPrefabs:
@@ -76,16 +76,26 @@ MonoBehaviour:
   - {fileID: 8352306640421939357, guid: 378f88eeaf3c9584ab384a54f82b7d79, type: 3}
   - {fileID: 7402009758359158996, guid: 4ecab060b0afb5d4db61f7f1311b9e24, type: 3}
   - {fileID: 2629182449500102118, guid: 15ca4494f24bf9741a48b37ec2c4c632, type: 3}
+  - {fileID: 4516135911683214189, guid: 348218fe718cc944381c6998b6eb70f9, type: 3}
+  - {fileID: 7364481315165733279, guid: 1e1bc73ecdb1c2140b9abc5b1b2801cd, type: 3}
+  - {fileID: 7437291211915263204, guid: afb8b0515ce41fd46baaa66ee9f690fb, type: 3}
+  - {fileID: 7364481315165733279, guid: a846748daea8d5846ad6825ca74cf9b4, type: 3}
+  - {fileID: 7364481315165733279, guid: e59f9be882873764ab3cf518668a7aaa, type: 3}
+  - {fileID: 7364481315165733279, guid: d444bd3b18e3dc14387a2b5a65e8ec5d, type: 3}
   - {fileID: 5220707498806962377, guid: a6fe150fa8940dd4aa35b92cba9c31a3, type: 3}
   - {fileID: 5186735023776687486, guid: ac8efb728f1fb9b4092c4df591c827ca, type: 3}
   - {fileID: 3899520030806763256, guid: 299e7a1cb6456cf4fa6079cf5978df9b, type: 3}
   - {fileID: 4317130386679613736, guid: dbcc69960cf8d9046b073d292c8b16f0, type: 3}
   - {fileID: 3851015956068934394, guid: dfb23d60f30c46847ba7815aa09e2567, type: 3}
-  - {fileID: 2245718309650186862, guid: 08b8b18ba5f7d7941b8b8e3a82d1f61b, type: 3}
-  - {fileID: 4516135911683214189, guid: 34e398540f2f1b648a4c2e5307a27d45, type: 3}
   - {fileID: 8002851003523270300, guid: 72653d407bf6edf4099d18f1afc9fe95, type: 3}
   - {fileID: 3650691871401806780, guid: 59c67f2eba8e4034e81dd83923ce4485, type: 3}
   - {fileID: 6397291155531275063, guid: 44a0de0f766c9634eb66f1d56b7edc9d, type: 3}
+  - {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
+  - {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
+  - {fileID: 7437291211915263204, guid: 634b8befe1a028a4589d4215135a37c1, type: 3}
+  - {fileID: 7364481315165733279, guid: c1ea9046523b86440be010521c9e621e, type: 3}
+  - {fileID: 7364481315165733279, guid: 2ea7f997b34bab6439994b15acbe187d, type: 3}
+  - {fileID: 7364481315165733279, guid: c5404f6b4d9a0c447bdc534192f2608e, type: 3}
   - {fileID: 4385080170328260021, guid: ff62b58c5a9ea164fa8ddf8038e10cd1, type: 3}
   - {fileID: 5440707293445505367, guid: 494f6d43e170e9145bc7865d243ee00b, type: 3}
   - {fileID: 1527881004230699645, guid: 66f01a8db88f9644baed659d1f91cdca, type: 3}
@@ -207,12 +217,7 @@ MonoBehaviour:
   - {fileID: 2807449429036958551, guid: f0c16f0ea935ea64297ca1d4d55d9746, type: 3}
   - {fileID: 9069115365609291303, guid: 60f79905accf3b24fa0114b941f1aac0, type: 3}
   - {fileID: 5216212801046882302, guid: e8e7cac069975e14fb0f349c98e68e00, type: 3}
-  - {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
-  - {fileID: 7437291211915263204, guid: 634b8befe1a028a4589d4215135a37c1, type: 3}
   - {fileID: 1275068132262897948, guid: 3b490b52b8b695a4f88ac938390a9434, type: 3}
-  - {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
-  - {fileID: 4516135911683214189, guid: 348218fe718cc944381c6998b6eb70f9, type: 3}
-  - {fileID: 7364481315165733279, guid: 1e1bc73ecdb1c2140b9abc5b1b2801cd, type: 3}
   exceptionsDisconnect: 1
   snapshotSettings:
     bufferTimeMultiplier: 2
@@ -233,6 +238,12 @@ MonoBehaviour:
   witchFemalePrefab: {fileID: 7364481315165733279, guid: 1e1bc73ecdb1c2140b9abc5b1b2801cd, type: 3}
   hunterMalePrefab: {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
   hunterFemalePrefab: {fileID: 4516135911683214189, guid: 348218fe718cc944381c6998b6eb70f9, type: 3}
+  witchMaleCloakPrefab: {fileID: 7364481315165733279, guid: 2ea7f997b34bab6439994b15acbe187d, type: 3}
+  witchFemaleCloakPrefab: {fileID: 7364481315165733279, guid: e59f9be882873764ab3cf518668a7aaa, type: 3}
+  witchMaleAmuletPrefab: {fileID: 7364481315165733279, guid: c5404f6b4d9a0c447bdc534192f2608e, type: 3}
+  witchFemaleAmuletPrefab: {fileID: 7364481315165733279, guid: d444bd3b18e3dc14387a2b5a65e8ec5d, type: 3}
+  witchMaleBroomPrefab: {fileID: 7364481315165733279, guid: c1ea9046523b86440be010521c9e621e, type: 3}
+  witchFemaleBroomPrefab: {fileID: 7364481315165733279, guid: a846748daea8d5846ad6825ca74cf9b4, type: 3}
   gameManagerPrefab: {fileID: 4317130386679613736, guid: dbcc69960cf8d9046b073d292c8b16f0, type: 3}
 --- !u!114 &6538974110224861687
 MonoBehaviour:

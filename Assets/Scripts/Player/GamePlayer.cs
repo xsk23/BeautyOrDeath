@@ -27,11 +27,15 @@ public abstract class GamePlayer : NetworkBehaviour
     public int requiredClicks = 2; // 需要按多少次空格才能挣脱
     public float maxTrapTime = 6.0f; // 6秒后还没挣脱就释放
 
+    [Header("外部受力(击退)")]
+    protected Vector3 impact = Vector3.zero;
+
     [SyncVar]
     public int currentClicks = 0; // 当前挣扎次数
     private float trapTimer = 0f;// 计时器
 
     [Header("同步属性")]
+    [SyncVar] public Gender myGender = Gender.Male;
     [SyncVar] public string syncedSkill1Name = "";
     [SyncVar] public string syncedSkill2Name = "";
     [SyncVar] public uint caughtInTrapNetId = 0; // 记录当前是被哪个陷阱抓住了
@@ -113,7 +117,19 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 生命周期
     // --------------------------------------------------------
-
+    // 在 OnDestroy 中确保移除自己（你代码里写了 OnStopClient，但 OnDestroy 更保险）
+    private void OnDestroy()
+    {
+        if (AllPlayers.Contains(this))
+        {
+            AllPlayers.Remove(this);
+        }
+    }
+    // 在静态构造或合适的地方提供一个清理方法
+    public static void CleanupDeadReferences()
+    {
+        AllPlayers.RemoveAll(p => p == null || p.gameObject == null);
+    }
     // 服务器初始化角色
     public override void OnStartServer()
     {
@@ -203,13 +219,39 @@ public abstract class GamePlayer : NetworkBehaviour
     // --------------------------------------------------------
     // 逻辑循环
     // --------------------------------------------------------
-
+    // 2. 在 GamePlayer.cs 底部添加对应的 Command
+    [Command]
+    private void CmdDebugTriggerWin(PlayerRole winner)
+    {
+        //改成英文debug
+        Debug.Log($"[DEBUG] Server received win request from player {playerName}: {winner}");
+        
+        // 调用 GameManager 的服务器结束逻辑
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.ServerEndGame(winner);
+        }
+    }
 
     public virtual void Update()
     {
         // 只有本地玩家能控制移动
         if (isLocalPlayer)
         {
+            // ================== 【调试按键接口】 ==================
+            // 允许 Client 玩家通过 Command 请求服务器结束游戏
+            if (Application.isEditor || Debug.isDebugBuild)
+            {
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    CmdDebugTriggerWin(PlayerRole.Witch);
+                }
+                if (Input.GetKeyDown(KeyCode.O))
+                {
+                    CmdDebugTriggerWin(PlayerRole.Hunter);
+                }
+            }
+            // ====================================================
             // 【新增】如果引用为空，尝试再次查找（防空指针）
             if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
             if (gameChatUI == null) gameChatUI = FindObjectOfType<GameChatUI>();
@@ -291,6 +333,9 @@ public abstract class GamePlayer : NetworkBehaviour
     // 新增方法：根据视角更新相机位置
     public virtual void UpdateCameraView()
     {
+        // 如果游戏已经结束，不再强制控制相机位置
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            return;
         if (isFirstPerson)
         {
             Camera.main.transform.SetParent(transform);
@@ -318,6 +363,14 @@ public abstract class GamePlayer : NetworkBehaviour
         // 只有在聊天或者打开菜单时才锁定视角
         bool isViewLocked = isChatting || (sceneScript != null && sceneScript.pauseMenuPanel.activeSelf);
 
+        // 【新增】应用击退外力 (在计算 targetVelocity 之前)
+        if (impact.magnitude > 0.2f)
+        {
+            controller.Move(impact * Time.deltaTime);
+            // 摩擦力衰减（数值越大停得越快，5f 适合比较滑行的击退）
+            impact = Vector3.Lerp(impact, Vector3.zero, 5f * Time.deltaTime); 
+        }
+
         // 3. 移动计算 (inputOverride 如果是 zero，这里会自动处理减速)
         Vector3 inputDir = (transform.right * inputOverride.x + transform.forward * inputOverride.y);
         if (inputDir.magnitude > 1f) inputDir.Normalize();
@@ -335,13 +388,20 @@ public abstract class GamePlayer : NetworkBehaviour
         if (actuallyOnGround && velocity.y < 0) velocity.y = -2f;
         else velocity.y += gravity * Time.deltaTime;
 
-        // 注意：跳跃也需要判断 !isStunned
-        if (actuallyOnGround && !isStunned && !isViewLocked && Input.GetButtonDown("Jump"))
+        // 注意：跳跃需要判断是否满足基础条件 (如没有被眩晕)
+        if (actuallyOnGround && CanJump() && !isViewLocked && Input.GetButtonDown("Jump"))
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            // 【新增：调用钩子函数】
+            OnJumpTriggered(); 
         }
 
         controller.Move(velocity * Time.deltaTime);
+
+        // 【核心修复】：如果游戏结束，彻底禁止脚本触摸 Camera.main
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            return;
+
 
         // 5. 【核心修改】旋转视角逻辑
         // 只要视角没被锁定（聊天/菜单），即使处于 stunned 状态，也可以转头
@@ -356,7 +416,13 @@ public abstract class GamePlayer : NetworkBehaviour
             transform.Rotate(Vector3.up * mouseX);
         }
     }
-
+    // 判断当前状态是否允许起跳（子类可重写添加更多限制）
+    protected virtual bool CanJump()
+    {
+        return !isStunned; // 默认只要没被禁锢就能跳
+    }
+    // 【新增：添加钩子函数】
+    protected virtual void OnJumpTriggered() { }
     protected virtual void HandleMovement()
     {
         // 1. 更加精准的状态检测
@@ -804,5 +870,13 @@ public abstract class GamePlayer : NetworkBehaviour
     protected void CmdUpdateAnimationSpeed(float speed)
     {
         syncedSpeed = speed; // 服务器更新这个值，所有客户端都会收到
+    }
+
+    //新增 TargetRpc 接收击退力
+    [TargetRpc]
+    public void TargetApplyKnockback(NetworkConnection target, Vector3 force)
+    {
+        // 将外力叠加到当前的 impact 上
+        impact += force;
     }
 }

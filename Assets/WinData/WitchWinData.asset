@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ecd800c22d499a46b826c07f66c3958, type: 3}
+  m_Name: WitchWinData
+  m_EditorClassIdentifier: 
+  cameraSettings: {fileID: 11400000, guid: e8e009618d02cd14e8a0e1f93a438ca5, type: 2}
+  groupDances:
+  - playerCount: 1
+    individualAnimators:
+    - {fileID: 9100000, guid: 5c929e7a1f3f4e946815e4530bce1eed, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 601b2620fd4334347b0eef01e9af6b57, type: 3}
+  - playerCount: 2
+    individualAnimators:
+    - {fileID: 9100000, guid: d7dd2cb567fbe414299cfb9b910f1a80, type: 2}
+    - {fileID: 9100000, guid: 13dfdaaf20b095648a386f5a99aef24c, type: 2}
+    victoryMusic: {fileID: 8300000, guid: df20cab6efbe59148b0fce61ab7d56b9, type: 3}
+  - playerCount: 3
+    individualAnimators:
+    - {fileID: 9100000, guid: 1fbc318e1b159b74ea2e30c490acdd9b, type: 2}
+    - {fileID: 9100000, guid: 83368a32262a39b448d9bc3334c1a61c, type: 2}
+    - {fileID: 9100000, guid: 3871a00a8bf335e4bacf6b2d189ea423, type: 2}
+    victoryMusic: {fileID: 8300000, guid: a4c75ced68d6aa949a00e1cff5025856, type: 3}

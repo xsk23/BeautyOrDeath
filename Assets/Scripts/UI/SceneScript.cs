@@ -97,6 +97,56 @@ public class SceneScript : MonoBehaviour
         }
 
     }
+    public void HideHUDForVictory()
+    {
+        // 隐藏基础信息
+        if (RoleText != null) RoleText.gameObject.SetActive(false);
+        if (NameText != null) NameText.gameObject.SetActive(false);
+        if (WeaponText != null) WeaponText.gameObject.SetActive(false);
+        if (PlayerCountText != null) PlayerCountText.gameObject.SetActive(false);
+        if (GameTime != null)
+        {
+            GameTime.gameObject.SetActive(false);
+            // 如果有父物体（比如背景），也一起隐藏
+            if (GameTime.transform.parent != null)
+            {
+                GameTime.transform.parent.gameObject.SetActive(false);
+            }
+        }
+        
+        if (GoalText != null) GoalText.gameObject.SetActive(false);
+        if (Crosshair != null) Crosshair.SetActive(false);
+        
+        // 隐藏状态条
+        if (HealthSlider != null)
+        {
+            HealthSlider.gameObject.SetActive(false); 
+            HealthSlider.gameObject.transform.parent.gameObject.SetActive(false); // 同时隐藏父物体，防止残留背景
+        } 
+        if (ManaSlider != null){} ManaSlider.gameObject.SetActive(false);
+        {
+            ManaSlider.gameObject.SetActive(false);
+            ManaSlider.gameObject.transform.parent.gameObject.SetActive(false); // 同时隐藏父物体，防止残留背景
+        }
+        
+        // 隐藏所有技能槽位
+        if (skillSlots != null)
+        {
+            foreach (var slot in skillSlots)
+            {
+                if (slot != null) slot.gameObject.SetActive(false);
+            }
+        }
+        
+        // 隐藏道具和变身槽
+        if (itemSlot != null) itemSlot.gameObject.SetActive(false);
+        if (morphSlot != null) morphSlot.gameObject.SetActive(false);
+        
+        // 隐藏其他可能的提示文本
+        if (RunText != null) RunText.gameObject.SetActive(false);
+        if (ExecutionText != null) ExecutionText.gameObject.SetActive(false);
+        if (blindPanel != null) blindPanel.SetActive(false);
+    }
 
     private void Update()
     {
@@ -108,9 +158,11 @@ public class SceneScript : MonoBehaviour
         // 如果处于 GameOver 状态，更新重启倒计时文字
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
-            if (gameRestartText != null)
+            // 【修改建议】只有当开始 20 秒倒计时后（即 restartCountdown 发生变化且不为默认大值时）才覆盖
+            // 或者直接依靠 GameManager 的状态控制
+            if (gameRestartText != null && GameManager.Instance.restartCountdown < 20)
             {
-                gameRestartText.text = $"Returning to Lobby in {GameManager.Instance.restartCountdown}...";
+                gameRestartText.text = $"<color=white>Returning to Lobby in </color><color=orange>{GameManager.Instance.restartCountdown}</color>";
             }
         }
     }
@@ -310,5 +362,18 @@ public class SceneScript : MonoBehaviour
             NetworkManager.singleton.StopServer();
         }
     }
+    public void ShowVictoryUI(PlayerRole winner)
+    {
+        gameResultPanel.SetActive(true);
+        gameResultText.text = (winner == PlayerRole.Witch) ? "WITCHES TRIUMPH!" : "HUNTERS TRIUMPH!";
+        
+        // 3秒后自动隐藏结果文字，展示风景
+        StartCoroutine(FadeOutResultText());
+    }
 
+    private IEnumerator FadeOutResultText()
+    {
+        yield return new WaitForSeconds(3f);
+        gameResultText.gameObject.SetActive(false);
+    }
 }

@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   itemName: Cloak
   scriptClassName: InvisibilityCloak
-  icon: {fileID: 21300000, guid: 23ffb80fdc898484b84de5cf7629e8da, type: 3}
+  icon: {fileID: 21300000, guid: b3eba9b00654a624dbc2b8fbbfb088fd, type: 3}
   description: InvisibilityCloakInvisibilityCloakInvisibilityCloak

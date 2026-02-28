@@ -132,12 +132,35 @@ public class TeamVision : NetworkBehaviour
     private void UpdateAllOutlines()
     {
         if (localPlayer == null) return;
-        
+        // --- 【新增：胜利区域清理逻辑】 ---
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            // 1. 清理所有玩家的描边
+            foreach (var p in GamePlayer.AllPlayers)
+            {
+                if (p != null)
+                {
+                    var outline = p.GetComponent<PlayerOutline>();
+                    if (outline != null) outline.SetOutline(false, Color.clear);
+                    if (p.nameText != null) p.nameText.gameObject.SetActive(true);
+                }
+            }
+            // 2. 清理场景中所有道具/树木的高亮
+            PropTarget[] allProps = Object.FindObjectsOfType<PropTarget>();
+            foreach (var prop in allProps)
+            {
+                if (prop != null) prop.SetHighlight(false);
+            }
+            return; // 直接跳出，不再执行后续的高亮逻辑
+        }
+        // ---------------------------------
+
         // 1. 处理玩家描边
         foreach (var targetPlayer in GamePlayer.AllPlayers)
         {
             if (targetPlayer == null || targetPlayer == localPlayer) continue;
-
+            // 关键补丁：如果角色还没同步好(None)，跳过本次循环，等下一秒再试
+            if (targetPlayer.playerRole == PlayerRole.None) continue;
             var outline = targetPlayer.GetComponent<PlayerOutline>();
             if (outline == null) continue;
 
@@ -164,6 +187,9 @@ public class TeamVision : NetworkBehaviour
                     targetPlayer.nameText.gameObject.SetActive(shouldShowName);
                 }
                 Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
+                outline.SetOutline(true, c);
+                // 即使脚本被别人关了，这里也强行打开
+                if (!outline.enabled) outline.enabled = true; 
                 outline.SetOutline(true, c);
             }
             else
