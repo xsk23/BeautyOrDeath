@@ -54,6 +54,11 @@ public class LobbyScript : NetworkBehaviour
     public TextMeshProUGUI startButtonText; // 拖入你的 StartText 对象
     public Color normalTextColor = new Color(0.788f, 0.666f, 0.541f); // 你截图中的 C9AA8A
     public Color countdownTextColor = new Color(1f, 0.73f, 0.42f);     // 琥珀金，更具魔幻感
+    [Header("Room Info")]
+    [SyncVar(hook = nameof(OnRoomNameChanged))]
+    public string syncedRoomName = "";
+
+    [SerializeField] private TextMeshProUGUI roomTitleText; // 在 Inspector 中拖入你的 RoomTitle UI
     private void Start()
     {
         // 【新增】进入大厅时，强制恢复鼠标显示和解锁
@@ -68,6 +73,14 @@ public class LobbyScript : NetworkBehaviour
         {
             AddPlayerRow(p);
         }
+        // 如果是服务器，从 NetworkManager 拿到刚才解析的名字
+        if (isServer)
+        {
+            syncedRoomName = MyNetworkManager.InitialRoomName;
+        }
+
+        // 初始显示一次
+        if (roomTitleText != null) roomTitleText.text = syncedRoomName;
     }
 
     private void Update()
@@ -82,7 +95,14 @@ public class LobbyScript : NetworkBehaviour
         UpdateLobbyUI();
     }
 
-
+    // Hook 函数：当名字同步到客户端时更新 UI
+    void OnRoomNameChanged(string oldName, string newName)
+    {
+        if (roomTitleText != null)
+        {
+            roomTitleText.text = newName;
+        }
+    }
 
     // 当有玩家进入时被调用
     public void AddPlayerRow(PlayerScript player)
@@ -217,10 +237,15 @@ public class LobbyScript : NetworkBehaviour
     {
         if (playerNumberText != null)
         {
-            playerNumberText.text = $"Ready: {readyCount} / {playerCount}";
+            playerNumberText.text = $"{readyCount} / {playerCount}";
         }
     }
-
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        // 确保服务器启动大厅对象时，立即同步名称
+        syncedRoomName = MyNetworkManager.InitialRoomName;
+    }
     // 更新本地按钮文字
     public void UpdateMyReadyStatus(bool isReady)
     {

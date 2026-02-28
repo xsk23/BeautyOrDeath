@@ -456,25 +456,43 @@ public class GameManager : NetworkBehaviour
     {
         if (modelObj == null) return;
 
-        // 寻找头顶的 TextMeshPro 组件 (对应 GamePlayer 里的 nameText 结构)
+        // 1. 寻找名字组件
         TMPro.TextMeshPro textComp = modelObj.GetComponentInChildren<TMPro.TextMeshPro>();
-        
         if (textComp != null)
         {
             textComp.text = pName;
-            textComp.gameObject.SetActive(true); // 确保它是激活的
-            
-            // 设置颜色（可选，例如胜利方绿色，失败方红色，或保持阵营色）
-            // 这里我们根据阵营上色，方便分辨
+            textComp.gameObject.SetActive(true);
             textComp.color = (role == PlayerRole.Witch) ? Color.magenta : Color.cyan;
+
+            // 2. 寻找动画模型中的骨骼（比如头部）
+            // 建议在 Animator 所在的物体下寻找
+            Transform headBone = FindRecursive(modelObj.transform, "CC_Base_Spine01"); 
             
-            // 旋转修正：确保名字面向胜利时的相机
-            // 因为模型已经面向相机了，名字通常作为子物体会自动面向，
-            // 如果名字反了，可以取消下面这行的注释：
-            // textComp.transform.rotation = Camera.main.transform.rotation;
+            // 如果没找到名为 "Head" 的，尝试寻找通用节点
+            if (headBone == null) headBone = modelObj.GetComponentInChildren<Animator>().GetBoneTransform(HumanBodyBones.Head);
+
+            // 3. 挂载跟随逻辑
+            if (headBone != null)
+            {
+                VictoryNameFollow follower = textComp.gameObject.GetComponent<VictoryNameFollow>();
+                if (follower == null) follower = textComp.gameObject.AddComponent<VictoryNameFollow>();
+                
+                follower.targetBone = headBone;
+                follower.offset = new Vector3(0, -0.6f, 0); // 根据模型大小微调
+            }
         }
     }
-
+    // 辅助方法：递归查找指定名称的子物体
+    private Transform FindRecursive(Transform parent, string name)
+    {
+        foreach (Transform child in parent)
+        {
+            if (child.name.Contains(name)) return child;
+            Transform result = FindRecursive(child, name);
+            if (result != null) return result;
+        }
+        return null;
+    }
     [ClientRpc]
     private void RpcApplyVictoryAnimation(GameObject targetObj, int totalWinners, int positionIndex, PlayerRole winner)
     {
@@ -1001,6 +1019,247 @@ public class GameManager : NetworkBehaviour
 }
 ```
 
+## generate_md.py
+
+```python
+import os
+
+import chardet  # pip install chardet
+import docx  # pip install python-docx
+
+
+def get_file_content(file_path):
+    """
+    尝试读取文件内容，自动处理编码问题
+    """
+    try:
+        # 1. 尝试直接读取为 UTF-8 (最快)
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError:
+        try:
+            # 2. 如果失败，使用二进制模式读取并检测编码
+            with open(file_path, "rb") as f:
+                raw_data = f.read()
+                result = chardet.detect(raw_data)
+                encoding = result["encoding"]
+                if encoding:
+                    return raw_data.decode(encoding)
+                else:
+                    # 3. 如果检测不到，尝试 latin-1 (可以读取任意字节流，不会报错但可能有乱码)
+                    return raw_data.decode("latin-1")
+        except Exception as e:
+            return f"Error decoding file: {e}"
+    except Exception as e:
+        return f"Error reading file: {e}"
+
+
+def generate_wp_code_markdown(
+    root_dir,
+    output_file,
+    include_dirs=None,
+    include_files=None,
+    exclude_dirs=None,
+    exclude_files=None,
+):
+    # WordPress 及 Web 开发常见后缀
+    code_extensions = (
+        # 核心逻辑
+        ".php",
+        ".inc",
+        # 前端
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".vue",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".html",
+        ".htm",
+        # 配置与数据
+        ".json",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".sql",  # 数据库导出
+        ".ini",
+        ".conf",
+        ".htaccess",
+        ".config",
+        ".txt",
+        ".md",
+        ".svg",  # SVG本质是XML代码
+        # 其他代码
+        ".py",
+        ".sh",
+        ".bat",
+        # 文档
+        ".docx",
+        ".cs",
+    )
+
+    # 默认初始化
+    if include_dirs is None:
+        include_dirs = []
+    if include_files is None:
+        include_files = []
+
+    # 默认排除 WordPress 中不需要分析的目录
+    if exclude_dirs is None:
+        exclude_dirs = [
+            ".git",
+            ".vs",
+            ".idea",
+            ".vscode",  # IDE和版本控制
+            "bin",
+            "obj",
+            "node_modules",
+            "vendor",  # 依赖包
+            "uploads",
+            "cache",
+            "upgrade",  # WP 动态资源
+            "wp-content/uploads",
+            "wp-content/cache",  # 具体路径匹配
+        ]
+
+    if exclude_files is None:
+        exclude_files = [".DS_Store", "Thumbs.db", "wp-config-sample.php"]
+
+    print(f"开始扫描目录: {root_dir}")
+    print(f"结果将保存至: {output_file}")
+
+    file_count = 0
+
+    with open(output_file, "w", encoding="utf-8") as md_file:
+        md_file.write(f"# WordPress Code Repository: {os.path.basename(root_dir)}\n\n")
+        md_file.write("> Auto generated code dump.\n\n")
+
+        for root, dirs, files in os.walk(root_dir):
+            # 1. 过滤排除的目录 (修改 dirs 列表以阻止 os.walk 进入)
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in exclude_dirs
+                and not any(ex in os.path.join(root, d) for ex in exclude_dirs)
+            ]
+
+            # 2. 检查包含目录逻辑 (如果指定了 include_dirs)
+            # 这里的逻辑是：如果当前路径不是 include_dirs 的子路径，也不是 include_dirs 的父路径，则跳过
+            if include_dirs:
+                # 简单判断：当前 root 是否包含在任何 include_dirs 中，或者 include_dirs 是否包含在当前 root 中
+                # 这里为了简化，假设 include_dirs 是相对于 root_dir 的名字
+                # 如果当前 root 路径中不包含任何指定的 include 文件夹名，且我们已经深入到子目录，则可能需要跳过
+                # 但为了保险起见，建议让 os.walk 遍历，在文件层级过滤
+                pass
+
+            for file in files:
+                # 过滤文件名
+                if file in exclude_files:
+                    continue
+                if include_files and file not in include_files:
+                    continue
+
+                # 过滤后缀
+                if not file.lower().endswith(code_extensions):
+                    continue
+
+                file_path = os.path.join(root, file)
+
+                # 再次确认目录包含逻辑 (更精准)
+                if include_dirs:
+                    rel_dir = os.path.relpath(root, root_dir)
+                    # 如果当前文件的相对目录 不在 包含列表中，且不是根目录
+                    is_included = False
+                    for inc_dir in include_dirs:
+                        if inc_dir in rel_dir.split(os.sep):
+                            is_included = True
+                            break
+                    if not is_included and rel_dir != ".":
+                        continue
+
+                relative_path = os.path.relpath(file_path, root_dir)
+                print(f"[{file_count + 1}] Processing: {relative_path}")
+
+                md_file.write(f"## {relative_path}\n\n")
+
+                # 处理 DOCX
+                if file.lower().endswith(".docx"):
+                    try:
+                        doc = docx.Document(file_path)
+                        md_file.write("```text\n")
+                        for para in doc.paragraphs:
+                            if para.text.strip():
+                                md_file.write(para.text + "\n")
+                        md_file.write("\n```\n\n")
+                    except Exception as e:
+                        md_file.write(f"> Error reading DOCX: {e}\n\n")
+
+                # 处理普通代码文件
+                else:
+                    # 获取扩展名用于 markdown 高亮 (去掉点)
+                    ext = file.split(".")[-1].lower()
+                    # 映射一些扩展名到 markdown 支持的标准语言名
+                    lang_map = {
+                        "cs": "csharp",
+                        "py": "python",
+                        "js": "javascript",
+                        "ts": "typescript",
+                        "vue": "html",
+                        "htm": "html",
+                        "htaccess": "apache",
+                        "conf": "nginx",
+                    }
+                    lang = lang_map.get(ext, ext)
+
+                    md_file.write(f"```{lang}\n")
+                    content = get_file_content(file_path)
+                    md_file.write(content)
+                    md_file.write("\n```\n\n")
+
+                file_count += 1
+
+    print(f"\n完成! 共处理 {file_count} 个文件。")
+
+
+# ================= 配置区域 =================
+
+# WordPress 根目录路径
+root_directory = r"D:\hwandDoc\BoDGame\BeautyOrDeath\Assets\Scripts"
+output_md = "unity_code.md"
+
+# 如果只想导出特定目录 (例如只看主题或插件)
+# include_dirs = ['wp-content', 'themes', 'plugins']
+include_dirs = []
+
+# 如果只想导出特定文件
+include_files = []
+
+# 额外的排除目录 (在默认排除基础上增加)
+exclude_dirs = [
+    "wp-admin",
+    "wp-includes",
+    "easyshop",
+    "shopire",
+    "twentytwentyfive",
+    "twentytwentythree",
+    "twentytwentytwo",
+    "uploads",
+    "plugins",
+    "languages",
+    "fonts",
+]  # 如果你只想看用户代码，建议排除这两个核心目录
+exclude_files = []  # 额外排除特定文件
+
+# 执行生成
+generate_wp_code_markdown(
+    root_directory, output_md, include_dirs, include_files, exclude_dirs, exclude_files
+)
+
+```
+
 ## HUDExtension.cs
 
 ```csharp
@@ -1028,26 +1287,353 @@ public class HUDExtension : MonoBehaviour
 
 ```
 
+## LobbyServer.cs
+
+```csharp
+using UnityEngine;
+using Mirror;
+using System.Collections.Generic;
+using System.Diagnostics; // 用于 Process
+using System.Linq; // 用于 Linq 查询
+
+public class LobbyServer : MonoBehaviour
+{
+    // --- 配置 ---
+    [Header("Network Config")]
+    public string publicIP = "localhost"; // 你的公网IP (本机测试用 127.0.0.1)
+
+    [Header("Port Management")]
+    public int startPort = 7771;
+    public int endPort = 7780; // 最多允许 10 个房间同时运行
+
+    // --- 内部数据结构 ---
+    class ServerRoomData
+    {
+        public int roomId;
+        public string name;
+        public string password;
+        public int maxPlayers;
+        public ushort port;
+        public Process process; // 保存进程引用，用于监听退出事件
+    }
+
+    // 存储所有活跃房间 <RoomID, Data>
+    private Dictionary<int, ServerRoomData> activeRooms = new Dictionary<int, ServerRoomData>();
+
+    // 使用 HashSet 记录当前正在使用的端口，方便快速查找空缺
+    private HashSet<int> usedPorts = new HashSet<int>();
+
+    // 主线程调度器引用 (单例)
+    private UnityMainThreadDispatcher dispatcher;
+
+    public void StartLobby()
+    {
+        // 再次确认：如果是子进程房间，不要启动大厅逻辑
+        if (IsSubProcess())
+        {
+            UnityEngine.Debug.Log("[Lobby] Currently a game room subprocess, skipping lobby initialization.");
+            this.enabled = false;
+            return;
+        }
+
+        UnityEngine.Debug.Log("[Lobby] Lobby service initializing...");
+
+        // 确保主线程调度器存在
+        dispatcher = UnityMainThreadDispatcher.Instance();
+
+        // 注册消息
+        if (NetworkServer.active)
+        {
+            NetworkServer.RegisterHandler<CreateRoomReq>(OnCreateRoom);
+            NetworkServer.RegisterHandler<GetRoomListReq>(OnGetRoomList);
+            NetworkServer.RegisterHandler<JoinRoomReq>(OnJoinRoom);
+            UnityEngine.Debug.Log("[Lobby] Message callbacks registered successfully, lobby ready!");
+        }
+        else
+        {
+            UnityEngine.Debug.LogError("[Lobby] NetworkServer not active, lobby startup failed!");
+        }
+    }
+    // 辅助方法：判断当前是否是子进程
+    bool IsSubProcess()
+    {
+        string[] args = System.Environment.GetCommandLineArgs();
+        return System.Array.Exists(args, arg => arg == "-port");
+    }
+    // --- 1. 处理创建房间请求 ---
+    void OnCreateRoom(NetworkConnectionToClient conn, CreateRoomReq msg)
+    {
+        // A. 智能获取最小可用端口
+        int port = GetAvailablePort();
+        UnityEngine.Debug.Log($"[LobbyServer] Received create request, assigning port: {port}");
+        if (port == -1)
+        {
+            conn.Send(new CreateRoomRes { success = false, message = "服务器爆满，无可用房间" });
+            return;
+        }
+
+        // B. 启动子进程
+        Process p = SpawnGameProcess(port, msg.roomName); // 传入房间名参数
+
+        if (p != null)
+        {
+            // 生成唯一房间ID
+            int newId = GenerateRoomId();
+
+            // C. 记录房间数据
+            ServerRoomData newRoom = new ServerRoomData
+            {
+                roomId = newId,
+                name = string.IsNullOrEmpty(msg.roomName) ? $"Room {newId}" : msg.roomName,
+                password = msg.password,
+                maxPlayers = msg.maxPlayers,
+                port = (ushort)port,
+                process = p
+            };
+
+            // D. 标记端口和房间为“占用”
+            usedPorts.Add(port);
+            activeRooms.Add(newId, newRoom);
+
+            // E. 【关键】监听进程退出事件 (自动回收)
+            try
+            {
+                p.EnableRaisingEvents = true;
+                // 当进程关闭（房间没人自杀）时，触发回调
+                // 注意：这里使用了闭包捕获 newId 和 port
+                p.Exited += (sender, args) => OnGameProcessExited(newId, port);
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogWarning($"[LobbyServer] Unable to listen for process exit event: {ex.Message}");
+            }
+
+            // F. 回复客户端：成功
+            conn.Send(new CreateRoomRes
+            {
+                success = true,
+                serverIp = publicIP,
+                serverPort = (ushort)port
+            });
+
+            UnityEngine.Debug.Log($"[LobbyServer] Room created successfully ID:{newId} Port:{port} Name:{newRoom.name}");
+        }
+        else
+        {
+            UnityEngine.Debug.LogError($"[LobbyServer] Room creation failed, could not start subprocess.");
+            conn.Send(new CreateRoomRes { success = false, message = "服务器进程启动失败" });
+        }
+    }
+
+    // --- 2. 处理获取列表请求 ---
+    void OnGetRoomList(NetworkConnectionToClient conn, GetRoomListReq msg)
+    {
+        var query = activeRooms.Values.AsEnumerable();
+
+        // 搜索过滤逻辑
+        if (!string.IsNullOrEmpty(msg.searchKeyword))
+        {
+            string key = msg.searchKeyword.ToLower();
+            query = query.Where(r =>
+                r.roomId.ToString().Contains(key) ||
+                r.name.ToLower().Contains(key)
+            );
+        }
+
+        // 转换为网络传输结构体 (隐藏密码)
+        RoomInfo[] list = query.Select(r => new RoomInfo
+        {
+            roomId = r.roomId,
+            roomName = r.name,
+            hasPassword = !string.IsNullOrEmpty(r.password),
+            currentPlayers = 0, // 暂时写0，进阶需进程间通信(IPC)获取实时人数
+            maxPlayers = r.maxPlayers,
+            port = r.port
+        }).ToArray();
+
+        conn.Send(new RoomListRes { rooms = list });
+    }
+
+    // --- 3. 处理加入房间请求 ---
+    void OnJoinRoom(NetworkConnectionToClient conn, JoinRoomReq msg)
+    {
+        if (!activeRooms.ContainsKey(msg.roomId))
+        {
+            conn.Send(new JoinRoomRes { success = false, message = "房间不存在" });
+            return;
+        }
+
+        ServerRoomData room = activeRooms[msg.roomId];
+
+        // 校验密码
+        if (!string.IsNullOrEmpty(room.password) && room.password != msg.password)
+        {
+            conn.Send(new JoinRoomRes { success = false, message = "密码错误" });
+            return;
+        }
+
+        // 校验通过，发送跳转地址
+        conn.Send(new JoinRoomRes
+        {
+            success = true,
+            serverIp = publicIP,
+            serverPort = room.port
+        });
+    }
+
+    // --- 辅助方法：智能获取端口 ---
+    int GetAvailablePort()
+    {
+        for (int i = startPort; i <= endPort; i++)
+        {
+            if (!usedPorts.Contains(i))
+            {
+                return i; // 找到第一个没被用的，直接返回
+            }
+        }
+        return -1; // 所有端口都满了
+    }
+
+    // --- 辅助方法：生成唯一房间ID ---
+    int GenerateRoomId()
+    {
+        int id;
+        do
+        {
+            id = UnityEngine.Random.Range(1000, 9999);
+        } while (activeRooms.ContainsKey(id));
+        return id;
+    }
+    // --- 辅助方法：启动子进程 ---
+    Process SpawnGameProcess(int port, string roomName)// 增加 roomName 参数
+    {
+        string fileName = "MyGameServer.exe"; // 请确保这是你 Build 出来的 exe 名字
+
+        // // 自动适配扩展名
+        // if (Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.WindowsEditor)
+        //     fileName += ".exe";
+        // else if (Application.platform == RuntimePlatform.LinuxPlayer)
+        //     fileName += ".x86_64";
+
+        string path = "";
+
+#if UNITY_EDITOR
+        // 编辑器模式下：去项目根目录下的 Build 文件夹找 (需要你手动 Build 一次放在那里)
+        path = System.IO.Path.Combine(System.IO.Directory.GetParent(Application.dataPath).FullName, "Build", fileName);
+#else
+        // 发布模式下：在 exe 同级目录找
+        path = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, fileName);
+#endif
+
+        if (!System.IO.File.Exists(path))
+        {
+            UnityEngine.Debug.LogError($"[LobbyServer] Server file not found! Path: {path}");
+            // ★ 如果找不到，返回 null，不要让服务器崩溃
+            return null;
+        }
+
+        try
+        {
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = path;
+            // --- 核心修改：添加 -name 参数，注意名称中可能有空格，需要用引号包裹 ---
+            info.Arguments = $"-batchmode -nographics -port {port} -name \"{roomName}\"";
+            info.UseShellExecute = false;
+
+            // 开启日志重定向 (可选，方便调试子进程报错)
+            // info.RedirectStandardOutput = true;
+            // info.RedirectStandardError = true;
+
+            Process p = Process.Start(info);
+            UnityEngine.Debug.Log($"[LobbyServer] Subprocess started successfully PID: {p.Id}, Port: {port}");
+            return p;
+        }
+        catch (System.Exception e)
+        {
+            UnityEngine.Debug.LogError($"[LobbyServer] Exception starting process: {e.Message}");
+            return null;
+        }
+    }
+
+    // --- 回调方法：当子进程退出时触发 ---
+    // 注意：此方法运行在后台线程，不能直接操作 Unity API 或非线程安全集合
+    void OnGameProcessExited(int roomId, int port)
+    {
+        // 将任务扔回主线程执行
+        dispatcher.Enqueue(() =>
+        {
+            UnityEngine.Debug.Log($"[LobbyServer] Detected room process exit ID:{roomId} Port:{port}");
+
+            // 1. 释放端口
+            if (usedPorts.Contains(port))
+            {
+                usedPorts.Remove(port);
+            }
+
+            // 2. 从列表中移除房间
+            if (activeRooms.ContainsKey(roomId))
+            {
+                // 既然进程都退出了，就把原来的 process 对象 dispose 掉防止内存泄漏
+                try
+                {
+                    activeRooms[roomId].process?.Dispose();
+                }
+                catch { }
+
+                activeRooms.Remove(roomId);
+            }
+
+            UnityEngine.Debug.Log($"[LobbyServer] Port {port} reclaimed, active room count: {activeRooms.Count}");
+        });
+    }
+
+    // 在大厅关闭时清理所有子进程 (防止残留僵尸进程)
+    void OnApplicationQuit()
+    {
+        foreach (var room in activeRooms.Values)
+        {
+            try
+            {
+                if (room.process != null && !room.process.HasExited)
+                {
+                    room.process.Kill(); // 强制关闭所有子房间
+                }
+            }
+            catch { }
+        }
+    }
+}
+```
+
 ## MyNetworkManager.cs
 
 ```csharp
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Mirror;
+using System.Collections;
+using kcp2k;
 
 public class MyNetworkManager : NetworkManager
 {
+    // 定义静态变量，静态变量在场景切换时绝对不会丢失
+    // 新增一个静态变量临时存储解析出来的房间名
+    public static string InitialRoomName = "New Room";
+    private static string _targetAddr;
+    private static ushort _targetPort;
+    private static bool _shouldReconnect = false;
+    public static bool IsTransitioningToRoom = false; 
     [Header("Game Settings")]
     // [Scene] 属性会让字符串变成路径，导致对比失败。
     // 为了简单，我们直接用 Tooltip 提示，或者改用 Path.GetFileNameWithoutExtension 处理
-    [Tooltip("确保这里的名字和 Build Settings 里的场景名完全一致")] 
-    public string gameSceneName = "MyScene"; 
+    [Tooltip("Ensure the name here matches exactly with the scene name in Build Settings")]
+    public string gameSceneName = "MyScene";
 
     // 【新增】在这里定义 Prefab 槽位，方便在 Inspector 拖拽
     [Header("Role Prefabs")]
-    public GameObject witchMalePrefab ;
+    public GameObject witchMalePrefab;
     public GameObject witchFemalePrefab;
-    public GameObject hunterMalePrefab ;
+    public GameObject hunterMalePrefab;
     public GameObject hunterFemalePrefab;
     [Header("Role Prefabs (Special Variants)")]
     public GameObject witchMaleCloakPrefab;
@@ -1058,11 +1644,114 @@ public class MyNetworkManager : NetworkManager
     public GameObject witchFemaleBroomPrefab;   // 【新增】扫帚版女巫
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
-    public GameObject gameManagerPrefab; 
+    public GameObject gameManagerPrefab;
 
     // ---------------------------------------------------------
     // 服务器启动时生成 GameManager
     // ---------------------------------------------------------
+    public override void Awake()
+    {
+        base.Awake();
+        string[] args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "-port" && i + 1 < args.Length)
+            {
+                if (ushort.TryParse(args[i + 1], out ushort port))
+                {
+                    // 假设你用的是 KcpTransport (Mirror 默认)
+                    if (Transport.active is kcp2k.KcpTransport kcp)
+                    {
+                        kcp.Port = port;
+                        Debug.Log($"[ServerStartup] Transport Port set to: {port}");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[ServerStartup] Current Transport is not KcpTransport, cannot set port!");
+                    }
+                }
+            }
+            // --- 新增：解析房间名参数 ---
+            if (args[i] == "-name" && i + 1 < args.Length)
+            {
+                InitialRoomName = args[i + 1];
+                Debug.Log($"[ServerStartup] Room Name set to: {InitialRoomName}");
+            }
+        }
+    }
+    public void ClientChangeRoom(string ip, ushort port)
+    {
+        Debug.Log($"[Client] 准备跳转至房间: {ip}:{port}");
+        // 1. 开启跳转标志位
+        IsTransitioningToRoom = true;
+        // 1. 存入静态变量
+        _targetAddr = ip;
+        _targetPort = port;
+        _shouldReconnect = true;
+
+        // 2. 停止当前客户端
+        StopClient();
+
+        // 注意：StopClient 之后，代码可能就会因为对象销毁而停止执行了。
+        // 所以我们必须利用 OnStopClient 这个钩子来“接力”。
+    }
+    // 当成功连入新房间后，关闭标志位
+    public override void OnClientConnect()
+    {
+        base.OnClientConnect();
+        IsTransitioningToRoom = false;
+    }
+    // 这个钩子在客户端完全停止后（场景也切换完了）会被触发
+    public override void OnStopClient()
+    {
+        Debug.Log("[Client] OnStopClient triggered.");
+        base.OnStopClient();
+
+        if (_shouldReconnect)
+        {
+            _shouldReconnect = false;
+
+            // 【关键修改】
+            // 不要直接调用 StartCoroutine(...)，因为那是 this.StartCoroutine
+            // 改为调用 Dispatcher 上的 StartCoroutine
+            UnityMainThreadDispatcher.Instance().Enqueue(() =>
+            {
+                Debug.Log("[Client] Enqueued reconnection task to Dispatcher.");
+                // 注意这里：是让 Dispatcher 这个长生不老的物体去跑协程
+                UnityMainThreadDispatcher.Instance().StartCoroutine(FinalConnectRoutine());
+            });
+        }
+    }
+
+    private IEnumerator FinalConnectRoutine()
+    {
+        Debug.Log($"[Client] FinalConnectRoutine started on Dispatcher. Target: {_targetAddr}:{_targetPort}");
+
+        // 等待更长的时间，给子进程 .exe 预留启动和开启监听的时间
+        // 建议设为 4-5 秒
+        yield return new WaitForSeconds(5.0f); 
+
+        // 重新通过单例获取 NetworkManager（此时可能是新场景里的那个实例）
+        var nm = NetworkManager.singleton;
+        if (nm == null)
+        {
+            Debug.LogError("[Client] Fatal: NetworkManager.singleton is NULL after waiting!");
+            yield break;
+        }
+        nm.onlineScene = "LobbyRoom";
+        nm.networkAddress = _targetAddr;
+
+        // 获取 KcpTransport
+        var kcp = nm.GetComponent<KcpTransport>();
+        if (kcp != null)
+        {
+            kcp.Port = _targetPort;
+            Debug.Log($"[Client] Config applied. Address: {nm.networkAddress}, Port: {kcp.Port}");
+        }
+
+        Debug.Log("[Client] Starting Client to connect to Room...");
+        nm.StartClient();
+    }
     public override void OnStartServer()
     {
         base.OnStartServer();
@@ -1071,16 +1760,42 @@ public class MyNetworkManager : NetworkManager
         if (GameManager.Instance == null && gameManagerPrefab != null)
         {
             GameObject gm = Instantiate(gameManagerPrefab);
-            
+
             // 【关键】让它在场景切换时不销毁
             DontDestroyOnLoad(gm);
-            
+
             // 在网络上生成
             NetworkServer.Spawn(gm);
         }
+        if (Application.isBatchMode && IsRoomSubProcess())
+        {
+            // --- 分支 A：我是子进程 (游戏房间) ---
+            Debug.Log("[Server] Detected room subprocess, switching to game scene: LobbyRoom");
+            this.onlineScene = "LobbyRoom"; // 确保在线场景是 LobbyRoom
+            ServerChangeScene("LobbyRoom");
+            StartCoroutine(AutoShutdownIfEmpty());
+        }
+        else
+        {
+            // --- 分支 B：我是主进程 (大厅服务器) 或 编辑器Host ---
+            // 尝试获取挂在同一个物体上的 LobbyServer 组件
+            this.onlineScene = "ConnectRoom"; // 确保在线场景是 ConnectRoom
+            LobbyServer lobby = GetComponent<LobbyServer>();
+            if (lobby != null)
+            {
+                // 【核心修改】手动启动大厅逻辑
+                lobby.StartLobby();
+            }
+        }
     }
 
-
+    private bool IsRoomSubProcess()
+    {
+        string[] args = System.Environment.GetCommandLineArgs();
+        bool isSubProcess = System.Array.Exists(args, arg => arg == "-port");
+        UnityEngine.Debug.Log($"[Server] Checking if subprocess: {isSubProcess}");
+        return isSubProcess;
+    }
     // 在 MyNetworkManager 类中重写客户端场景切换完成的回调
     public override void OnClientSceneChanged()
     {
@@ -1089,7 +1804,6 @@ public class MyNetworkManager : NetworkManager
         // 获取当前场景名
         string activeSceneName = SceneManager.GetActiveScene().name;
         string configNameClean = System.IO.Path.GetFileNameWithoutExtension(gameSceneName);
-
         // 如果回到了大厅（假设你的在线场景是 Lobby 或 Menu 相关的）
         // 或者干脆判断：只要不是游戏场景，就解锁鼠标
         if (activeSceneName != configNameClean)
@@ -1098,6 +1812,15 @@ public class MyNetworkManager : NetworkManager
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
+    }
+    public override void OnClientDisconnect()
+    {
+        base.OnClientDisconnect();
+        // IsTransitioningToRoom = false;
+        // 当断开连接回到离线状态（StartMenu）时
+        // 把 onlineScene 还原为 ConnectRoom
+        // 这样下次你点“进入大厅”时，它才会去 ConnectRoom
+        this.onlineScene = "ConnectRoom";
     }
 
     // ---------------------------------------------------------
@@ -1127,8 +1850,11 @@ public class MyNetworkManager : NetworkManager
                 GameManager.Instance.OnGameSceneReady();
             }
         }
-        
-        
+        if (sceneName == "LobbyRoom")
+        {
+            Debug.Log("[Server] LobbyRoom scene loaded, ready to accept player connections.");
+        }
+
     }
 
     // ---------------------------------------------------------
@@ -1166,29 +1892,59 @@ public class MyNetworkManager : NetworkManager
     {
         // 1. 先执行基类逻辑（这会销毁玩家物体，从列表中移除连接）
         base.OnServerDisconnect(conn);
-
-        // 2. 获取当前场景名字
-        string currentScene = SceneManager.GetActiveScene().name;
-
-        // 3. 只有在“游戏场景”中才执行这个检查
-        // 防止在大厅里有人退出导致服务器重载大厅
-        if (currentScene == "MyScene") 
+        // 只有在纯服务器模式下检查
+        if (Application.isBatchMode && IsRoomSubProcess())
         {
-            // 4. 检查当前连接的玩家数量
-            // numPlayers is a built-in counter in NetworkManager
-            Debug.Log($"A player left. Remaining players: {numPlayers}");
+            Debug.Log($"[Server] Player disconnected. Remaining players: {numPlayers}");
 
+            // If player count reaches zero, shut down the server
             if (numPlayers == 0)
             {
-                Debug.Log("All players have left, server returning to lobby...");
-                // 重置游戏状态
-                GameManager.Instance.ResetGame();
-                // 切回大厅 (假设你的 offlineScene 或 onlineScene 是大厅)
-                // 注意：onlineScene 通常指大厅，offlineScene 是登录界面
-                // 如果你想切回 Lobby，确保这里填对了场景名
-                ServerChangeScene(onlineScene); 
+                Debug.Log("[Server] Room is empty, shutting down process...");
+                // Delay shutdown by 1 second to allow network messages to send
+                StartCoroutine(QuitGameRoutine());
             }
         }
+        // // 2. 获取当前场景名字
+        // string currentScene = SceneManager.GetActiveScene().name;
+
+        // // 3. 只有在“游戏场景”中才执行这个检查
+        // // 防止在大厅里有人退出导致服务器重载大厅
+        // if (currentScene == "MyScene") 
+        // {
+        //     // 4. 检查当前连接的玩家数量
+        //     // numPlayers is a built-in counter in NetworkManager
+        //     Debug.Log($"A player left. Remaining players: {numPlayers}");
+
+        //     if (numPlayers == 0)
+        //     {
+        //         Debug.Log("All players have left, server returning to lobby...");
+        //         // 重置游戏状态
+        //         GameManager.Instance.ResetGame();
+        //         // 切回大厅 (假设你的 offlineScene 或 onlineScene 是大厅)
+        //         // 注意：onlineScene 通常指大厅，offlineScene 是登录界面
+        //         // 如果你想切回 Lobby，确保这里填对了场景名
+        //         ServerChangeScene(onlineScene); 
+        //     }
+        // }
+    }
+    IEnumerator AutoShutdownIfEmpty()
+    {
+        if (!IsRoomSubProcess()) yield break; // Only execute in subprocess rooms
+        // Wait 60 seconds for the first player to join
+        yield return new WaitForSeconds(60f);
+
+        if (numPlayers == 0)
+        {
+            Debug.Log("[Server] No players joined within 60 seconds, shutting down automatically...");
+            Application.Quit();
+        }
+    }
+
+    IEnumerator QuitGameRoutine()
+    {
+        yield return new WaitForSeconds(1.0f);
+        Application.Quit(); // 杀死当前进程
     }
 }
 ```
@@ -1334,6 +2090,67 @@ public class NetworkManagerHUD_UGUI : MonoBehaviour
 
 ```
 
+## NetworkMessage.cs
+
+```csharp
+using Mirror;
+
+// 1. 请求创建房间
+public struct CreateRoomReq : NetworkMessage
+{
+    public string roomName;
+    public string password;  // 空字符串代表无密码
+    public int maxPlayers;
+}
+
+// 2. 回复创建结果
+public struct CreateRoomRes : NetworkMessage
+{
+    public bool success;
+    public string message;
+    public string serverIp;   // 新增：告诉客户端连哪个 IP
+    public ushort serverPort; // 新增：告诉客户端连哪个 端口
+}
+
+
+// 3. 房间数据 (用于之后刷新列表)
+[System.Serializable]
+public struct RoomInfo
+{
+    public int roomId;
+    public string roomName;
+    public bool hasPassword; // 只告诉客户端有没有密码，不发真实密码
+    public int currentPlayers;
+    public int maxPlayers;
+    public ushort port;
+}
+
+// 4. 回复房间列表
+public struct RoomListRes : NetworkMessage
+{
+    public RoomInfo[] rooms;
+}
+
+// 5. 请求刷新列表
+public struct GetRoomListReq : NetworkMessage { public string searchKeyword; }
+
+// 6. 请求：加入房间
+public struct JoinRoomReq : NetworkMessage
+{
+    public int roomId;
+    public string password;
+}
+
+// 7. 回复：加入结果 (包含跳转地址)
+public struct JoinRoomRes : NetworkMessage
+{
+    public bool success;
+    public string message;
+    public string serverIp;
+    public ushort serverPort;
+}
+```
+
 ## SingletonAutoMono.cs
 
 ```csharp
@@ -1380,6 +2197,55 @@ public abstract class SingletonAutoMono<T> : MonoBehaviour where T : SingletonAu
     }
 }
 
+```
+
+## UnityMainThreadDispatcher.cs
+
+```csharp
+using UnityEngine;
+using System.Collections.Generic;
+using System;
+
+public class UnityMainThreadDispatcher : MonoBehaviour
+{
+    private static readonly Queue<Action> _executionQueue = new Queue<Action>();
+
+    public void Update()
+    {
+        lock (_executionQueue)
+        {
+            while (_executionQueue.Count > 0)
+            {
+                _executionQueue.Dequeue().Invoke();
+            }
+        }
+    }
+
+    private static UnityMainThreadDispatcher _instance = null;
+
+    public static UnityMainThreadDispatcher Instance()
+    {
+        if (!_instance)
+        {
+            _instance = FindObjectOfType<UnityMainThreadDispatcher>();
+            if (!_instance)
+            {
+                var obj = new GameObject("MainThreadDispatcher");
+                _instance = obj.AddComponent<UnityMainThreadDispatcher>();
+                DontDestroyOnLoad(obj);
+            }
+        }
+        return _instance;
+    }
+
+    public void Enqueue(Action action)
+    {
+        lock (_executionQueue)
+        {
+            _executionQueue.Enqueue(action);
+        }
+    }
+}
 ```
 
 ## Objects\CreatureAIWander.cs
@@ -2993,7 +3859,11 @@ public abstract class GamePlayer : NetworkBehaviour
             // 攻击输入还是只有锁定时才允许
             if (Cursor.lockState == CursorLockMode.Locked && !isStunned) // 只有不被晕时才能攻击
             {
-                HandleInput();
+                // 【核心修改】只有在非结束状态下才允许执行 HandleInput (CmdAttack)
+                if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
+                {
+                    HandleInput();
+                }
             }
             // // 测试用输入
             // if (Input.GetKeyDown(KeyCode.K)) CmdTakeDamage(10f); // 测试用
@@ -3804,6 +4674,12 @@ public class HunterPlayer : GamePlayer
         base.Update();
         if (isLocalPlayer)
         {
+            // 【核心修改】如果游戏结束，不处理切枪、开火和处决逻辑
+            if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            {
+                lastAttackInputTime = -1f; // 清空可能的输入缓冲
+                return;
+            }
             // 同步动画速度：如果处于锁定中，强制发 0
             float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);
@@ -5182,14 +6058,16 @@ public class WitchPlayer : GamePlayer
 
     public override void Update()
     {
-        // 如果永久死亡，跳过所有交互逻辑，只保留基础移动（基类 HandleMovement）
-        if (isPermanentDead)
+        // 1. 如果永久死亡或游戏结束，不执行任何交互按键逻辑
+        if (isPermanentDead || (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver))
         {
-            // 只有非游戏结束状态才允许基础 Update 里的相机逻辑
-            if (GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
-            {
+            // 如果是本地玩家，确保清理掉可能存在的进度条 UI
+            if (isLocalPlayer && sceneScript != null) sceneScript.UpdateRevertUI(0, false);
+            
+            // 仍然允许执行基类的 Update 以保持重力/位置同步（如果没切换相机的话）
+            // 但根据你的 RpcNotifyVictorySequence，主相机会断开父子关系，所以这里直接返回即可
+            if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
                 base.Update();
-            }
             return;
         }
         // =========================================================
@@ -7260,7 +8138,9 @@ public class PlayerSkillManager : NetworkBehaviour
     private void Update()
     {
         if (!isLocalPlayer || activeSkillsArray == null) return;
-
+        // 2. 【核心修改】如果游戏已结束，直接返回，不处理任何技能按键
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            return;
         // 处理技能按键触发
         if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned)
         {
@@ -9327,6 +10207,286 @@ public class CameraData : ScriptableObject
 }
 ```
 
+## UI\ConnectUIManager.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using Mirror;
+using System.Collections;
+using kcp2k;
+
+public class ConnectUIManager : MonoBehaviour
+{
+    [Header("主界面")]
+    public Button joinButton; // 加入房间按钮 (默认禁用，选中房间后启用)
+    public Button openCreatePanelBtn;// 打开创建房间弹窗的按钮
+    public Button refreshBtn;// 刷新列表按钮
+    public Transform listContent;     // ScrollView 的 Content
+    public GameObject roomItemPrefab; // 你的房间条目 Prefab
+
+    [Header("创建房间弹窗")]
+    public Button confirmCreateBtn;// 确认创建按钮
+    public Button cancelCreateBtn;// 取消创建按钮
+    public GameObject createPanel;    // 弹窗 Panel (默认隐藏)
+    public TMP_InputField roomNameInput;
+    public Toggle passwordToggle;     // "是否有密码" 勾选框
+    public TMP_Text passwordToggleLabel; // 勾选框旁的文字
+    public TMP_InputField passwordInput;
+    public TMP_Text PasswordLabel;
+    [Header("加入房间弹窗")]
+    public TMP_InputField joinPwdInput;
+    public Button confirmJoinPwdBtn;
+    public GameObject inputPwdPanel;
+    // 记录当前选中的房间信息
+    private int selectedRoomId = -1;       // -1 表示未选中
+    private bool selectedRoomHasPwd = false;
+    // 网络是否已初始化标志
+    private bool isNetworkReady = false;
+
+    void Start()
+    {
+        if (Application.isBatchMode)
+        {
+            this.enabled = false;
+            return;
+        }
+
+        //  绑定主界面按钮
+        openCreatePanelBtn.onClick.AddListener(() => ControlCreatePanel(true));
+        refreshBtn.onClick.AddListener(SendGetListReq);
+        joinButton.onClick.AddListener(OnClickJoin);
+
+        // 绑定弹窗按钮
+        confirmCreateBtn.onClick.AddListener(SendCreateReq);
+        cancelCreateBtn.onClick.AddListener(() => ControlCreatePanel(false));
+        confirmJoinPwdBtn.onClick.AddListener(OnConfirmPwd);
+
+        // 绑定 Toggle 逻辑：勾选时才显示密码输入框
+        passwordToggle.onValueChanged.AddListener((isOn) =>
+        {
+            passwordInput.gameObject.SetActive(isOn);
+            PasswordLabel.gameObject.SetActive(isOn);
+            passwordToggleLabel.text = isOn ? "ON" : "OFF";
+            if (!isOn) passwordInput.text = ""; // 取消勾选清空密码
+        });
+
+        // 初始状态
+        ControlCreatePanel(false);
+        if (inputPwdPanel) inputPwdPanel.SetActive(false);
+        if (joinButton) joinButton.interactable = false; // 初始禁用加入按钮
+                                                         // 注册网络回调 
+        RegisterNetworkHandlers();
+    }
+    void RegisterNetworkHandlers()
+    {
+        // 移除旧的 handler 防止重复注册报错
+        if (NetworkClient.active)
+        {
+            NetworkClient.UnregisterHandler<CreateRoomRes>();
+            NetworkClient.UnregisterHandler<RoomListRes>();
+            NetworkClient.UnregisterHandler<JoinRoomRes>();
+
+            NetworkClient.RegisterHandler<CreateRoomRes>(OnCreateRes);
+            NetworkClient.RegisterHandler<RoomListRes>(OnRoomListRes);
+            NetworkClient.RegisterHandler<JoinRoomRes>(OnJoinRes);
+
+            isNetworkReady = true;
+            Debug.Log("[Client] 网络回调已注册");
+            SendGetListReq();
+        }
+    }
+    void Update()
+    {
+        // 简单的状态检测：如果连接断开又重连了，需要重新注册
+        if (NetworkClient.isConnected && !isNetworkReady)
+        {
+            RegisterNetworkHandlers();
+            // 连上大厅后自动刷新一次列表
+            SendGetListReq();
+        }
+        else if (!NetworkClient.isConnected)
+        {
+            isNetworkReady = false;
+        }
+    }
+    // --- UI 逻辑 ---
+    void ControlCreatePanel(bool isOpen)
+    {
+        createPanel.SetActive(isOpen);
+        if (isOpen)
+        {
+            // 重置输入框
+            roomNameInput.text = "";
+            passwordInput.text = "";
+            passwordToggle.isOn = false;
+            passwordToggleLabel.text = "OFF";
+            passwordInput.gameObject.SetActive(false);
+            PasswordLabel.gameObject.SetActive(false);
+        }
+    }
+
+    // --- 网络请求：发送创建 ---
+    void SendCreateReq()
+    {
+        if (!NetworkClient.isConnected) return;
+
+        // --- 新增：空检查逻辑 ---
+        string rName = roomNameInput.text.Trim();
+        if (string.IsNullOrWhiteSpace(rName))
+        {
+            // 获取占位符文本组件
+            var placeholder = roomNameInput.placeholder.GetComponent<TMP_Text>();
+            placeholder.text = "<color=red>Name cannot be empty!</color>";
+            roomNameInput.text = ""; // 清空空格
+            // 甚至可以加个小晃动效果（可选）
+            return;
+        }
+        // ------------------------
+
+        string pwd = (passwordToggle && passwordToggle.isOn) ? passwordInput.text : "";
+        
+        Debug.Log($"发送创建请求: 房间名='{rName}', 有密码={(!string.IsNullOrEmpty(pwd))}");
+        NetworkClient.Send(new CreateRoomReq
+        {
+            roomName = rName,
+            password = pwd,
+            maxPlayers = 10
+        });
+
+        if (confirmCreateBtn) confirmCreateBtn.interactable = false;
+    }
+
+    // --- 网络回调：创建结果 ---
+    void OnCreateRes(CreateRoomRes msg)
+    {
+        if (confirmCreateBtn) confirmCreateBtn.interactable = true;
+
+        if (msg.success)
+        {
+            Debug.Log("创建成功！正在刷新列表...");
+            ControlCreatePanel(false); // 关闭弹窗
+            MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
+            if (netManager != null)
+            {
+                netManager.ClientChangeRoom(msg.serverIp, msg.serverPort);
+            }
+        }
+        else
+        {
+            Debug.LogError($"创建失败: {msg.message}");
+        }
+    }
+
+    // --- 网络请求：获取列表 ---
+    void SendGetListReq()
+    {
+        if (NetworkClient.isConnected)
+        {
+            NetworkClient.Send(new GetRoomListReq());
+        }
+    }
+
+    // --- 网络回调：刷新列表 UI ---
+    void OnRoomListRes(RoomListRes msg)
+    {
+        // 1. 清空 Content 下的所有旧条目
+        foreach (Transform child in listContent) Destroy(child.gameObject);
+
+        // 2. 生成新条目
+        foreach (var info in msg.rooms)
+        {
+            GameObject item = Instantiate(roomItemPrefab, listContent);
+            Debug.Log($"[RoomList] RoomId={info.roomId}, Name='{info.roomName}', HasPwd={info.hasPassword}, Players={info.currentPlayers}/{info.maxPlayers}");
+            // 获取并初始化 RoomItemUI 脚本
+            var script = item.GetComponent<RoomItemUI>();
+            if (script != null)
+            {
+                script.Setup(info, this);
+            }
+        }
+    }
+
+    // --- 供 RoomItemUI 调用：处理选中逻辑 ---
+    public void SelectRoom(int id, bool hasPwd)
+    {
+        // 记录数据
+        selectedRoomId = id;
+        selectedRoomHasPwd = hasPwd;
+
+        // 激活 Join 按钮
+        if (joinButton) joinButton.interactable = true;
+
+        Debug.Log($"已选中房间: {id}, 有密码: {hasPwd}");
+    }
+
+    // --- UI 逻辑: 点击 Join 按钮 ---
+    void OnClickJoin()
+    {
+        if (selectedRoomId == -1) return;
+
+        if (selectedRoomHasPwd)
+        {
+            // 有密码 -> 弹出密码输入框
+            if (inputPwdPanel) inputPwdPanel.SetActive(true);
+            if (joinPwdInput) joinPwdInput.text = "";
+        }
+        else
+        {
+            // 无密码 -> 直接发送加入请求
+            SendJoinRequest("");
+        }
+    }
+
+    // --- 发送加入请求 (提取公用方法) ---
+    void SendJoinRequest(string password)
+    {
+        if (!NetworkClient.isConnected) return;
+
+        NetworkClient.Send(new JoinRoomReq
+        {
+            roomId = selectedRoomId,
+            password = password
+        });
+
+        // 发送后关闭弹窗
+        if (inputPwdPanel) inputPwdPanel.SetActive(false);
+    }
+
+    // --- UI 逻辑: 密码弹窗确认 ---
+    void OnConfirmPwd()
+    {
+        if (joinPwdInput) SendJoinRequest(joinPwdInput.text);
+    }
+
+    // --- 网络回调：加入结果 (处理跳转) ---
+    void OnJoinRes(JoinRoomRes msg)
+    {
+        if (msg.success)
+        {
+            Debug.Log($"加入请求成功，委托 NetworkManager 进行跳转...");
+
+            // 找到我们的自定义 NetworkManager
+            MyNetworkManager myNetManager = NetworkManager.singleton as MyNetworkManager;
+            if (myNetManager != null)
+            {
+                myNetManager.ClientChangeRoom(msg.serverIp, msg.serverPort);
+            }
+            else
+            {
+                Debug.LogError("找不到 MyNetworkManager 实例！");
+            }
+        }
+        else
+        {
+            Debug.LogError($"加入失败: {msg.message}");
+        }
+    }
+
+}
+```
+
 ## UI\edit_video.py
 
 ```python
@@ -9641,6 +10801,66 @@ public class GameChatUI : MonoBehaviour
     {
         yield return new WaitForEndOfFrame();
         if (scrollRect != null) scrollRect.verticalNormalizedPosition = 0f;
+    }
+}
+```
+
+## UI\LoadingTipsUI.cs
+
+```csharp
+using UnityEngine;
+using TMPro;
+
+public class LoadingTipsUI : MonoBehaviour
+{
+    public TextMeshProUGUI tipText;
+    private string[] tips = {
+        "Witches can possess ancient trees to move them!",
+        "Hunters use dogs to track witch footprints.",
+        "Don't forget to press F to use your items!",
+        "Magic brooms allow you to double jump!",
+        "Working together as a witch team makes control easier."
+    };
+
+    private int lastIndex = -1; // 记录上一次显示的索引
+
+    void Start()
+    {
+        ShowRandomTip();
+    }
+
+    void Update()
+    {
+        // 检测鼠标左键点击 (0 是左键)
+        // 这也兼容手机端的单指点击
+        if (Input.GetMouseButtonDown(0))
+        {
+            ShowRandomTip();
+        }
+    }
+
+    // 将逻辑封装成方法，方便多处调用
+    public void ShowRandomTip()
+    {
+        if (tipText == null || tips.Length == 0) return;
+
+        int newIndex = lastIndex;
+
+        // 如果贴士数量大于1，则通过循环确保抽到跟上次不一样的贴士
+        if (tips.Length > 1)
+        {
+            while (newIndex == lastIndex)
+            {
+                newIndex = Random.Range(0, tips.Length);
+            }
+        }
+        else
+        {
+            newIndex = 0;
+        }
+
+        lastIndex = newIndex;
+        tipText.text = tips[newIndex];
     }
 }
 ```
@@ -9966,6 +11186,11 @@ public class LobbyScript : NetworkBehaviour
     public TextMeshProUGUI startButtonText; // 拖入你的 StartText 对象
     public Color normalTextColor = new Color(0.788f, 0.666f, 0.541f); // 你截图中的 C9AA8A
     public Color countdownTextColor = new Color(1f, 0.73f, 0.42f);     // 琥珀金，更具魔幻感
+    [Header("Room Info")]
+    [SyncVar(hook = nameof(OnRoomNameChanged))]
+    public string syncedRoomName = "";
+
+    [SerializeField] private TextMeshProUGUI roomTitleText; // 在 Inspector 中拖入你的 RoomTitle UI
     private void Start()
     {
         // 【新增】进入大厅时，强制恢复鼠标显示和解锁
@@ -9980,6 +11205,14 @@ public class LobbyScript : NetworkBehaviour
         {
             AddPlayerRow(p);
         }
+        // 如果是服务器，从 NetworkManager 拿到刚才解析的名字
+        if (isServer)
+        {
+            syncedRoomName = MyNetworkManager.InitialRoomName;
+        }
+
+        // 初始显示一次
+        if (roomTitleText != null) roomTitleText.text = syncedRoomName;
     }
 
     private void Update()
@@ -9994,7 +11227,14 @@ public class LobbyScript : NetworkBehaviour
         UpdateLobbyUI();
     }
 
-
+    // Hook 函数：当名字同步到客户端时更新 UI
+    void OnRoomNameChanged(string oldName, string newName)
+    {
+        if (roomTitleText != null)
+        {
+            roomTitleText.text = newName;
+        }
+    }
 
     // 当有玩家进入时被调用
     public void AddPlayerRow(PlayerScript player)
@@ -10129,10 +11369,15 @@ public class LobbyScript : NetworkBehaviour
     {
         if (playerNumberText != null)
         {
-            playerNumberText.text = $"Ready: {readyCount} / {playerCount}";
+            playerNumberText.text = $"{readyCount} / {playerCount}";
         }
     }
-
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        // 确保服务器启动大厅对象时，立即同步名称
+        syncedRoomName = MyNetworkManager.InitialRoomName;
+    }
     // 更新本地按钮文字
     public void UpdateMyReadyStatus(bool isReady)
     {
@@ -11270,10 +12515,10 @@ public class PlayMenu : MonoBehaviour
 from PIL import Image
 from rembg import remove
 
-input_path = (
-    r"D:\Program Files\Downloads\grok-image-7d4303b7-815c-48ff-bba3-b4b7bcb55082 (1).png"
+input_path = r"D:\Program Files\Downloads\grok-image-37c8da96-aaf1-4e58-944d-f7452513a14d.png"
+output_path = (
+    "Assets/Image/UI/lobbyroom_title_output.png"
 )
-output_path = "Assets/Image/UI/Lobbyroom/grok-image-a69947ab-961a-4a52-b123c3a-a52d5d9ea77_outp123u123t.png"
 
 # 打开图片
 input_image = Image.open(input_path)
@@ -11336,6 +12581,46 @@ public class RewardUI : MonoBehaviour
         // 恢复鼠标锁定
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+    }
+}
+```
+
+## UI\RoomItemUI.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+public class RoomItemUI : MonoBehaviour
+{
+    public Button myButton;
+    public TextMeshProUGUI roomNameText;
+    public GameObject lockIcon;
+    public TextMeshProUGUI roomIdText;
+
+    private int myRoomId;
+    private bool hasPassword;
+    private ConnectUIManager manager;
+
+    public void Setup(RoomInfo info, ConnectUIManager uiManager)
+    {
+        myRoomId = info.roomId;
+        hasPassword = info.hasPassword;
+        manager = uiManager;
+
+        // 设置 UI 显示
+        if (roomNameText) roomNameText.text = info.roomName;
+        if (roomIdText) roomIdText.text = $"{info.roomId}";
+        if (lockIcon) lockIcon.SetActive(info.hasPassword);
+
+        myButton.onClick.RemoveAllListeners();
+        myButton.onClick.AddListener(OnItemClicked);
+    }
+
+    void OnItemClicked()
+    {
+        manager.SelectRoom(myRoomId, hasPassword);
     }
 }
 ```
@@ -11805,6 +13090,7 @@ using UnityEngine.UI;
 public class StartMenu : MonoBehaviour
 {
     NetworkManager manager;
+    public GameObject networkManagerPrefab;
     public NetworkManagerHUD_UGUI networkHUD;  // 如果你還在使用這個 HUD
     [Header("Player Name Input")]
     public TMP_InputField inputFieldPlayerName;   // ← 拖進來
@@ -11814,9 +13100,25 @@ public class StartMenu : MonoBehaviour
     public TMP_Dropdown networkDropdown; // ← 把你的 Dropdown 拖到这里
     // 硬编码的服务器 IP
     private const string REMOTE_SERVER_IP = "101.42.183.176";
+    [Header("Transition UI")]
+    public GameObject loadingPanel; // 在 Inspector 中拖入你新增的那个 Panel
     private void Start()
     {
-        manager = FindObjectOfType<NetworkManager>();
+        if (manager == null)
+        {
+            // 嘗試在場景中找到已存在的 NetworkManager
+            manager = FindObjectOfType<NetworkManager>();
+            if (manager == null)
+            {
+                // 如果找不到，則實例化一個新的
+                GameObject obj = Instantiate(networkManagerPrefab);
+                manager = obj.GetComponent<NetworkManager>();
+                if (manager == null)
+                {
+                    Debug.LogError("NetworkManager component not found on the instantiated prefab!");
+                }
+            }
+        }
         // 如果之前有存過名字，可以預填
         if (PlayerSettings.Instance != null && !string.IsNullOrEmpty(PlayerSettings.Instance.PlayerName))
         {
@@ -11830,6 +13132,24 @@ public class StartMenu : MonoBehaviour
         {
             inputFieldPlayerName.onValueChanged.AddListener(OnPlayerNameChanged);
         }
+        // 检测是否是从 ConnectRoom 跳转回来的“连接中”状态
+        if (MyNetworkManager.IsTransitioningToRoom)
+        {
+            ShowLoadingPanel();
+        }
+        else
+        {
+            if(loadingPanel != null) loadingPanel.SetActive(false);
+        }
+    }
+    private void ShowLoadingPanel()
+    {
+        if (loadingPanel != null)
+        {
+            loadingPanel.SetActive(true);
+            // 如果你的 Panel 里有“取消”按钮，可以绑定 StopClient 逻辑
+            Debug.Log("[UI] 检测到房间跳转中，激活加载面板");
+        }
     }
     private void OnPlayerNameChanged(string newText)
     {
@@ -11840,7 +13160,7 @@ public class StartMenu : MonoBehaviour
     {
         if (joinButton == null) return;
 
-        bool hasName = inputFieldPlayerName != null 
+        bool hasName = inputFieldPlayerName != null
             && !string.IsNullOrWhiteSpace(inputFieldPlayerName.text.Trim());
 
         joinButton.interactable = hasName;
@@ -11880,13 +13200,13 @@ public class StartMenu : MonoBehaviour
         // }
         // --- 2. 设置 IP 地址 ---
         // 0: Localhost, 1: Server (根据你在 Inspector 里 Dropdown 选项的顺序)
-        if (networkDropdown.value == 0) 
+        if (networkDropdown.value == 0)
         {
             // 选项 0: Localhost
-            manager.networkAddress = "localhost"; 
+            manager.networkAddress = "localhost";
             Debug.Log($"[Connect] Mode: Localhost ({manager.networkAddress})");
         }
-        else 
+        else
         {
             // 选项 1: Server
             manager.networkAddress = REMOTE_SERVER_IP;
@@ -11902,11 +13222,11 @@ public class StartMenu : MonoBehaviour
     {
         Debug.Log("玩家選擇退出遊戲");
 
-    #if UNITY_EDITOR
+#if UNITY_EDITOR
         UnityEditor.EditorApplication.ExitPlaymode();  // 在 Editor 裡停止 Play 模式
-    #else
+#else
         Application.Quit();  // 建置後真正退出
-    #endif
+#endif
     }
 }
 ```
@@ -12352,6 +13672,139 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
 }
 ```
 
+## UI\UIButtonRotate.cs
+
+```csharp
+using System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UIButtonRotate : MonoBehaviour
+{
+    [Header("旋转设置")]
+    public float duration = 0.5f; // 旋转一圈需要的时间
+    private bool isRotating = false;
+
+    // 这个方法绑定到 Button 的 OnClick 事件
+    public void StartRotate()
+    {
+        if (!isRotating)
+        {
+            StartCoroutine(RotateRoutine());
+        }
+    }
+
+    private IEnumerator RotateRoutine()
+    {
+        isRotating = true;
+        float elapsed = 0f;
+        
+        // 记录初始旋转
+        Quaternion startRotation = transform.localRotation;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float percent = elapsed / duration;
+            
+            // 顺时针旋转一圈 (从0度到-360度)
+            // 如果想逆时针，把 -360 改成 360
+            float zRotation = Mathf.Lerp(0, -360f, percent);
+            transform.localRotation = Quaternion.Euler(0, 0, zRotation);
+            
+            yield return null;
+        }
+
+        // 确保最后旋转角度精准回到0
+        transform.localRotation = startRotation;
+        isRotating = false;
+    }
+}
+```
+
+## UI\UIImageSpinner.cs
+
+```csharp
+using System.Collections;
+using UnityEngine;
+
+public class UIImageSpinner : MonoBehaviour
+{
+    [Header("旋转设置")]
+    public float duration = 1.0f;     // 转一圈所需时间
+    public bool autoStart = true;     // 是否脚本启动时就开始转
+    public bool isLooping = true;     // 是否循环不停
+    public bool clockwise = true;     // 是否顺时针
+
+    private RectTransform rectTransform;
+    private Coroutine spinCoroutine;
+
+    private void Awake()
+    {
+        // UI物体必须使用 RectTransform
+        rectTransform = GetComponent<RectTransform>();
+    }
+
+    private void OnEnable()
+    {
+        if (autoStart)
+        {
+            StartSpinning();
+        }
+    }
+
+    // --- 外部调用接口 ---
+
+    // 开始旋转
+    public void StartSpinning()
+    {
+        if (spinCoroutine == null)
+        {
+            spinCoroutine = StartCoroutine(SpinRoutine());
+        }
+    }
+
+    // 停止旋转
+    public void StopSpinning()
+    {
+        if (spinCoroutine != null)
+        {
+            StopCoroutine(spinCoroutine);
+            spinCoroutine = null;
+        }
+    }
+
+    // --- 内部逻辑 ---
+
+    private IEnumerator SpinRoutine()
+    {
+        float direction = clockwise ? -360f : 360f;
+        
+        while (true)
+        {
+            float elapsed = 0f;
+            // 每次循环前重置角度，防止数值无限叠加导致精度问题
+            rectTransform.localRotation = Quaternion.identity;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float percent = elapsed / duration;
+                
+                // 计算当前旋转
+                rectTransform.localRotation = Quaternion.Euler(0, 0, percent * direction);
+                yield return null;
+            }
+
+            if (!isLooping) break; // 如果不循环，转完一圈跳出
+        }
+
+        rectTransform.localRotation = Quaternion.Euler(0, 0, 0);
+        spinCoroutine = null;
+    }
+}
+```
+
 ## UI\VictoryAnimData.cs
 
 ```csharp
@@ -12390,6 +13843,34 @@ public class VictoryAnimData : ScriptableObject
     public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
     {
         return GetConfigForCount(count).individualAnimators;
+    }
+}
+```
+
+## UI\VictoryNameFollow.cs
+
+```csharp
+using UnityEngine;
+using TMPro;
+
+public class VictoryNameFollow : MonoBehaviour
+{
+    public Transform targetBone; // 要跟随的骨骼（如 Head）
+    public Vector3 offset = new Vector3(0, 0.1f, 0); // 头顶偏移量
+
+    void LateUpdate()
+    {
+        if (targetBone != null)
+        {
+            // 每一帧同步骨骼位置
+            transform.position = targetBone.position + offset;
+
+            // 保持文字始终面向相机
+            if (Camera.main != null)
+            {
+                transform.rotation = Quaternion.LookRotation(transform.position - Camera.main.transform.position);
+            }
+        }
     }
 }
 ```

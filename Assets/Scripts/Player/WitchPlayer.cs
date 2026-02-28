@@ -175,14 +175,16 @@ public class WitchPlayer : GamePlayer
 
     public override void Update()
     {
-        // 如果永久死亡，跳过所有交互逻辑，只保留基础移动（基类 HandleMovement）
-        if (isPermanentDead)
+        // 1. 如果永久死亡或游戏结束，不执行任何交互按键逻辑
+        if (isPermanentDead || (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver))
         {
-            // 只有非游戏结束状态才允许基础 Update 里的相机逻辑
-            if (GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
-            {
+            // 如果是本地玩家，确保清理掉可能存在的进度条 UI
+            if (isLocalPlayer && sceneScript != null) sceneScript.UpdateRevertUI(0, false);
+            
+            // 仍然允许执行基类的 Update 以保持重力/位置同步（如果没切换相机的话）
+            // 但根据你的 RpcNotifyVictorySequence，主相机会断开父子关系，所以这里直接返回即可
+            if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
                 base.Update();
-            }
             return;
         }
         // =========================================================

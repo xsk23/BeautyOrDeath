@@ -340,6 +340,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &551657836 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 3955198362295101037, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
+  m_PrefabInstance: {fileID: 3963033473966133977}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &597685777
 GameObject:
   m_ObjectHideFlags: 0
@@ -395,6 +406,8 @@ MonoBehaviour:
   startButtonText: {fileID: 3963033473966133981}
   normalTextColor: {r: 0.788, g: 0.666, b: 0.541, a: 1}
   countdownTextColor: {r: 1, g: 0.73, b: 0.42, a: 1}
+  syncedRoomName: 
+  roomTitleText: {fileID: 551657836}
 --- !u!114 &597685779
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -897,11 +910,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3713031240428900023, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 0.00003528595
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3713031240428900023, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: -0.00042898578
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4017732648578287377, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchorMax.x
@@ -933,11 +946,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6010596174791527500, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -0.0008087158
+      value: -0.0001373291
       objectReference: {fileID: 0}
     - target: {fileID: 6010596174791527500, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: -0.0008326457
+      value: 0.000061035156
       objectReference: {fileID: 0}
     - target: {fileID: 7109198611913365998, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_Pivot.x

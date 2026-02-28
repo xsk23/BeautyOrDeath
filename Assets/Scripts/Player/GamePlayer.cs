@@ -292,7 +292,11 @@ public abstract class GamePlayer : NetworkBehaviour
             // 攻击输入还是只有锁定时才允许
             if (Cursor.lockState == CursorLockMode.Locked && !isStunned) // 只有不被晕时才能攻击
             {
-                HandleInput();
+                // 【核心修改】只有在非结束状态下才允许执行 HandleInput (CmdAttack)
+                if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
+                {
+                    HandleInput();
+                }
             }
             // // 测试用输入
             // if (Input.GetKeyDown(KeyCode.K)) CmdTakeDamage(10f); // 测试用

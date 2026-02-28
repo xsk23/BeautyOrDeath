@@ -139,6 +139,12 @@ public class HunterPlayer : GamePlayer
         base.Update();
         if (isLocalPlayer)
         {
+            // 【核心修改】如果游戏结束，不处理切枪、开火和处决逻辑
+            if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+            {
+                lastAttackInputTime = -1f; // 清空可能的输入缓冲
+                return;
+            }
             // 同步动画速度：如果处于锁定中，强制发 0
             float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);

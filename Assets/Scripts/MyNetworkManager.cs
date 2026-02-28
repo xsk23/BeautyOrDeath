@@ -7,9 +7,12 @@ using kcp2k;
 public class MyNetworkManager : NetworkManager
 {
     // 定义静态变量，静态变量在场景切换时绝对不会丢失
+    // 新增一个静态变量临时存储解析出来的房间名
+    public static string InitialRoomName = "New Room";
     private static string _targetAddr;
     private static ushort _targetPort;
     private static bool _shouldReconnect = false;
+    public static bool IsTransitioningToRoom = false; 
     [Header("Game Settings")]
     // [Scene] 属性会让字符串变成路径，导致对比失败。
     // 为了简单，我们直接用 Tooltip 提示，或者改用 Path.GetFileNameWithoutExtension 处理
@@ -58,12 +61,19 @@ public class MyNetworkManager : NetworkManager
                     }
                 }
             }
+            // --- 新增：解析房间名参数 ---
+            if (args[i] == "-name" && i + 1 < args.Length)
+            {
+                InitialRoomName = args[i + 1];
+                Debug.Log($"[ServerStartup] Room Name set to: {InitialRoomName}");
+            }
         }
     }
     public void ClientChangeRoom(string ip, ushort port)
     {
         Debug.Log($"[Client] 准备跳转至房间: {ip}:{port}");
-
+        // 1. 开启跳转标志位
+        IsTransitioningToRoom = true;
         // 1. 存入静态变量
         _targetAddr = ip;
         _targetPort = port;
@@ -74,6 +84,12 @@ public class MyNetworkManager : NetworkManager
 
         // 注意：StopClient 之后，代码可能就会因为对象销毁而停止执行了。
         // 所以我们必须利用 OnStopClient 这个钩子来“接力”。
+    }
+    // 当成功连入新房间后，关闭标志位
+    public override void OnClientConnect()
+    {
+        base.OnClientConnect();
+        IsTransitioningToRoom = false;
     }
     // 这个钩子在客户端完全停止后（场景也切换完了）会被触发
     public override void OnStopClient()
@@ -101,8 +117,9 @@ public class MyNetworkManager : NetworkManager
     {
         Debug.Log($"[Client] FinalConnectRoutine started on Dispatcher. Target: {_targetAddr}:{_targetPort}");
 
-        // 等待 1.5 秒，给足够的时间让 Mirror 彻底回到离线状态
-        yield return new WaitForSeconds(1.5f);
+        // 等待更长的时间，给子进程 .exe 预留启动和开启监听的时间
+        // 建议设为 4-5 秒
+        yield return new WaitForSeconds(5.0f); 
 
         // 重新通过单例获取 NetworkManager（此时可能是新场景里的那个实例）
         var nm = NetworkManager.singleton;
@@ -189,7 +206,7 @@ public class MyNetworkManager : NetworkManager
     public override void OnClientDisconnect()
     {
         base.OnClientDisconnect();
-
+        // IsTransitioningToRoom = false;
         // 当断开连接回到离线状态（StartMenu）时
         // 把 onlineScene 还原为 ConnectRoom
         // 这样下次你点“进入大厅”时，它才会去 ConnectRoom

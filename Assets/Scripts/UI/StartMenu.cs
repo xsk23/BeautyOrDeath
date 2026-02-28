@@ -3,6 +3,7 @@ using UnityEngine.SceneManagement;
 using Mirror;
 using TMPro;
 using UnityEngine.UI;
+using System.Collections;
 
 public class StartMenu : MonoBehaviour
 {
@@ -17,6 +18,9 @@ public class StartMenu : MonoBehaviour
     public TMP_Dropdown networkDropdown; // ← 把你的 Dropdown 拖到这里
     // 硬编码的服务器 IP
     private const string REMOTE_SERVER_IP = "101.42.183.176";
+    [Header("Transition UI")]
+    public GameObject loadingPanel; // 在 Inspector 中拖入你新增的那个 Panel
+    public TextMeshProUGUI countdownText; // 1. 拖入你的 CountDownText (TMP)
     private void Start()
     {
         if (manager == null)
@@ -46,6 +50,47 @@ public class StartMenu : MonoBehaviour
         if (inputFieldPlayerName != null)
         {
             inputFieldPlayerName.onValueChanged.AddListener(OnPlayerNameChanged);
+        }
+        // 检测是否是从 ConnectRoom 跳转回来的“连接中”状态
+        if (MyNetworkManager.IsTransitioningToRoom)
+        {
+            ShowLoadingPanel();
+        }
+        else
+        {
+            if(loadingPanel != null) loadingPanel.SetActive(false);
+        }
+    }
+    private void ShowLoadingPanel()
+    {
+        if (loadingPanel != null)
+        {
+            loadingPanel.SetActive(true);
+            StartCoroutine(UIRunCountdownRoutine(5f)); 
+            // 如果你的 Panel 里有“取消”按钮，可以绑定 StopClient 逻辑
+            Debug.Log("[UI] 检测到房间跳转中，激活加载面板");
+        }
+    }
+    // 3. 实现倒计时协程
+    private IEnumerator UIRunCountdownRoutine(float duration)
+    {
+        float timer = duration;
+
+        while (timer > 0)
+        {
+            if (countdownText != null)
+            {
+                // 使用 CeilToInt 向上取整，这样会显示 5, 4, 3, 2, 1
+                countdownText.text = Mathf.CeilToInt(timer).ToString();
+            }
+
+            timer -= Time.deltaTime;
+            yield return null; // 每帧更新
+        }
+
+        if (countdownText != null)
+        {
+            countdownText.text = "0"; // 结束时显示 0 或 "Connecting..."
         }
     }
     private void OnPlayerNameChanged(string newText)

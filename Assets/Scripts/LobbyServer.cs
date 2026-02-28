@@ -81,7 +81,7 @@ public class LobbyServer : MonoBehaviour
         }
 
         // B. 启动子进程
-        Process p = SpawnGameProcess(port);
+        Process p = SpawnGameProcess(port, msg.roomName); // 传入房间名参数
 
         if (p != null)
         {
@@ -213,7 +213,7 @@ public class LobbyServer : MonoBehaviour
         return id;
     }
     // --- 辅助方法：启动子进程 ---
-    Process SpawnGameProcess(int port)
+    Process SpawnGameProcess(int port, string roomName)// 增加 roomName 参数
     {
         string fileName = "MyGameServer.exe"; // 请确保这是你 Build 出来的 exe 名字
 
@@ -244,7 +244,8 @@ public class LobbyServer : MonoBehaviour
         {
             ProcessStartInfo info = new ProcessStartInfo();
             info.FileName = path;
-            info.Arguments = $"-batchmode -nographics -port {port}";
+            // --- 核心修改：添加 -name 参数，注意名称中可能有空格，需要用引号包裹 ---
+            info.Arguments = $"-batchmode -nographics -port {port} -name \"{roomName}\"";
             info.UseShellExecute = false;
 
             // 开启日志重定向 (可选，方便调试子进程报错)

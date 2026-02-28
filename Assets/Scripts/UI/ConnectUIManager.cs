@@ -120,8 +120,21 @@ public class ConnectUIManager : MonoBehaviour
     {
         if (!NetworkClient.isConnected) return;
 
+        // --- 新增：空检查逻辑 ---
+        string rName = roomNameInput.text.Trim();
+        if (string.IsNullOrWhiteSpace(rName))
+        {
+            // 获取占位符文本组件
+            var placeholder = roomNameInput.placeholder.GetComponent<TMP_Text>();
+            placeholder.text = "<color=red>Name cannot be empty!</color>";
+            roomNameInput.text = ""; // 清空空格
+            // 甚至可以加个小晃动效果（可选）
+            return;
+        }
+        // ------------------------
+
         string pwd = (passwordToggle && passwordToggle.isOn) ? passwordInput.text : "";
-        string rName = (roomNameInput) ? roomNameInput.text : "New Room";
+        
         Debug.Log($"发送创建请求: 房间名='{rName}', 有密码={(!string.IsNullOrEmpty(pwd))}");
         NetworkClient.Send(new CreateRoomReq
         {
@@ -130,7 +143,6 @@ public class ConnectUIManager : MonoBehaviour
             maxPlayers = 10
         });
 
-        // 禁用按钮防止重复点击
         if (confirmCreateBtn) confirmCreateBtn.interactable = false;
     }
 
