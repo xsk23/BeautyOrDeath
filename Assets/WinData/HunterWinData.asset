@@ -14,28 +14,51 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cameraSettings: {fileID: 11400000, guid: e8e009618d02cd14e8a0e1f93a438ca5, type: 2}
   groupDances:
-  - danceName: "\u9E21\u4F60\u592A\u7F8E"
+  - danceName: "\u9E21\u4F60\u592A\u7F8E1"
     playerCount: 1
     individualAnimators:
     - {fileID: 9100000, guid: 5c929e7a1f3f4e946815e4530bce1eed, type: 2}
     victoryMusic: {fileID: 8300000, guid: 601b2620fd4334347b0eef01e9af6b57, type: 3}
-  - danceName: "\u602A\u5947\u7269\u8BED"
+  - danceName: leisai1
+    playerCount: 1
+    individualAnimators:
+    - {fileID: 9100000, guid: 7bd87c768fc290540b3de9c0d7cb7554, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 49a3f1b19549127409e1c66bd9abaa0d, type: 3}
+  - danceName: jojo1
+    playerCount: 1
+    individualAnimators:
+    - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 18e717db495acd147b9097045e2864cd, type: 3}
+  - danceName: jojo2
+    playerCount: 2
+    individualAnimators:
+    - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
+    - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 18e717db495acd147b9097045e2864cd, type: 3}
+  - danceName: "\u602A\u5947\u7269\u8BED2"
     playerCount: 2
     individualAnimators:
     - {fileID: 9100000, guid: d7dd2cb567fbe414299cfb9b910f1a80, type: 2}
     - {fileID: 9100000, guid: 13dfdaaf20b095648a386f5a99aef24c, type: 2}
     victoryMusic: {fileID: 8300000, guid: df20cab6efbe59148b0fce61ab7d56b9, type: 3}
-  - danceName: "\u6781\u4E50\u51C0\u571F"
+  - danceName: "\u6781\u4E50\u51C0\u571F3"
     playerCount: 3
     individualAnimators:
     - {fileID: 9100000, guid: 1fbc318e1b159b74ea2e30c490acdd9b, type: 2}
     - {fileID: 9100000, guid: 83368a32262a39b448d9bc3334c1a61c, type: 2}
     - {fileID: 9100000, guid: 3871a00a8bf335e4bacf6b2d189ea423, type: 2}
     victoryMusic: {fileID: 8300000, guid: a4c75ced68d6aa949a00e1cff5025856, type: 3}
-  - danceName: "\u5DE7\u514B\u529B"
+  - danceName: "\u5DE7\u514B\u529B3"
     playerCount: 3
     individualAnimators:
     - {fileID: 9100000, guid: cc02e3d6c76d1be4a8a755f65f37244d, type: 2}
     - {fileID: 9100000, guid: 5c71acd398e8aad4e9f3be38b078e95a, type: 2}
     - {fileID: 9100000, guid: 6fcd9375099cf4d45bbdc9ed63403da8, type: 2}
     victoryMusic: {fileID: 8300000, guid: 3165c82185855d144b93c7fe860f4af2, type: 3}
+  - danceName: jojo3
+    playerCount: 3
+    individualAnimators:
+    - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
+    - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
+    - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 18e717db495acd147b9097045e2864cd, type: 3}
