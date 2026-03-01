@@ -37,8 +37,8 @@ def extract_audio_segment(video_path, output_audio_path, start_time, end_time=No
 # --- 使用示例 ---
 
 # 路径
-input_video = r"E:\downloads\b\dance1.mp4"
-output_audio = r"E:\downloads\b\dance1.mp3"
+input_video = r"E:\downloads\b\qiaokeli.mp4"
+output_audio = r"E:\downloads\b\qiaokeli.mp3"
 
 # 示例 1: 从第 5 秒开始，到第 15 秒结束
 extract_audio_segment(input_video, output_audio, start_time=0, end_time=20)

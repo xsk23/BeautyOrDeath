@@ -269,12 +269,14 @@ public class GameManager : NetworkBehaviour
             if (p.playerRole == winner) winners.Add(p);
             else losers.Add(p);
         }
-
+        // 2. 【核心修改】由服务器选定这局用哪套舞蹈
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+        int selectedDanceIndex = animData.GetRandomConfigIndex(winners.Count);
         // 2. 通知所有客户端切换相机 (传入胜方以便客户端选配置)
-        RpcNotifyVictorySequence(winner);
+        RpcNotifyVictorySequence(winner, selectedDanceIndex);
 
-        // 生成胜利舞台模型（包含胜方和败方）
-        SetupVictoryStage(winner, winners, losers);
+        // 4. 生成模型 (传入所选索引)
+        SetupVictoryStage(winner, winners, losers, selectedDanceIndex);
 
         // 【核心修复】：在这里实现真正的 20 秒倒计时同步
         restartCountdown = 20; 
@@ -299,7 +301,7 @@ public class GameManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    private void RpcNotifyVictorySequence(PlayerRole winner)
+    private void RpcNotifyVictorySequence(PlayerRole winner, int danceIndex)
     {
         Camera mainCam = Camera.main;
         if (mainCam == null) return;
@@ -364,7 +366,8 @@ public class GameManager : NetworkBehaviour
         }
         if (animData != null)
         {
-            GroupDanceConfig config = animData.GetConfigForCount(winners.Count);
+            // 【修改】根据服务器给的索引获取配置
+            GroupDanceConfig config = animData.GetConfigByIndex(danceIndex);
             
             // 3. 播放音乐
             if (config.victoryMusic != null && victoryAudioSource != null)
@@ -379,7 +382,7 @@ public class GameManager : NetworkBehaviour
 
 
     [Server]
-    private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers)
+    private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers, int danceIndex)
     {
         GameObject stageCenter = GameObject.Find("VictoryStageCenter");
         Vector3 centerPos = stageCenter ? stageCenter.transform.position : new Vector3(-180, 10, 140);
@@ -390,7 +393,7 @@ public class GameManager : NetworkBehaviour
 
         RpcHideOriginalPlayers();
         MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
-        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(winners.Count);
+        // RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(winners.Count);
 
         // --- 1. 生成胜利者 (中间排列，面朝相机) ---
         float tightSpacing = 1.1f; // 间距从 2.0 缩小到 1.1，肩膀挨着肩膀
@@ -404,14 +407,14 @@ public class GameManager : NetworkBehaviour
             dirToCam.y = 0;
             Quaternion lookRotation = Quaternion.LookRotation(dirToCam);
 
-            GameObject prefab = GetVictoryPrefab(winners[i], netManager);
+            // 【修改点】传入 true
+            GameObject prefab = GetVictoryPrefab(winners[i], netManager, true); 
             if (prefab != null)
             {
                 GameObject displayObj = Instantiate(prefab, spawnPos, lookRotation);
                 NetworkServer.Spawn(displayObj);
-                // 【新增】应用动画和名字
-                RpcApplyVictoryAnimation(displayObj, winners.Count, i, winner);
-                // 【新增】同步名字
+                // 【修改】传入选中的 danceIndex
+                RpcApplyVictoryAnimation(displayObj, danceIndex, i, winner);
                 RpcSetVictoryModelName(displayObj, winners[i].playerName, winners[i].playerRole);
             }
         }
@@ -437,7 +440,8 @@ public class GameManager : NetworkBehaviour
             
             Quaternion loserRot = Quaternion.LookRotation(blendedDir);
 
-            GameObject lPrefab = GetVictoryPrefab(losers[j], netManager);
+            // 【修改点】传入 false
+            GameObject lPrefab = GetVictoryPrefab(losers[j], netManager, false);
             if (lPrefab != null)
             {
                 GameObject loserObj = Instantiate(lPrefab, loserSpawnPos, loserRot);
@@ -494,42 +498,46 @@ public class GameManager : NetworkBehaviour
         return null;
     }
     [ClientRpc]
-    private void RpcApplyVictoryAnimation(GameObject targetObj, int totalWinners, int positionIndex, PlayerRole winner)
+    private void RpcApplyVictoryAnimation(GameObject targetObj, int danceIndex, int positionIndex, PlayerRole winner)
     {
         if (targetObj == null) return;
 
-        // 客户端根据胜方选择对应的配置资源
         VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
         if (animData == null) return;
 
-        // 根据人数获取这一组舞蹈
-        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(totalWinners);
+        // 【修改】直接通过索引拿配置
+        GroupDanceConfig config = animData.GetConfigByIndex(danceIndex);
+        RuntimeAnimatorController[] anims = config.individualAnimators;
 
         if (anims != null && positionIndex < anims.Length)
         {
-            // 在子物体中寻找并应用
             Animator anim = targetObj.GetComponentInChildren<Animator>();
             if (anim != null)
             {
                 anim.runtimeAnimatorController = anims[positionIndex];
-                // ==========================================
-                // 【新增修改】开启 Root Motion
-                // ==========================================
                 anim.applyRootMotion = true; 
-                // ==========================================
-                Debug.Log($"[Victory] Applied Controller {positionIndex} to {targetObj.name}");
             }
         }
     }
-    // 辅助方法：获取胜利者对应的 Prefab
-    private GameObject GetVictoryPrefab(GamePlayer player, MyNetworkManager netManager)
+    // 修改辅助方法：增加 isWinner 参数
+    private GameObject GetVictoryPrefab(GamePlayer player, MyNetworkManager netManager, bool isWinner)
     {
         if (player.playerRole == PlayerRole.Witch)
         {
-            return (player.myGender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+            if (isWinner)
+            {
+                // 胜利的女巫使用 Young 模型
+                return (player.myGender == Gender.Male) ? netManager.youngWitchMalePrefab : netManager.youngWitchFemalePrefab;
+            }
+            else
+            {
+                // 失败的女巫使用原始模型
+                return (player.myGender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+            }
         }
-        else
+        else // 猎人
         {
+            // 猎人无论胜负都使用原本模型
             return (player.myGender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
         }
     }
@@ -1642,6 +1650,10 @@ public class MyNetworkManager : NetworkManager
     public GameObject witchFemaleAmuletPrefab;  // 【新增】护符版女巫
     public GameObject witchMaleBroomPrefab;     // 【新增】扫帚版男巫
     public GameObject witchFemaleBroomPrefab;   // 【新增】扫帚版女巫
+    [Header("Victory Special Prefabs")]
+    public GameObject youngWitchMalePrefab;   // 新增：Young版男巫
+    public GameObject youngWitchFemalePrefab; // 新增：Young版女巫
+
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
     public GameObject gameManagerPrefab;
@@ -10524,12 +10536,12 @@ def trim_video(input_path, output_path, start_time, end_time=None):
 # --- 使用示例 ---
 
 # 你的原始视频路径
-input_video = r"E:\downloads\b\jilejingtu.mp4"
+input_video = r"E:\downloads\b\wanezhiyuan.mp4"
 # 裁剪后的保存路径
-output_video = r"E:\downloads\b\jilejingtu_trimmed.mp4"
+output_video = r"E:\downloads\b\wanezhiyuan_trimmed.mp4"
 
 # 裁剪从第 13 秒到第 30 秒
-trim_video(input_video, output_video, start_time=18, end_time=38)
+trim_video(input_video, output_video, start_time=85, end_time=90)
 
 ```
 
@@ -10575,8 +10587,8 @@ def extract_audio_segment(video_path, output_audio_path, start_time, end_time=No
 # --- 使用示例 ---
 
 # 路径
-input_video = r"E:\downloads\b\dance1.mp4"
-output_audio = r"E:\downloads\b\dance1.mp3"
+input_video = r"E:\downloads\b\qiaokeli.mp4"
+output_audio = r"E:\downloads\b\qiaokeli.mp3"
 
 # 示例 1: 从第 5 秒开始，到第 15 秒结束
 extract_audio_segment(input_video, output_audio, start_time=0, end_time=20)
@@ -13086,6 +13098,7 @@ using UnityEngine.SceneManagement;
 using Mirror;
 using TMPro;
 using UnityEngine.UI;
+using System.Collections;
 
 public class StartMenu : MonoBehaviour
 {
@@ -13102,6 +13115,7 @@ public class StartMenu : MonoBehaviour
     private const string REMOTE_SERVER_IP = "101.42.183.176";
     [Header("Transition UI")]
     public GameObject loadingPanel; // 在 Inspector 中拖入你新增的那个 Panel
+    public TextMeshProUGUI countdownText; // 1. 拖入你的 CountDownText (TMP)
     private void Start()
     {
         if (manager == null)
@@ -13147,8 +13161,31 @@ public class StartMenu : MonoBehaviour
         if (loadingPanel != null)
         {
             loadingPanel.SetActive(true);
+            StartCoroutine(UIRunCountdownRoutine(5f)); 
             // 如果你的 Panel 里有“取消”按钮，可以绑定 StopClient 逻辑
             Debug.Log("[UI] 检测到房间跳转中，激活加载面板");
+        }
+    }
+    // 3. 实现倒计时协程
+    private IEnumerator UIRunCountdownRoutine(float duration)
+    {
+        float timer = duration;
+
+        while (timer > 0)
+        {
+            if (countdownText != null)
+            {
+                // 使用 CeilToInt 向上取整，这样会显示 5, 4, 3, 2, 1
+                countdownText.text = Mathf.CeilToInt(timer).ToString();
+            }
+
+            timer -= Time.deltaTime;
+            yield return null; // 每帧更新
+        }
+
+        if (countdownText != null)
+        {
+            countdownText.text = "0"; // 结束时显示 0 或 "Connecting..."
         }
     }
     private void OnPlayerNameChanged(string newText)
@@ -13814,6 +13851,7 @@ using System.Collections.Generic;
 [System.Serializable]
 public struct GroupDanceConfig
 {
+    public string danceName; // 新增：方便在编辑器里辨认（如 "Witch Party A"）
     public int playerCount; 
     public RuntimeAnimatorController[] individualAnimators; 
     public AudioClip victoryMusic; // <--- 新增：该人数舞蹈对应的背景音乐
@@ -13828,21 +13866,35 @@ public class VictoryAnimData : ScriptableObject
     [Header("群舞配置列表")]
     public List<GroupDanceConfig> groupDances;
 
-    // 获取特定人数的完整配置
-    public GroupDanceConfig GetConfigForCount(int count)
+    // 【核心修改】由服务器调用：查找匹配人数的所有索引，并随机选一个
+    public int GetRandomConfigIndex(int count)
     {
-        foreach (var dance in groupDances)
+        List<int> matchingIndices = new List<int>();
+
+        for (int i = 0; i < groupDances.Count; i++)
         {
-            if (dance.playerCount == count) return dance;
+            if (groupDances[i].playerCount == count)
+            {
+                matchingIndices.Add(i);
+            }
         }
-        // 兜底返回第一个
-        return groupDances.Count > 0 ? groupDances[0] : default;
+
+        if (matchingIndices.Count > 0)
+        {
+            // 随机选择一个匹配项的索引
+            return matchingIndices[Random.Range(0, matchingIndices.Count)];
+        }
+
+        return -1; // 未找到匹配项
     }
 
-    // 为了兼容你现有的代码，保留这个方法（可选）
-    public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
+    // 供 RPC 调用：根据索引获取特定配置
+    public GroupDanceConfig GetConfigByIndex(int index)
     {
-        return GetConfigForCount(count).individualAnimators;
+        if (index >= 0 && index < groupDances.Count)
+            return groupDances[index];
+        
+        return groupDances.Count > 0 ? groupDances[0] : default;
     }
 }
 ```

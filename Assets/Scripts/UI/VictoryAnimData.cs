@@ -4,6 +4,7 @@ using System.Collections.Generic;
 [System.Serializable]
 public struct GroupDanceConfig
 {
+    public string danceName; // 新增：方便在编辑器里辨认（如 "Witch Party A"）
     public int playerCount; 
     public RuntimeAnimatorController[] individualAnimators; 
     public AudioClip victoryMusic; // <--- 新增：该人数舞蹈对应的背景音乐
@@ -18,20 +19,34 @@ public class VictoryAnimData : ScriptableObject
     [Header("群舞配置列表")]
     public List<GroupDanceConfig> groupDances;
 
-    // 获取特定人数的完整配置
-    public GroupDanceConfig GetConfigForCount(int count)
+    // 【核心修改】由服务器调用：查找匹配人数的所有索引，并随机选一个
+    public int GetRandomConfigIndex(int count)
     {
-        foreach (var dance in groupDances)
+        List<int> matchingIndices = new List<int>();
+
+        for (int i = 0; i < groupDances.Count; i++)
         {
-            if (dance.playerCount == count) return dance;
+            if (groupDances[i].playerCount == count)
+            {
+                matchingIndices.Add(i);
+            }
         }
-        // 兜底返回第一个
-        return groupDances.Count > 0 ? groupDances[0] : default;
+
+        if (matchingIndices.Count > 0)
+        {
+            // 随机选择一个匹配项的索引
+            return matchingIndices[Random.Range(0, matchingIndices.Count)];
+        }
+
+        return -1; // 未找到匹配项
     }
 
-    // 为了兼容你现有的代码，保留这个方法（可选）
-    public RuntimeAnimatorController[] GetAnimatorsForCount(int count)
+    // 供 RPC 调用：根据索引获取特定配置
+    public GroupDanceConfig GetConfigByIndex(int index)
     {
-        return GetConfigForCount(count).individualAnimators;
+        if (index >= 0 && index < groupDances.Count)
+            return groupDances[index];
+        
+        return groupDances.Count > 0 ? groupDances[0] : default;
     }
 }

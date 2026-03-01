@@ -32,6 +32,10 @@ public class MyNetworkManager : NetworkManager
     public GameObject witchFemaleAmuletPrefab;  // 【新增】护符版女巫
     public GameObject witchMaleBroomPrefab;     // 【新增】扫帚版男巫
     public GameObject witchFemaleBroomPrefab;   // 【新增】扫帚版女巫
+    [Header("Victory Special Prefabs")]
+    public GameObject youngWitchMalePrefab;   // 新增：Young版男巫
+    public GameObject youngWitchFemalePrefab; // 新增：Young版女巫
+
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
     public GameObject gameManagerPrefab;

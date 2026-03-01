@@ -259,15 +259,27 @@ public class GameManager : NetworkBehaviour
         foreach (var p in GamePlayer.AllPlayers)
         {
             if (p == null) continue;
-            if (p.playerRole == winner) winners.Add(p);
-            else losers.Add(p);
+
+            // 【关键修改点】：
+            // 判定为胜利者的条件：属于获胜阵营 并且 没有永久死亡
+            if (p.playerRole == winner && !p.isPermanentDead) 
+            {
+                winners.Add(p);
+            }
+            else 
+            {
+                // 阵营不对，或者阵营对了但是人死了，都算作失败者（Loser）
+                losers.Add(p);
+            }
         }
-
+        // 2. 【核心修改】由服务器选定这局用哪套舞蹈
+        VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
+        int selectedDanceIndex = animData.GetRandomConfigIndex(winners.Count);
         // 2. 通知所有客户端切换相机 (传入胜方以便客户端选配置)
-        RpcNotifyVictorySequence(winner);
+        RpcNotifyVictorySequence(winner, selectedDanceIndex);
 
-        // 生成胜利舞台模型（包含胜方和败方）
-        SetupVictoryStage(winner, winners, losers);
+        // 4. 生成模型 (传入所选索引)
+        SetupVictoryStage(winner, winners, losers, selectedDanceIndex);
 
         // 【核心修复】：在这里实现真正的 20 秒倒计时同步
         restartCountdown = 20; 
@@ -292,7 +304,7 @@ public class GameManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    private void RpcNotifyVictorySequence(PlayerRole winner)
+    private void RpcNotifyVictorySequence(PlayerRole winner, int danceIndex)
     {
         Camera mainCam = Camera.main;
         if (mainCam == null) return;
@@ -353,11 +365,16 @@ public class GameManager : NetworkBehaviour
         List<GamePlayer> winners = new List<GamePlayer>();
         foreach (var p in GamePlayer.AllPlayers)
         {
-            if (p != null && p.playerRole == winner) winners.Add(p);
+            // 【关键修改点】：判定逻辑必须与服务器一致
+            if (p != null && p.playerRole == winner && !p.isPermanentDead) 
+            {
+                winners.Add(p);
+            }
         }
         if (animData != null)
         {
-            GroupDanceConfig config = animData.GetConfigForCount(winners.Count);
+            // 【修改】根据服务器给的索引获取配置
+            GroupDanceConfig config = animData.GetConfigByIndex(danceIndex);
             
             // 3. 播放音乐
             if (config.victoryMusic != null && victoryAudioSource != null)
@@ -372,7 +389,7 @@ public class GameManager : NetworkBehaviour
 
 
     [Server]
-    private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers)
+    private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers, int danceIndex)
     {
         GameObject stageCenter = GameObject.Find("VictoryStageCenter");
         Vector3 centerPos = stageCenter ? stageCenter.transform.position : new Vector3(-180, 10, 140);
@@ -383,7 +400,7 @@ public class GameManager : NetworkBehaviour
 
         RpcHideOriginalPlayers();
         MyNetworkManager netManager = NetworkManager.singleton as MyNetworkManager;
-        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(winners.Count);
+        // RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(winners.Count);
 
         // --- 1. 生成胜利者 (中间排列，面朝相机) ---
         float tightSpacing = 1.1f; // 间距从 2.0 缩小到 1.1，肩膀挨着肩膀
@@ -397,14 +414,14 @@ public class GameManager : NetworkBehaviour
             dirToCam.y = 0;
             Quaternion lookRotation = Quaternion.LookRotation(dirToCam);
 
-            GameObject prefab = GetVictoryPrefab(winners[i], netManager);
+            // 【修改点】传入 true
+            GameObject prefab = GetVictoryPrefab(winners[i], netManager, true); 
             if (prefab != null)
             {
                 GameObject displayObj = Instantiate(prefab, spawnPos, lookRotation);
                 NetworkServer.Spawn(displayObj);
-                // 【新增】应用动画和名字
-                RpcApplyVictoryAnimation(displayObj, winners.Count, i, winner);
-                // 【新增】同步名字
+                // 【修改】传入选中的 danceIndex
+                RpcApplyVictoryAnimation(displayObj, danceIndex, i, winner);
                 RpcSetVictoryModelName(displayObj, winners[i].playerName, winners[i].playerRole);
             }
         }
@@ -430,7 +447,8 @@ public class GameManager : NetworkBehaviour
             
             Quaternion loserRot = Quaternion.LookRotation(blendedDir);
 
-            GameObject lPrefab = GetVictoryPrefab(losers[j], netManager);
+            // 【修改点】传入 false
+            GameObject lPrefab = GetVictoryPrefab(losers[j], netManager, false);
             if (lPrefab != null)
             {
                 GameObject loserObj = Instantiate(lPrefab, loserSpawnPos, loserRot);
@@ -487,42 +505,46 @@ public class GameManager : NetworkBehaviour
         return null;
     }
     [ClientRpc]
-    private void RpcApplyVictoryAnimation(GameObject targetObj, int totalWinners, int positionIndex, PlayerRole winner)
+    private void RpcApplyVictoryAnimation(GameObject targetObj, int danceIndex, int positionIndex, PlayerRole winner)
     {
         if (targetObj == null) return;
 
-        // 客户端根据胜方选择对应的配置资源
         VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
         if (animData == null) return;
 
-        // 根据人数获取这一组舞蹈
-        RuntimeAnimatorController[] anims = animData.GetAnimatorsForCount(totalWinners);
+        // 【修改】直接通过索引拿配置
+        GroupDanceConfig config = animData.GetConfigByIndex(danceIndex);
+        RuntimeAnimatorController[] anims = config.individualAnimators;
 
         if (anims != null && positionIndex < anims.Length)
         {
-            // 在子物体中寻找并应用
             Animator anim = targetObj.GetComponentInChildren<Animator>();
             if (anim != null)
             {
                 anim.runtimeAnimatorController = anims[positionIndex];
-                // ==========================================
-                // 【新增修改】开启 Root Motion
-                // ==========================================
                 anim.applyRootMotion = true; 
-                // ==========================================
-                Debug.Log($"[Victory] Applied Controller {positionIndex} to {targetObj.name}");
             }
         }
     }
-    // 辅助方法：获取胜利者对应的 Prefab
-    private GameObject GetVictoryPrefab(GamePlayer player, MyNetworkManager netManager)
+    // 修改辅助方法：增加 isWinner 参数
+    private GameObject GetVictoryPrefab(GamePlayer player, MyNetworkManager netManager, bool isWinner)
     {
         if (player.playerRole == PlayerRole.Witch)
         {
-            return (player.myGender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+            if (isWinner)
+            {
+                // 胜利的女巫使用 Young 模型
+                return (player.myGender == Gender.Male) ? netManager.youngWitchMalePrefab : netManager.youngWitchFemalePrefab;
+            }
+            else
+            {
+                // 失败的女巫使用原始模型
+                return (player.myGender == Gender.Male) ? netManager.witchMalePrefab : netManager.witchFemalePrefab;
+            }
         }
-        else
+        else // 猎人
         {
+            // 猎人无论胜负都使用原本模型
             return (player.myGender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
         }
     }
