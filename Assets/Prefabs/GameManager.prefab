@@ -66,6 +66,7 @@ MonoBehaviour:
   hunterVictoryData: {fileID: 11400000, guid: 5141f5e6bb9f13e44bfd3669ba593ab0, type: 2}
   victoryModelSpacing: 2
   victoryAudioSource: {fileID: 6050959183322462222}
+  failAnimatorController: {fileID: 9100000, guid: 47a899d6cd98a3d4bb83a5e49cf30032, type: 2}
 --- !u!114 &2205238953590382908
 MonoBehaviour:
   m_ObjectHideFlags: 0

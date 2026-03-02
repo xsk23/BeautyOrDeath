@@ -62,3 +62,101 @@ MonoBehaviour:
     - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
     - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
     victoryMusic: {fileID: 8300000, guid: 18e717db495acd147b9097045e2864cd, type: 3}
+  - danceName: uptown4
+    playerCount: 4
+    individualAnimators:
+    - {fileID: 9100000, guid: 73b9e83b4fae1f24a8a01455ac0a2e2f, type: 2}
+    - {fileID: 9100000, guid: f6d766e99d2f08e4692a3c4a323c1da6, type: 2}
+    - {fileID: 9100000, guid: 69ae6ba23cedc4149a7d4e8a0b267f62, type: 2}
+    - {fileID: 9100000, guid: 6b9fda7144c81ef4f83bacc9f05cbb13, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 71570a114aa474f4cae80b39a1048ccc, type: 3}
+  - danceName: uptown5
+    playerCount: 5
+    individualAnimators:
+    - {fileID: 9100000, guid: 73b9e83b4fae1f24a8a01455ac0a2e2f, type: 2}
+    - {fileID: 9100000, guid: f6d766e99d2f08e4692a3c4a323c1da6, type: 2}
+    - {fileID: 9100000, guid: 69ae6ba23cedc4149a7d4e8a0b267f62, type: 2}
+    - {fileID: 9100000, guid: 6b9fda7144c81ef4f83bacc9f05cbb13, type: 2}
+    - {fileID: 9100000, guid: c148ee6c31625f54ab249d4ddff2b0de, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 71570a114aa474f4cae80b39a1048ccc, type: 3}
+  - danceName: gangnanstyle1
+    playerCount: 1
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle2
+    playerCount: 2
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle3
+    playerCount: 3
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle4
+    playerCount: 4
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle5
+    playerCount: 5
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle6
+    playerCount: 6
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle7
+    playerCount: 7
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle8
+    playerCount: 8
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: gangnanstyle9
+    playerCount: 9
+    individualAnimators:
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}

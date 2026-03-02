@@ -203,7 +203,7 @@ def generate_wp_code_markdown(
 # ================= 配置区域 =================
 
 # WordPress 根目录路径
-root_directory = r"D:\hwandDoc\BoDGame\BeautyOrDeath\Assets\Scripts"
+root_directory = r"E:\UnityProjects\Mirror_Lobby\Assets\Scripts"
 output_md = "unity_code.md"
 
 # 如果只想导出特定目录 (例如只看主题或插件)

@@ -3,7 +3,12 @@ guid: f275dec5d44e4b444810b6b8822c239e
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - portalPrefab: {instanceID: 0}
+  - witchVictoryData: {instanceID: 0}
+  - hunterVictoryData: {instanceID: 0}
+  - victoryAudioSource: {instanceID: 0}
+  - failAnimatorController: {fileID: 9100000, guid: 47a899d6cd98a3d4bb83a5e49cf30032, type: 2}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

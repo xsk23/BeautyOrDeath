@@ -76,6 +76,8 @@ public class GameManager : NetworkBehaviour
     public float victoryModelSpacing = 2.0f;   // 胜利者之间的间隔
     [Header("音频设置")]
     public AudioSource victoryAudioSource; // 在 Inspector 中把 GameManager 身上挂的 AudioSource 拖进来
+    [Header("失败表现配置")]
+    public RuntimeAnimatorController failAnimatorController; // 在 Inspector 中拖入你的 failanimation.controller
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -263,11 +265,24 @@ public class GameManager : NetworkBehaviour
         // 统计胜利者与失败者
         List<GamePlayer> winners = new List<GamePlayer>();
         List<GamePlayer> losers = new List<GamePlayer>();
+        // 使用 HashSet 记录已经添加过的 netId，防止重复
+        HashSet<uint> processedIds = new HashSet<uint>();
         foreach (var p in GamePlayer.AllPlayers)
         {
-            if (p == null) continue;
-            if (p.playerRole == winner) winners.Add(p);
-            else losers.Add(p);
+            // 1. 严格过滤：空引用、对象已销毁、重复的 netId
+            if (p == null || p.gameObject == null || processedIds.Contains(p.netId)) 
+                continue;
+
+            processedIds.Add(p.netId);
+
+            if (p.playerRole == winner && !p.isPermanentDead) 
+            {
+                winners.Add(p);
+            }
+            else 
+            {
+                losers.Add(p);
+            }
         }
         // 2. 【核心修改】由服务器选定这局用哪套舞蹈
         VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
@@ -362,7 +377,11 @@ public class GameManager : NetworkBehaviour
         List<GamePlayer> winners = new List<GamePlayer>();
         foreach (var p in GamePlayer.AllPlayers)
         {
-            if (p != null && p.playerRole == winner) winners.Add(p);
+            // 【关键修改点】：判定逻辑必须与服务器一致
+            if (p != null && p.playerRole == winner && !p.isPermanentDead) 
+            {
+                winners.Add(p);
+            }
         }
         if (animData != null)
         {
@@ -440,20 +459,59 @@ public class GameManager : NetworkBehaviour
             
             Quaternion loserRot = Quaternion.LookRotation(blendedDir);
 
-            // 【修改点】传入 false
             GameObject lPrefab = GetVictoryPrefab(losers[j], netManager, false);
             if (lPrefab != null)
             {
                 GameObject loserObj = Instantiate(lPrefab, loserSpawnPos, loserRot);
-                Animator anim = loserObj.GetComponentInChildren<Animator>();
-                if (anim != null) anim.enabled = false; 
-
+                
+                // 【关键修改】：不再禁用 Animator，而是交给客户端去初始化
                 NetworkServer.Spawn(loserObj);
-                // 【新增】即便失败者没有动画，也显示名字
+                
+                // 1. 设置名字（你原有的）
                 RpcSetVictoryModelName(loserObj, losers[j].playerName, losers[j].playerRole);
+                
+                // 2. 【新增】调用自动挂载 Animator 的 RPC
+                RpcSetupLoserFailLogic(loserObj);
             }
         }
     }
+    [ClientRpc]
+    private void RpcSetupLoserFailLogic(GameObject loserObj)
+    {
+        if (loserObj == null) return;
+
+        // 1. 【核心修复】禁用原有的玩家逻辑脚本，防止它去更新 "speed" 参数
+        MonoBehaviour[] allScripts = loserObj.GetComponents<MonoBehaviour>();
+        foreach (var s in allScripts)
+        {
+            // 禁用除本脚本和 RandomAnimationPlayer 以外的所有逻辑
+            if (s is GamePlayer || s is HunterPlayer || s is WitchPlayer || s is TeamVision)
+            {
+                s.enabled = false;
+            }
+        }
+
+        // 2. 获取子物体上的 Animator
+        Animator anim = loserObj.GetComponentInChildren<Animator>();
+        if (anim != null)
+        {
+            if (failAnimatorController != null)
+            {
+                anim.runtimeAnimatorController = failAnimatorController;
+                anim.enabled = true;
+            }
+        }
+
+        // 3. 挂载随机播放脚本
+        RandomAnimationPlayer randomPlayer = loserObj.GetComponent<RandomAnimationPlayer>();
+        if (randomPlayer == null)
+        {
+            randomPlayer = loserObj.AddComponent<RandomAnimationPlayer>();
+        }
+        
+        randomPlayer.stateNames = new string[] { "sad_idle", "sad_idle 0", "sad_idle 1" };
+    }
+
     // 【新增 Rpc】专门用于在客户端设置展示物体的名字
     [ClientRpc]
     private void RpcSetVictoryModelName(GameObject modelObj, string pName, PlayerRole role)
@@ -952,7 +1010,9 @@ public class GameManager : NetworkBehaviour
     }
     [Server] // 确保只在服务器运行
     public void StartGame()
-    {              
+    {         
+        // 开始新游戏前，强制清理可能残留的静态列表
+        GamePlayer.AllPlayers.RemoveAll(p => p == null);      
         // 1. 寻找大厅脚本
         LobbyScript lobby = FindObjectOfType<LobbyScript>();
         
@@ -1235,7 +1295,7 @@ def generate_wp_code_markdown(
 # ================= 配置区域 =================
 
 # WordPress 根目录路径
-root_directory = r"D:\hwandDoc\BoDGame\BeautyOrDeath\Assets\Scripts"
+root_directory = r"E:\UnityProjects\Mirror_Lobby\Assets\Scripts"
 output_md = "unity_code.md"
 
 # 如果只想导出特定目录 (例如只看主题或插件)
@@ -3714,7 +3774,7 @@ public abstract class GamePlayer : NetworkBehaviour
     {
         base.OnStartServer();
         // 【核心修复】服务器启动时也加入列表
-        if (!AllPlayers.Contains(this)) AllPlayers.Add(this);
+        // if (!AllPlayers.Contains(this)) AllPlayers.Add(this);
         if (this is WitchPlayer) playerRole = PlayerRole.Witch;
         else if (this is HunterPlayer) playerRole = PlayerRole.Hunter;
         else playerRole = PlayerRole.None;
@@ -10536,12 +10596,12 @@ def trim_video(input_path, output_path, start_time, end_time=None):
 # --- 使用示例 ---
 
 # 你的原始视频路径
-input_video = r"E:\downloads\b\wanezhiyuan.mp4"
+input_video = r"E:\downloads\b\uptown1.mp4"
 # 裁剪后的保存路径
-output_video = r"E:\downloads\b\wanezhiyuan_trimmed.mp4"
+output_video = r"E:\downloads\b\uptown1_trimmed.mp4"
 
 # 裁剪从第 13 秒到第 30 秒
-trim_video(input_video, output_video, start_time=85, end_time=90)
+trim_video(input_video, output_video, start_time=15, end_time=35)
 
 ```
 
@@ -10587,11 +10647,11 @@ def extract_audio_segment(video_path, output_audio_path, start_time, end_time=No
 # --- 使用示例 ---
 
 # 路径
-input_video = r"E:\downloads\b\qiaokeli.mp4"
-output_audio = r"E:\downloads\b\qiaokeli.mp3"
+input_video = r"E:\downloads\b\gangnanstyle.mp4"
+output_audio = r"E:\downloads\b\gangnanstyle_extracted_audio.mp3"
 
 # 示例 1: 从第 5 秒开始，到第 15 秒结束
-extract_audio_segment(input_video, output_audio, start_time=0, end_time=20)
+extract_audio_segment(input_video, output_audio, start_time=75, end_time=90)
 
 # 示例 2: 从第 1 分 20 秒开始，直到视频结束
 # extract_audio_segment(input_video, output_audio, start_time="00:01:20")
@@ -12519,6 +12579,49 @@ public class PlayMenu : MonoBehaviour
     } 
 }
 
+```
+
+## UI\RandomAnimationPlayer.cs
+
+```csharp
+using UnityEngine;
+
+public class RandomAnimationPlayer : MonoBehaviour
+{
+    private Animator animator;
+    public string[] stateNames = { "sad_idle", "sad_idle 0", "sad_idle 1" };
+    
+    void Awake()
+    {
+        // 【关键修改】使用 GetComponentInChildren 确保能找到子物体上的 Animator
+        animator = GetComponentInChildren<Animator>();
+    }
+
+    void OnEnable()
+    {
+        // 增加空检查
+        if (animator != null) PlayRandom();
+    }
+
+    void Update()
+    {
+        if (animator == null) return;
+
+        // 检查当前动画层 0 是否播放完毕
+        if (animator.GetCurrentAnimatorStateInfo(0).normalizedTime >= 0.95f && !animator.IsInTransition(0))
+        {
+            PlayRandom();
+        }
+    }
+
+    public void PlayRandom()
+    {
+        if (animator == null || stateNames == null || stateNames.Length == 0) return;
+
+        int index = Random.Range(0, stateNames.Length);
+        animator.CrossFade(stateNames[index], 0.25f);
+    }
+}
 ```
 
 ## UI\removebg.py

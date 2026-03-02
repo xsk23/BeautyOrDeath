@@ -10,8 +10,8 @@ AnimatorStateMachine:
   m_Name: Base Layer
   m_ChildStates:
   - serializedVersion: 1
-    m_State: {fileID: 9088134182677392206}
-    m_Position: {x: 298.6667, y: 178, z: 0}
+    m_State: {fileID: 644224436607693180}
+    m_Position: {x: 542.2844, y: 398.28873, z: 0}
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
   m_EntryTransitions: []
@@ -21,14 +21,14 @@ AnimatorStateMachine:
   m_EntryPosition: {x: 50, y: 120, z: 0}
   m_ExitPosition: {x: 800, y: 120, z: 0}
   m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
-  m_DefaultState: {fileID: 9088134182677392206}
+  m_DefaultState: {fileID: 644224436607693180}
 --- !u!91 &9100000
 AnimatorController:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: windance_jojo_1_1
+  m_Name: windance_uptown_5 2
   serializedVersion: 5
   m_AnimatorParameters: []
   m_AnimatorLayers:
@@ -44,7 +44,7 @@ AnimatorController:
     m_IKPass: 0
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
---- !u!1102 &9088134182677392206
+--- !u!1102 &644224436607693180
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -64,7 +64,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 1827226128182048838, guid: 412729434f5affd4b87cf09db1503edd, type: 3}
+  m_Motion: {fileID: 1827226128182048838, guid: 1ce701917a271d844a137544e164c3a2, type: 3}
   m_Tag: 
   m_SpeedParameter: 
   m_MirrorParameter: 

@@ -69,6 +69,8 @@ public class GameManager : NetworkBehaviour
     public float victoryModelSpacing = 2.0f;   // 胜利者之间的间隔
     [Header("音频设置")]
     public AudioSource victoryAudioSource; // 在 Inspector 中把 GameManager 身上挂的 AudioSource 拖进来
+    [Header("失败表现配置")]
+    public RuntimeAnimatorController failAnimatorController; // 在 Inspector 中拖入你的 failanimation.controller
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -447,20 +449,59 @@ public class GameManager : NetworkBehaviour
             
             Quaternion loserRot = Quaternion.LookRotation(blendedDir);
 
-            // 【修改点】传入 false
             GameObject lPrefab = GetVictoryPrefab(losers[j], netManager, false);
             if (lPrefab != null)
             {
                 GameObject loserObj = Instantiate(lPrefab, loserSpawnPos, loserRot);
-                Animator anim = loserObj.GetComponentInChildren<Animator>();
-                if (anim != null) anim.enabled = false; 
-
+                
+                // 【关键修改】：不再禁用 Animator，而是交给客户端去初始化
                 NetworkServer.Spawn(loserObj);
-                // 【新增】即便失败者没有动画，也显示名字
+                
+                // 1. 设置名字（你原有的）
                 RpcSetVictoryModelName(loserObj, losers[j].playerName, losers[j].playerRole);
+                
+                // 2. 【新增】调用自动挂载 Animator 的 RPC
+                RpcSetupLoserFailLogic(loserObj);
             }
         }
     }
+    [ClientRpc]
+    private void RpcSetupLoserFailLogic(GameObject loserObj)
+    {
+        if (loserObj == null) return;
+
+        // 1. 【核心修复】禁用原有的玩家逻辑脚本，防止它去更新 "speed" 参数
+        MonoBehaviour[] allScripts = loserObj.GetComponents<MonoBehaviour>();
+        foreach (var s in allScripts)
+        {
+            // 禁用除本脚本和 RandomAnimationPlayer 以外的所有逻辑
+            if (s is GamePlayer || s is HunterPlayer || s is WitchPlayer || s is TeamVision)
+            {
+                s.enabled = false;
+            }
+        }
+
+        // 2. 获取子物体上的 Animator
+        Animator anim = loserObj.GetComponentInChildren<Animator>();
+        if (anim != null)
+        {
+            if (failAnimatorController != null)
+            {
+                anim.runtimeAnimatorController = failAnimatorController;
+                anim.enabled = true;
+            }
+        }
+
+        // 3. 挂载随机播放脚本
+        RandomAnimationPlayer randomPlayer = loserObj.GetComponent<RandomAnimationPlayer>();
+        if (randomPlayer == null)
+        {
+            randomPlayer = loserObj.AddComponent<RandomAnimationPlayer>();
+        }
+        
+        randomPlayer.stateNames = new string[] { "sad_idle", "sad_idle 0", "sad_idle 1" };
+    }
+
     // 【新增 Rpc】专门用于在客户端设置展示物体的名字
     [ClientRpc]
     private void RpcSetVictoryModelName(GameObject modelObj, string pName, PlayerRole role)
