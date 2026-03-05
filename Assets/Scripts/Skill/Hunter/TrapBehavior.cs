@@ -108,7 +108,7 @@ public class TrapBehavior : NetworkBehaviour
 
             // --- 物理层面移动方案 ---
             Vector3 targetPos = witch.transform.position;
-            NetworkAudioBridge.Instance?.ServerPlay3DAt("机械click音陷阱用", targetPos);
+            GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", targetPos);
 
             // 1. 先把刚体设为 Kinematic，这样它就不会被物理引擎推走或卡住
             rb.isKinematic = true; 

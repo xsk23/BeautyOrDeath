@@ -20,6 +20,7 @@ public class InvisibilityCloak : WitchItemBase
     {
         nextUseTime = Time.time + cooldown;
         WitchPlayer player = GetComponentInParent<WitchPlayer>();
+        AudioManager.Instance?.Play2D("cloak_activate_sound");
         if (player == null)
         {
             Debug.LogError("InvisibilityCloak: No WitchPlayer found on parent.");

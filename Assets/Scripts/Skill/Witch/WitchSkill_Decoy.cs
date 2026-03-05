@@ -12,6 +12,8 @@ public class WitchSkill_Decoy : SkillBase
         WitchPlayer witch = ownerPlayer as WitchPlayer;
         if (witch == null) return;
 
+        GameManager.Instance?.ServerPlay3DAt("pop_sound", ownerPlayer.transform.position);
+        
         // 如果没变身，就复制人类 (或者禁止使用)
         // 这里假设复制当前的 morphedPropID
         int idToCopy = witch.isMorphed ? witch.morphedPropID : -1; // -1 表示没变身

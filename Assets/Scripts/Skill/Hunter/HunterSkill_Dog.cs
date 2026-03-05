@@ -21,11 +21,14 @@ public class HunterSkill_Dog : SkillBase
         // 这样猎人看向哪里，狗就面朝哪里
         Quaternion spawnRot = ownerPlayer.transform.rotation;
 
+        GameManager.Instance?.ServerPlay3DAt("哨子音", ownerPlayer.transform.position);
+        //2D 
+        //AudioManager.Instance?.Play2D("哨子音");
         // 3. 生成实例
         GameObject dog = Instantiate(dogPrefab, spawnPos, spawnRot);
         
         // 4. 网络生成
         NetworkServer.Spawn(dog);
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("哨子声", spawnPos);
+        
     }
 }

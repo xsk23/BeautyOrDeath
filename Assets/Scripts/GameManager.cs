@@ -124,9 +124,21 @@ public class GameManager : NetworkBehaviour
         }
         
         Instance = this;
-        
+
         // 确保切换场景不销毁 (客户端和服务器都需要)
         DontDestroyOnLoad(gameObject);
+    }
+
+    [Server]
+    public void ServerPlay3DAt(string soundName, Vector3 position)
+    {
+        RpcPlay3D(soundName, position);
+    }
+
+    [ClientRpc]
+    private void RpcPlay3D(string soundName, Vector3 position)
+    {
+        AudioManager.Instance?.Play3D(soundName, position);
     }
 
     // 【新增】服务器端更新时间

@@ -19,7 +19,9 @@ public class FistWeapon : WeaponBase
     }
 
     public override void OnFire(Vector3 origin, Vector3 direction)
-    {
+    {   
+        AudioManager.Instance?.Play2D("拳头攻击");
+        Debug.Log($" fired a punch!");
         nextFireTime = Time.time + fireRate;
         if (isServer)
         {

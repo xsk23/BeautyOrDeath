@@ -610,6 +610,7 @@ public class WitchPlayer : GamePlayer
                 {
                     // 普通变身
                     CmdMorph(currentFocusProp.propID);
+
                     // 变身触发冷却
                     nextMorphTime = Time.time + morphCooldown;
                 }
@@ -716,7 +717,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdMorph(int propID)
     {
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("女巫变身", transform.position);
+        
         // // 1. 先在服务器修改同步变量
         isMorphed = true;
         // // 2. 广播 Rpc 处理视觉
@@ -899,7 +900,11 @@ public class WitchPlayer : GamePlayer
                 if (isLocalPlayer) SetLocalVisibility(true); // 让自己可见
             }
         }
+        
+        GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
+
         // 确保这段代码在 UpdateCollider 之后执行
+        
         if (isLocalPlayer)
         {
             // 强制刷新一次目标位置
@@ -1000,7 +1005,7 @@ public class WitchPlayer : GamePlayer
     [Server]
     public void ServerOnReachPortal()
     {
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("传送门", transform.position);
+        GameManager.Instance?.ServerPlay3DAt("传送门", transform.position);
         // 只有当前正在驾驶古树的人才能触发回收逻辑
         if (possessedTreeNetId != 0)
         {
@@ -1150,7 +1155,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdRevert()
     {
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("pop_sound", transform.position);
+        GameManager.Instance?.ServerPlay3DAt("女巫变人", transform.position);
         // 使用新提炼的方法
         ServerReleaseTreeAtCurrentPosition();
 
@@ -1341,7 +1346,7 @@ public class WitchPlayer : GamePlayer
     private void TriggerAmuletSave()
     {
         UnityEngine.Debug.Log($"<color=green>[Server] {playerName} saved by Life Amulet!</color>");
-
+        AudioManager.Instance?.Play3D("护符碎裂", transform.position);
         // 1. 消耗保护状态
         isProtectedByAmulet = false;
 
@@ -1721,7 +1726,7 @@ public class WitchPlayer : GamePlayer
     {
         if (!isInSecondChance || isPermanentDead) return;
 
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("传送门", transform.position);
+        GameManager.Instance?.ServerPlay3DAt("传送门", transform.position);
 
         isInSecondChance = false;
         currentHealth = maxHealth;

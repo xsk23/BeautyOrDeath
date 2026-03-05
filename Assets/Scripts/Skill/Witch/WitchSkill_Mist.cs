@@ -24,14 +24,16 @@ public class WitchSkill_Mist : SkillBase
         
         // 稍微抬高一点，防止生成在地板下
         spawnPos.y += 0.5f;
-
+        GameManager.Instance?.ServerPlay3DAt("女巫迷雾", spawnPos);
         // 2. 生成实例
         GameObject mist = Instantiate(mistPrefab, spawnPos, Quaternion.identity);
+
         // 【核心修改】应用奖励带来的缩放
         // 缩放 Transform 会同时增大其子物体的 Trigger 碰撞体范围
         mist.transform.localScale *= mistScale;
+        
         // 3. 网络同步
         NetworkServer.Spawn(mist);
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("女巫迷雾", spawnPos);
+        
     }
 }

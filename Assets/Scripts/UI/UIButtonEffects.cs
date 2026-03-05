@@ -27,6 +27,7 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
     {
         transform.localScale = initialScale * hoverScale;
         // 如果想做发光效果，可以在这里开启一个隐藏的 Glow 图片
+        AudioManager.Instance?.Play2D("UI选择");
     }
 
     // 鼠标移出
@@ -41,6 +42,7 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
     {
         transform.localScale = initialScale * pressScale;
         if (targetImage != null) targetImage.color = pressColor;
+        AudioManager.Instance?.Play2D("UI点击（木头）");
     }
 
     // 鼠标抬起
