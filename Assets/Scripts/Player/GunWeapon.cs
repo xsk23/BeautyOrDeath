@@ -21,7 +21,7 @@ public class GunWeapon : WeaponBase
         if (isServer)
         {
             // 方案：起点稍微向前偏移 0.6米，跳出猎人自己的 CharacterController 范围
-            Vector3 startPos = origin + direction * 0.6f;
+            Vector3 startPos = origin + direction * 1.2f;
 
             if (Physics.Raycast(startPos, direction, out RaycastHit hit, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
             {
@@ -53,19 +53,30 @@ public class GunWeapon : WeaponBase
                 }
                 RpcSpawnImpact(hit.point, hit.normal);   
             }
-            [ClientRpc]
-            void RpcSpawnImpact(Vector3 hitPoint, Vector3 surfaceNormal)
+            else
             {
-                // 如果没有配特效，直接返回
-                if (impactEffectPrefab == null) return;
-
-                // 3. 生成特效
-                // position: 命中点
-                // rotation: 这里的 LookRotation(surfaceNormal) 会让特效的 Z 轴朝向墙面外侧
-                GameObject effect = Instantiate(impactEffectPrefab, hitPoint, Quaternion.LookRotation(surfaceNormal));
-                Destroy(effect, 2.0f);
+                Debug.Log("[Server] Raycast hit nothing.");
             }
 
         }
+    }
+    [ClientRpc]
+    void RpcSpawnImpact(Vector3 hitPoint, Vector3 surfaceNormal)
+    {
+        // 如果没有配特效，在控制台发出警告并返回
+        if (impactEffectPrefab == null) 
+        {
+            Debug.LogWarning("[GunWeapon] 警告：没有在 Inspector 中分配命中特效 (Impact Effect Prefab)！");
+            return;
+        }
+
+        // 【核心修复】生成位置顺着法线向外偏移 0.02 米，防止被墙体吞没或发生 Z-Fighting 闪烁
+        Vector3 spawnPos = hitPoint + surfaceNormal * 0.02f;
+        
+        // 生成特效，LookRotation 让特效的 Z 轴朝向墙面外侧
+        GameObject effect = Instantiate(impactEffectPrefab, spawnPos, Quaternion.LookRotation(surfaceNormal));
+        
+        // 2秒后自动销毁
+        Destroy(effect, 2.0f);
     }
 }
