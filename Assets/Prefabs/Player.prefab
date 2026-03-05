@@ -232,7 +232,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sceneId: 0
-  _assetId: 875480184
+  _assetId: 97186904
   serverOnly: 0
   visibility: 0
   hasSpawned: 0
@@ -291,6 +291,7 @@ MonoBehaviour:
   playerName: Unknown
   role: 0
   myGender: 0
+  selectedWitchItemName: 
 --- !u!143 &7043496421248812656
 CharacterController:
   m_ObjectHideFlags: 0

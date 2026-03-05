@@ -86,6 +86,14 @@ public class HunterPlayer : GamePlayer
     public override void OnStartLocalPlayer()
     {
         base.OnStartLocalPlayer();
+        // 确保鼠标锁定在准星上
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        // 先禁用所有武器，由脚本控制active状态
+        foreach (GameObject weapon in hunterWeapon)
+        {
+            weapon.SetActive(false);
+        }
         ChangeWeapon(currentWeaponIndex);
     // 确保本地猎人看到的是隐藏的女巫相关 UI
         if (SceneScript.Instance != null)
@@ -131,6 +139,12 @@ public class HunterPlayer : GamePlayer
             if (weaponBase != null && weaponBase.muzzleFlash != null)
             {
                 weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            }
+            // 【核心修改】切换武器时，通知 Animator 是否正在持枪
+            if (hunterAnimator != null && weaponBase != null)
+            {
+                bool isGun = (weaponBase.weaponName == "Gun");
+                hunterAnimator.SetBool("isHoldingGun", isGun);
             }
         }
     }
@@ -196,18 +210,27 @@ public class HunterPlayer : GamePlayer
                     }
                     else
                     {
-                        // 冷却刚好，立即执行！
-                        lastAttackInputTime = -1f; // 消耗掉这个缓冲，防止重复触发
-                        // --- 【核心修改】 ---
+                        lastAttackInputTime = -1f; 
+                        currentWeapon.UpdateCooldown(); // 统一消耗冷却
+
+                        // 【核心修改】区分猎枪和其他武器的开火时机
                         if (currentWeapon.weaponName == "Fist")
                         {
-                            // 每次攻击都刷新“结束时间”，确保连招期间全程原地不动
                             meleeLockEndTime = Time.time + fistAttackLockDuration;
+                            CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
+                            OnWeaponFired?.Invoke(currentWeaponIndex);
                         }
-                        // ---------------------
-                        currentWeapon.UpdateCooldown();
-                        CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
-                        OnWeaponFired?.Invoke(currentWeaponIndex);
+                        else if (currentWeapon.weaponName == "Gun")
+                        {
+                            // 猎枪：只触发开火动画，真正的射线伤害等待第11帧事件
+                            CmdTriggerGunAnimation();
+                        }
+                        else
+                        {
+                            // 兜网等：立即开火
+                            CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
+                            OnWeaponFired?.Invoke(currentWeaponIndex);
+                        }
                     }
                 }
             }
@@ -216,6 +239,23 @@ public class HunterPlayer : GamePlayer
             HandleCooldownUI();
             // 处决检查
             HandleExecutionCheck(Camera.main.transform.position, Camera.main.transform.forward);
+            // 调试绘制（放在武器切换和开火逻辑之后）
+            #if UNITY_EDITOR
+            if (hunterWeapon != null && currentWeaponIndex < hunterWeapon.Length)
+            {
+                WeaponBase current = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+                if (current != null && current.weaponName == "Gun")
+                {
+                    GunWeapon gun = current as GunWeapon;
+                    if (gun != null)
+                    {
+                        Vector3 start = Camera.main.transform.position + Camera.main.transform.forward * 1.2f; // 必须与服务器偏移一致
+                        Vector3 end = start + Camera.main.transform.forward * gun.range;
+                        Debug.DrawLine(start, end, Color.green, 0f); // 持续到下一帧绘制前
+                    }
+                }
+            }
+            #endif
         }
         // 2. 所有人（本地和远程）都根据同步的速度值更新 Animator
         if (hunterAnimator != null)
@@ -224,7 +264,54 @@ public class HunterPlayer : GamePlayer
             hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
         }
     }
+    [Command]
+    private void CmdTriggerGunAnimation()
+    {
+        // 告诉所有客户端播放开枪动画
+        RpcTriggerGunAnimation();
+    }
 
+    [ClientRpc]
+    private void RpcTriggerGunAnimation()
+    {
+        if (hunterAnimator != null)
+        {
+            hunterAnimator.SetTrigger("Shoot");
+        }
+    }
+    // ----------------------------------------------------
+    // 4. 【关键接口】供 AnimationEventBridge 在第 11 帧调用
+    // ----------------------------------------------------
+    public void ExecuteAttackEffect()
+    {
+        // 只有按下左键的本地玩家，才有资格在第11帧向服务器发送真实的开枪指令
+        // 防止所有客户端上的第11帧都跑去让服务器开火，导致一次开出N枪
+        if (isLocalPlayer)
+        {
+            WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+            
+            // 确保第11帧时，玩家手里拿的还是枪（防止动画期间切枪导致 Bug）
+            if (currentWeapon != null && currentWeapon.weaponName == "Gun")
+            {
+                Vector3 origin = Camera.main.transform.position;
+                Vector3 dir = Camera.main.transform.forward;
+                CmdExecuteRealGunFire(origin, dir);
+            }
+        }
+    }
+    [Command]
+    private void CmdExecuteRealGunFire(Vector3 origin, Vector3 direction)
+    {
+        WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (currentWeapon != null && currentWeapon.weaponName == "Gun")
+        {
+            // 1. 服务器执行真正的伤害和射线检测
+            currentWeapon.OnFire(origin, direction);
+            
+            // 2. 告诉所有客户端在此刻播放枪口特效和开火音效
+            RpcFireEffect(currentWeaponIndex);
+        }
+    }
     [Command]
     void CmdChangeWeapon(int weaponIndex)
     {
@@ -253,12 +340,12 @@ public class HunterPlayer : GamePlayer
         // // ★ 关键细节：如果是本地玩家，刚才在 Update 里已经播过了，就别播第二次了
         // if (isLocalPlayer) return;
         // 触发事件
+        WeaponBase currentWeapon = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
+        // 猎枪的声音已在 RpcTriggerGunAnimation 中播放，此处跳过
         OnWeaponFired?.Invoke(weaponIndex);
         // --- 新增：触发近战动画逻辑 ---
         if (hunterAnimator != null)
-        {
-            WeaponBase currentWeapon = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
-            
+        { 
             if (currentWeapon != null && currentWeapon.weaponName == "Fist") 
             {
                 // 1. 设置布尔值，决定这次走左边还是右边的动画分支
