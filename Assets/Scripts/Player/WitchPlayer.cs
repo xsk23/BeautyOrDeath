@@ -716,6 +716,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdMorph(int propID)
     {
+        NetworkAudioBridge.Instance?.ServerPlay3DAt("女巫变身", transform.position);
         // // 1. 先在服务器修改同步变量
         isMorphed = true;
         // // 2. 广播 Rpc 处理视觉
@@ -999,6 +1000,7 @@ public class WitchPlayer : GamePlayer
     [Server]
     public void ServerOnReachPortal()
     {
+        NetworkAudioBridge.Instance?.ServerPlay3DAt("传送门", transform.position);
         // 只有当前正在驾驶古树的人才能触发回收逻辑
         if (possessedTreeNetId != 0)
         {
@@ -1148,6 +1150,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdRevert()
     {
+        NetworkAudioBridge.Instance?.ServerPlay3DAt("pop_sound", transform.position);
         // 使用新提炼的方法
         ServerReleaseTreeAtCurrentPosition();
 
@@ -1718,6 +1721,8 @@ public class WitchPlayer : GamePlayer
     {
         if (!isInSecondChance || isPermanentDead) return;
 
+        NetworkAudioBridge.Instance?.ServerPlay3DAt("传送门", transform.position);
+
         isInSecondChance = false;
         currentHealth = maxHealth;
         morphedPropID = -1; // 变回人类
@@ -1867,6 +1872,7 @@ public class WitchPlayer : GamePlayer
     [TargetRpc]
     void TargetShowRewardUI(NetworkConnection target, RewardOption[] options)
     {
+        AudioManager.Instance?.Play2D("叮");
         // 客户端存一份，用于 UI 显示
         currentRewardPool = new List<RewardOption>(options);
         

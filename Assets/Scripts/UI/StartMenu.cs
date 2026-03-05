@@ -117,6 +117,8 @@ public class StartMenu : MonoBehaviour
     public void OnButtonJoin()
     {
         if (!joinButton.interactable) return;  // 保險起見再檢查一次
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         // 1. 儲存玩家輸入的名字
         string name = "";
         if (inputFieldPlayerName != null && !string.IsNullOrWhiteSpace(inputFieldPlayerName.text))

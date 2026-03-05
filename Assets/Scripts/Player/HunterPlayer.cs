@@ -489,6 +489,12 @@ public class HunterPlayer : GamePlayer
     [TargetRpc]
     public void TargetBlindEffect(NetworkConnection target, float duration)
     {
+        bool wasBlindActive = sceneScript != null && sceneScript.blindPanel != null && sceneScript.blindPanel.activeSelf;
+        if (!wasBlindActive)
+        {
+            AudioManager.Instance?.Play2D("致盲耳鸣音");
+        }
+
         StartCoroutine(BlindRoutine(duration));
         Debug.Log($"[Hunter] {playerName} is Blinded for {duration} seconds.");
     }

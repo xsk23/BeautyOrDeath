@@ -11,10 +11,13 @@ public class HunterSkill_Shockwave : SkillBase
     public bool hitAnyWitch = false; // 是否命中至少一个女巫s
     protected override void OnCast()
     {
+        hitAnyWitch = false;
         RpcPlayVFX();
+        NetworkAudioBridge.Instance?.ServerPlay3DAt("shockwave砸地", ownerPlayer.transform.position);
 
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
         Debug.Log($"<color=green>[Hunter] {ownerPlayer.playerName} used skill: Shockwave! Affected {hits.Length} targets.</color>");
+        bool sentHitFeedback = false;
         foreach (var hit in hits)
         {
             // 找到女巫
@@ -47,24 +50,27 @@ public class HunterSkill_Shockwave : SkillBase
                 // 标记命中
                 hitAnyWitch = true;
 
-                if (hitAnyWitch)
+                if (hitAnyWitch && !sentHitFeedback)
                 {
                     // 【核心修复】获取安全的连接对象
                     // 如果 connectionToClient 为空（即 Host），则尝试使用 NetworkServer.localConnection
                     NetworkConnection targetConn = ownerPlayer.connectionToClient;
-                    
+
                     // 如果是 Host 模式，connectionToClient 可能为 null，需要特殊处理
                     if (targetConn == null && ownerPlayer.isLocalPlayer)
                     {
                         // 如果是 Host 自己释放技能，直接在本地打印日志或调用 UI，不走 RPC
+                        AudioManager.Instance?.Play2D("叮");
                         Debug.Log("<color=yellow>[Host] Shockwave hit a witch!</color>");
                         // 你也可以直接调用本地 UI 函数，例如：
-                        // SceneScript.Instance.ShowHitFeedback(); 
+                        // SceneScript.Instance.ShowHitFeedback();
+                        sentHitFeedback = true;
                     }
                     else if (targetConn != null)
                     {
                         // 如果是远程客户端，正常发送 TargetRpc
                         TargetHitFeedback(targetConn);
+                        sentHitFeedback = true;
                     }
                 }
             }
@@ -74,6 +80,7 @@ public class HunterSkill_Shockwave : SkillBase
     [TargetRpc]
     void TargetHitFeedback(NetworkConnection conn)
     {
+        AudioManager.Instance?.Play2D("叮");
         // UI 显示 "Hit!"
         Debug.Log("<color=yellow>[Hunter] Shockwave hit a witch!</color>");
     }
