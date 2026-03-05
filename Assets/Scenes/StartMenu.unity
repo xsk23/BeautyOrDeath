@@ -522,6 +522,54 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: d2d86dc82459f4d4291b7f4fda37d7b3, type: 3}
+--- !u!1 &1651333617
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1651333619}
+  - component: {fileID: 1651333618}
+  m_Layer: 0
+  m_Name: MusicManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1651333618
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1651333617}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2758a4ffbc324d4492c6054a7c890cf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  startMenuBGM: {fileID: 8300000, guid: c9a2bb766c7d9664684376f20d76b736, type: 3}
+  lobbyRoomBGM: {fileID: 8300000, guid: 4ecd0fa68bbd07145b2e1f6669266980, type: 3}
+  maxVolume: 0.5
+  fadeDuration: 1.5
+--- !u!4 &1651333619
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1651333617}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 66.71467, y: 23.140387, z: 43.20121}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1804424516 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 2960252011402670911, guid: fe25518f69d8bc04d93dc8d9585beebf, type: 3}
@@ -713,3 +761,4 @@ SceneRoots:
   - {fileID: 1288090168}
   - {fileID: 1059426191}
   - {fileID: 1477076045}
+  - {fileID: 1651333619}

@@ -655,7 +655,7 @@ public class GameManager : NetworkBehaviour
         else // 猎人
         {
             // 猎人无论胜负都使用原本模型
-            return (player.myGender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
+            return (player.myGender == Gender.Male) ? netManager.maleHunterVictoryPrefab : netManager.hunterFemalePrefab;
         }
     }
 
@@ -1771,7 +1771,7 @@ public class MyNetworkManager : NetworkManager
     [Header("Victory Special Prefabs")]
     public GameObject youngWitchMalePrefab;   // 新增：Young版男巫
     public GameObject youngWitchFemalePrefab; // 新增：Young版女巫
-
+    public GameObject maleHunterVictoryPrefab; // 【新增】在此处拖入你的 malehuntervictoryzone Prefab
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
     public GameObject gameManagerPrefab;
@@ -10614,6 +10614,64 @@ public class WitchSkill_Mist : SkillBase
 }
 ```
 
+## UI\BGMController.cs
+
+```csharp
+using UnityEngine;
+using System.Collections;
+
+public class BGMController : MonoBehaviour
+{
+    public static BGMController Instance;
+
+    [Header("Audio Settings")]
+    public AudioSource musicSource;
+    public float maxVolume = 0.5f;
+    public float fadeDuration = 1.5f;
+
+    private void Awake()
+    {
+        // 简单的单例，方便在切换场景前调用淡出
+        if (Instance == null) Instance = this;
+        else { Destroy(gameObject); return; }
+        
+        // 确保 AudioSource 设置正确
+        if (musicSource == null) musicSource = GetComponent<AudioSource>();
+        musicSource.loop = true;
+        musicSource.volume = 0;
+    }
+
+    private void Start()
+    {
+        // 场景开始时执行淡入
+        StartCoroutine(FadeMusic(0, maxVolume, fadeDuration));
+    }
+
+    public void StartFadeOut()
+    {
+        // 供切换场景的按钮调用
+        StopAllCoroutines();
+        StartCoroutine(FadeMusic(musicSource.volume, 0, fadeDuration));
+    }
+
+    private IEnumerator FadeMusic(float startVol, float targetVol, float duration)
+    {
+        if (!musicSource.isPlaying) musicSource.Play();
+
+        float timer = 0;
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+            musicSource.volume = Mathf.Lerp(startVol, targetVol, timer / duration);
+            yield return null;
+        }
+        musicSource.volume = targetVol;
+
+        if (targetVol <= 0) musicSource.Stop();
+    }
+}
+```
+
 ## UI\CameraData.cs
 
 ```csharp
@@ -11000,11 +11058,11 @@ def extract_audio_segment(video_path, output_audio_path, start_time, end_time=No
 # --- 使用示例 ---
 
 # 路径
-input_video = r"E:\downloads\b\gangnanstyle.mp4"
-output_audio = r"E:\downloads\b\gangnanstyle_extracted_audio.mp3"
+input_video = r"D:\RecordedVideos\2026-03-06 01-42-23.mp4"
+output_audio = r"D:\RecordedVideos\2026-03-06 01-42-23_extracted_audio.mp3"
 
 # 示例 1: 从第 5 秒开始，到第 15 秒结束
-extract_audio_segment(input_video, output_audio, start_time=75, end_time=90)
+extract_audio_segment(input_video, output_audio, start_time=2, end_time=187)
 
 # 示例 2: 从第 1 分 20 秒开始，直到视频结束
 # extract_audio_segment(input_video, output_audio, start_time="00:01:20")
@@ -13673,7 +13731,12 @@ public class StartMenu : MonoBehaviour
     {
         if (!joinButton.interactable) return;  // 保險起見再檢查一次
         //AudioManager.Instance?.Play2D("UI点击（木头）");
-
+        // --- 新增：触发 BGM 淡出 ---
+        if (BGMController.Instance != null)
+        {
+            BGMController.Instance.StartFadeOut();
+        }
+        // -------------------------
         // 1. 儲存玩家輸入的名字
         string name = "";
         if (inputFieldPlayerName != null && !string.IsNullOrWhiteSpace(inputFieldPlayerName.text))

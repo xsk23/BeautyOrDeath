@@ -118,7 +118,12 @@ public class StartMenu : MonoBehaviour
     {
         if (!joinButton.interactable) return;  // 保險起見再檢查一次
         //AudioManager.Instance?.Play2D("UI点击（木头）");
-
+        // --- 新增：触发 BGM 淡出 ---
+        if (BGMController.Instance != null)
+        {
+            BGMController.Instance.StartFadeOut();
+        }
+        // -------------------------
         // 1. 儲存玩家輸入的名字
         string name = "";
         if (inputFieldPlayerName != null && !string.IsNullOrWhiteSpace(inputFieldPlayerName.text))

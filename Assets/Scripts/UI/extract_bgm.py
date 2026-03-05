@@ -37,11 +37,11 @@ def extract_audio_segment(video_path, output_audio_path, start_time, end_time=No
 # --- 使用示例 ---
 
 # 路径
-input_video = r"E:\downloads\b\gangnanstyle.mp4"
-output_audio = r"E:\downloads\b\gangnanstyle_extracted_audio.mp3"
+input_video = r"D:\RecordedVideos\2026-03-06 01-42-23.mp4"
+output_audio = r"D:\RecordedVideos\2026-03-06 01-42-23_extracted_audio.mp3"
 
 # 示例 1: 从第 5 秒开始，到第 15 秒结束
-extract_audio_segment(input_video, output_audio, start_time=75, end_time=90)
+extract_audio_segment(input_video, output_audio, start_time=2, end_time=187)
 
 # 示例 2: 从第 1 分 20 秒开始，直到视频结束
 # extract_audio_segment(input_video, output_audio, start_time="00:01:20")
