@@ -267,6 +267,11 @@ public class GameManager : NetworkBehaviour
         }
         // 【新增】转场开始时，正式进入 GameOver 状态
         SetGameState(GameState.GameOver);
+        
+        // 【关键修复】在统计胜败者之前，先清理 AllPlayers 中的无效引用
+        GamePlayer.CleanupDeadReferences();
+        Debug.Log($"[Server] Cleaned up AllPlayers. Current count: {GamePlayer.AllPlayers.Count}");
+        
         // 统计胜利者与失败者
         List<GamePlayer> winners = new List<GamePlayer>();
         List<GamePlayer> losers = new List<GamePlayer>();
@@ -405,6 +410,9 @@ public class GameManager : NetworkBehaviour
     [Server]
     private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers, int danceIndex)
     {
+        // 【新增调试日志】显示胜败者统计
+        Debug.Log($"[Server] SetupVictoryStage: Winners={winners.Count}, Losers={losers.Count}");
+        
         GameObject stageCenter = GameObject.Find("VictoryStageCenter");
         Vector3 centerPos = stageCenter ? stageCenter.transform.position : new Vector3(-180, 10, 140);
         
@@ -437,6 +445,12 @@ public class GameManager : NetworkBehaviour
                 // 【修改】传入选中的 danceIndex
                 RpcApplyVictoryAnimation(displayObj, danceIndex, i, winner);
                 RpcSetVictoryModelName(displayObj, winners[i].playerName, winners[i].playerRole);
+                
+                // 【新增】如果胜利者是猎人，隐藏武器
+                if (winners[i].playerRole == PlayerRole.Hunter)
+                {
+                    RpcHideHunterWeapons(displayObj);
+                }
             }
         }
 
@@ -474,6 +488,13 @@ public class GameManager : NetworkBehaviour
                 
                 // 2. 【新增】调用自动挂载 Animator 的 RPC
                 RpcSetupLoserFailLogic(loserObj);
+                // ==========================================
+                // 【新增修改】如果失败者也是猎人，同样需要隐藏武器
+                // ==========================================
+                if (losers[j].playerRole == PlayerRole.Hunter)
+                {
+                    RpcHideHunterWeapons(loserObj);
+                }
             }
         }
     }
@@ -512,6 +533,35 @@ public class GameManager : NetworkBehaviour
         }
         
         randomPlayer.stateNames = new string[] { "sad_idle", "sad_idle 0", "sad_idle 1" };
+    }
+
+    [ClientRpc]
+    private void RpcHideHunterWeapons(GameObject hunterObj)
+    {
+        if (hunterObj == null) return;
+
+        Debug.Log($"[Victory] Hiding weapons for display hunter model: {hunterObj.name}");
+        
+        int hiddenCount = 0; // 【修复】声明计数变量
+            
+        // 【修复】直接从传入的展示模型 (hunterObj) 获取 HunterPlayer 组件
+        HunterPlayer hunter = hunterObj.GetComponent<HunterPlayer>();
+        
+        if (hunter != null && hunter.hunterWeapon != null)
+        {
+            foreach (GameObject weapon in hunter.hunterWeapon)
+            {
+                if (weapon != null)
+                {
+                    weapon.SetActive(false);
+                    hiddenCount++;
+                    Debug.Log($"[Victory] Hidden hunter weapon: {weapon.name}");
+                }
+            }
+            Debug.Log($"[Victory] Hid all {hunter.hunterWeapon.Length} weapons for hunter: {hunter.playerName}");
+        }
+        
+        Debug.Log($"[Victory] Total display weapons hidden: {hiddenCount}");
     }
 
     // 【新增 Rpc】专门用于在客户端设置展示物体的名字
@@ -598,7 +648,7 @@ public class GameManager : NetworkBehaviour
         else // 猎人
         {
             // 猎人无论胜负都使用原本模型
-            return (player.myGender == Gender.Male) ? netManager.hunterMalePrefab : netManager.hunterFemalePrefab;
+            return (player.myGender == Gender.Male) ? netManager.maleHunterVictoryPrefab : netManager.hunterFemalePrefab;
         }
     }
 
@@ -617,6 +667,7 @@ public class GameManager : NetworkBehaviour
                 continue;
             }
 
+            // 隐藏所有 Renderer
             Renderer[] rs = p.GetComponentsInChildren<Renderer>();
             foreach (var r in rs)
             {

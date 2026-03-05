@@ -93,6 +93,7 @@ MonoBehaviour:
   - {fileID: 3650691871401806780, guid: 59c67f2eba8e4034e81dd83923ce4485, type: 3}
   - {fileID: 6397291155531275063, guid: 44a0de0f766c9634eb66f1d56b7edc9d, type: 3}
   - {fileID: 4516135911683214189, guid: 2acfa00bbbd3f6d4fb932da2270580ad, type: 3}
+  - {fileID: 4516135911683214189, guid: 49791c292311fdd4fb46c7d844a3a1e6, type: 3}
   - {fileID: 7364481315165733279, guid: f38955dc78e755b489e5acb8e081078f, type: 3}
   - {fileID: 7437291211915263204, guid: 634b8befe1a028a4589d4215135a37c1, type: 3}
   - {fileID: 7364481315165733279, guid: c1ea9046523b86440be010521c9e621e, type: 3}
@@ -249,6 +250,7 @@ MonoBehaviour:
   witchFemaleBroomPrefab: {fileID: 7364481315165733279, guid: a846748daea8d5846ad6825ca74cf9b4, type: 3}
   youngWitchMalePrefab: {fileID: 7364481315165733279, guid: 627cbe18b2166ae4ba8436ca568e2f7f, type: 3}
   youngWitchFemalePrefab: {fileID: 7364481315165733279, guid: 356facc23ee624f4aaff03d5b53238fd, type: 3}
+  maleHunterVictoryPrefab: {fileID: 4516135911683214189, guid: 49791c292311fdd4fb46c7d844a3a1e6, type: 3}
   gameManagerPrefab: {fileID: 4317130386679613736, guid: dbcc69960cf8d9046b073d292c8b16f0, type: 3}
 --- !u!114 &6538974110224861687
 MonoBehaviour:

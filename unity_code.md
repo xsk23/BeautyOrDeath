@@ -131,9 +131,21 @@ public class GameManager : NetworkBehaviour
         }
         
         Instance = this;
-        
+
         // 确保切换场景不销毁 (客户端和服务器都需要)
         DontDestroyOnLoad(gameObject);
+    }
+
+    [Server]
+    public void ServerPlay3DAt(string soundName, Vector3 position)
+    {
+        RpcPlay3D(soundName, position);
+    }
+
+    [ClientRpc]
+    private void RpcPlay3D(string soundName, Vector3 position)
+    {
+        AudioManager.Instance?.Play3D(soundName, position);
     }
 
     // 【新增】服务器端更新时间
@@ -262,6 +274,11 @@ public class GameManager : NetworkBehaviour
         }
         // 【新增】转场开始时，正式进入 GameOver 状态
         SetGameState(GameState.GameOver);
+        
+        // 【关键修复】在统计胜败者之前，先清理 AllPlayers 中的无效引用
+        GamePlayer.CleanupDeadReferences();
+        Debug.Log($"[Server] Cleaned up AllPlayers. Current count: {GamePlayer.AllPlayers.Count}");
+        
         // 统计胜利者与失败者
         List<GamePlayer> winners = new List<GamePlayer>();
         List<GamePlayer> losers = new List<GamePlayer>();
@@ -400,6 +417,9 @@ public class GameManager : NetworkBehaviour
     [Server]
     private void SetupVictoryStage(PlayerRole winner, List<GamePlayer> winners, List<GamePlayer> losers, int danceIndex)
     {
+        // 【新增调试日志】显示胜败者统计
+        Debug.Log($"[Server] SetupVictoryStage: Winners={winners.Count}, Losers={losers.Count}");
+        
         GameObject stageCenter = GameObject.Find("VictoryStageCenter");
         Vector3 centerPos = stageCenter ? stageCenter.transform.position : new Vector3(-180, 10, 140);
         
@@ -432,6 +452,12 @@ public class GameManager : NetworkBehaviour
                 // 【修改】传入选中的 danceIndex
                 RpcApplyVictoryAnimation(displayObj, danceIndex, i, winner);
                 RpcSetVictoryModelName(displayObj, winners[i].playerName, winners[i].playerRole);
+                
+                // 【新增】如果胜利者是猎人，隐藏武器
+                if (winners[i].playerRole == PlayerRole.Hunter)
+                {
+                    RpcHideHunterWeapons(displayObj);
+                }
             }
         }
 
@@ -469,6 +495,13 @@ public class GameManager : NetworkBehaviour
                 
                 // 2. 【新增】调用自动挂载 Animator 的 RPC
                 RpcSetupLoserFailLogic(loserObj);
+                // ==========================================
+                // 【新增修改】如果失败者也是猎人，同样需要隐藏武器
+                // ==========================================
+                if (losers[j].playerRole == PlayerRole.Hunter)
+                {
+                    RpcHideHunterWeapons(loserObj);
+                }
             }
         }
     }
@@ -507,6 +540,35 @@ public class GameManager : NetworkBehaviour
         }
         
         randomPlayer.stateNames = new string[] { "sad_idle", "sad_idle 0", "sad_idle 1" };
+    }
+
+    [ClientRpc]
+    private void RpcHideHunterWeapons(GameObject hunterObj)
+    {
+        if (hunterObj == null) return;
+
+        Debug.Log($"[Victory] Hiding weapons for display hunter model: {hunterObj.name}");
+        
+        int hiddenCount = 0; // 【修复】声明计数变量
+            
+        // 【修复】直接从传入的展示模型 (hunterObj) 获取 HunterPlayer 组件
+        HunterPlayer hunter = hunterObj.GetComponent<HunterPlayer>();
+        
+        if (hunter != null && hunter.hunterWeapon != null)
+        {
+            foreach (GameObject weapon in hunter.hunterWeapon)
+            {
+                if (weapon != null)
+                {
+                    weapon.SetActive(false);
+                    hiddenCount++;
+                    Debug.Log($"[Victory] Hidden hunter weapon: {weapon.name}");
+                }
+            }
+            Debug.Log($"[Victory] Hid all {hunter.hunterWeapon.Length} weapons for hunter: {hunter.playerName}");
+        }
+        
+        Debug.Log($"[Victory] Total display weapons hidden: {hiddenCount}");
     }
 
     // 【新增 Rpc】专门用于在客户端设置展示物体的名字
@@ -612,6 +674,7 @@ public class GameManager : NetworkBehaviour
                 continue;
             }
 
+            // 隐藏所有 Renderer
             Renderer[] rs = p.GetComponentsInChildren<Renderer>();
             foreach (var r in rs)
             {
@@ -2315,6 +2378,118 @@ public class UnityMainThreadDispatcher : MonoBehaviour
 }
 ```
 
+## Audio\AudioManager.cs
+
+```csharp
+using UnityEngine;
+using System.Collections.Generic;
+
+[System.Serializable]
+public class SoundAction
+{
+    public string soundName;       // 声音的唯一标识符（如 "Footstep_Dirt", "Shotgun_Fire"）
+    public AudioClip[] clips;      // 数组：支持同类音效随机播放（如 3 种不同泥土脚步声）
+    [Range(0f, 1f)] public float volume = 1.0f;
+    public bool randomPitch = false; // 是否随机音高（防单调）
+}
+
+public class AudioManager : MonoBehaviour
+{
+    public static AudioManager Instance { get; private set; }
+
+    [Header("音效库配置")]
+    public SoundAction[] soundLibrary;
+    private Dictionary<string, SoundAction> soundDictionary;
+
+    [Header("2D音效源 (UI、系统音)")]
+    public AudioSource source2D;
+
+    [Header("3D音效对象池配置")]
+    public GameObject audioSourcePrefab; // 需要一个挂了 AudioSource 的空物体Prefab
+    public int poolSize = 10;
+    private Queue<AudioSource> sourcePool3D;
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
+        // 初始化字典，查找速度 O(1)
+        soundDictionary = new Dictionary<string, SoundAction>();
+        foreach (var sound in soundLibrary)
+        {
+            if (!soundDictionary.ContainsKey(sound.soundName))
+                soundDictionary.Add(sound.soundName, sound);
+        }
+
+        // 初始化 3D 音效对象池
+        sourcePool3D = new Queue<AudioSource>();
+        for (int i = 0; i < poolSize; i++)
+        {
+            AudioSource newSource = Instantiate(audioSourcePrefab, transform).GetComponent<AudioSource>();
+            newSource.gameObject.SetActive(false);
+            sourcePool3D.Enqueue(newSource);
+        }
+    }
+
+    // --- 播放 2D 声音（如 UI点击、耳鸣、心跳声） ---
+    public void Play2D(string name)
+    {
+        if (soundDictionary.TryGetValue(name, out SoundAction soundData) && soundData.clips.Length > 0)
+        {
+            AudioClip clip = soundData.clips[Random.Range(0, soundData.clips.Length)];
+            if (soundData.randomPitch) source2D.pitch = Random.Range(0.9f, 1.1f);
+            else source2D.pitch = 1f;
+            
+            source2D.PlayOneShot(clip, soundData.volume);
+        }
+    }
+
+    // --- 播放 3D 声音（如 枪声、变身音效、狗叫，具有空间衰减） ---
+    public void Play3D(string name, Vector3 position)
+    {
+        if (soundDictionary.TryGetValue(name, out SoundAction soundData) && soundData.clips.Length > 0)
+        {
+            AudioSource source = GetPooledSource();
+            if (source == null) return; // 池满了且都在播放，直接丢弃（防止爆音）
+
+            source.transform.position = position;
+            source.gameObject.SetActive(true);
+
+            AudioClip clip = soundData.clips[Random.Range(0, soundData.clips.Length)];
+            source.clip = clip;
+            source.volume = soundData.volume;
+            
+            if (soundData.randomPitch) source.pitch = Random.Range(0.85f, 1.15f);
+            else source.pitch = 1f;
+
+            source.Play();
+
+            // 播放完毕后自动回收
+            StartCoroutine(ReturnToPool(source, clip.length));
+        }
+        else
+        {
+            Debug.LogWarning($"[AudioManager] Sound '{name}' not found!");
+        }
+    }
+
+    private AudioSource GetPooledSource()
+    {
+        if (sourcePool3D.Count > 0) return sourcePool3D.Dequeue();
+        return null; 
+    }
+
+    private System.Collections.IEnumerator ReturnToPool(AudioSource source, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        source.gameObject.SetActive(false);
+        sourcePool3D.Enqueue(source);
+    }
+}
+```
+
 ## Objects\CreatureAIWander.cs
 
 ```csharp
@@ -3629,7 +3804,9 @@ public class FistWeapon : WeaponBase
     }
 
     public override void OnFire(Vector3 origin, Vector3 direction)
-    {
+    {   
+        AudioManager.Instance?.Play2D("拳头攻击");
+        Debug.Log($" fired a punch!");
         nextFireTime = Time.time + fireRate;
         if (isServer)
         {
@@ -4738,6 +4915,14 @@ public class HunterPlayer : GamePlayer
     public override void OnStartLocalPlayer()
     {
         base.OnStartLocalPlayer();
+        // 确保鼠标锁定在准星上
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        // 先禁用所有武器，由脚本控制active状态
+        foreach (GameObject weapon in hunterWeapon)
+        {
+            weapon.SetActive(false);
+        }
         ChangeWeapon(currentWeaponIndex);
     // 确保本地猎人看到的是隐藏的女巫相关 UI
         if (SceneScript.Instance != null)
@@ -4868,7 +5053,6 @@ public class HunterPlayer : GamePlayer
                         {
                             // 猎枪：只触发开火动画，真正的射线伤害等待第11帧事件
                             CmdTriggerGunAnimation();
-                            // OnWeaponFired?.Invoke(currentWeaponIndex);
                         }
                         else
                         {
@@ -4923,8 +5107,6 @@ public class HunterPlayer : GamePlayer
         {
             hunterAnimator.SetTrigger("Shoot");
         }
-        // 在动画触发的同时播放声音和枪口特效
-        OnWeaponFired?.Invoke(currentWeaponIndex);
     }
     // ----------------------------------------------------
     // 4. 【关键接口】供 AnimationEventBridge 在第 11 帧调用
@@ -4989,10 +5171,7 @@ public class HunterPlayer : GamePlayer
         // 触发事件
         WeaponBase currentWeapon = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
         // 猎枪的声音已在 RpcTriggerGunAnimation 中播放，此处跳过
-        if (currentWeapon != null && currentWeapon.weaponName != "Gun")
-        {
-            OnWeaponFired?.Invoke(weaponIndex);
-        }
+        OnWeaponFired?.Invoke(weaponIndex);
         // --- 新增：触发近战动画逻辑 ---
         if (hunterAnimator != null)
         { 
@@ -5139,6 +5318,12 @@ public class HunterPlayer : GamePlayer
     [TargetRpc]
     public void TargetBlindEffect(NetworkConnection target, float duration)
     {
+        bool wasBlindActive = sceneScript != null && sceneScript.blindPanel != null && sceneScript.blindPanel.activeSelf;
+        if (!wasBlindActive)
+        {
+            AudioManager.Instance?.Play2D("致盲耳鸣音");
+        }
+
         StartCoroutine(BlindRoutine(duration));
         Debug.Log($"[Hunter] {playerName} is Blinded for {duration} seconds.");
     }
@@ -5186,6 +5371,7 @@ public class HunterPlayer : GamePlayer
             // 3. 先设置随机索引，再触发 Trigger
             hunterAnimator.SetInteger("JumpIndex", index);
             hunterAnimator.SetTrigger("isJump");
+            AudioManager.Instance?.Play2D("jump_sound");
             
             // 调试打印，方便你查看触发了哪一个
             // Debug.Log($"[Jump] Triggered animation index: {index}");
@@ -5219,6 +5405,7 @@ public class InvisibilityCloak : WitchItemBase
     {
         nextUseTime = Time.time + cooldown;
         WitchPlayer player = GetComponentInParent<WitchPlayer>();
+        AudioManager.Instance?.Play2D("cloak_activate_sound");
         if (player == null)
         {
             Debug.LogError("InvisibilityCloak: No WitchPlayer found on parent.");
@@ -6695,6 +6882,7 @@ public class WitchPlayer : GamePlayer
                 {
                     // 普通变身
                     CmdMorph(currentFocusProp.propID);
+
                     // 变身触发冷却
                     nextMorphTime = Time.time + morphCooldown;
                 }
@@ -6801,6 +6989,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdMorph(int propID)
     {
+        
         // // 1. 先在服务器修改同步变量
         isMorphed = true;
         // // 2. 广播 Rpc 处理视觉
@@ -6983,7 +7172,11 @@ public class WitchPlayer : GamePlayer
                 if (isLocalPlayer) SetLocalVisibility(true); // 让自己可见
             }
         }
+        
+        GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
+
         // 确保这段代码在 UpdateCollider 之后执行
+        
         if (isLocalPlayer)
         {
             // 强制刷新一次目标位置
@@ -7084,6 +7277,7 @@ public class WitchPlayer : GamePlayer
     [Server]
     public void ServerOnReachPortal()
     {
+        GameManager.Instance?.ServerPlay3DAt("传送门", transform.position);
         // 只有当前正在驾驶古树的人才能触发回收逻辑
         if (possessedTreeNetId != 0)
         {
@@ -7233,6 +7427,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdRevert()
     {
+        GameManager.Instance?.ServerPlay3DAt("女巫变人", transform.position);
         // 使用新提炼的方法
         ServerReleaseTreeAtCurrentPosition();
 
@@ -7423,7 +7618,7 @@ public class WitchPlayer : GamePlayer
     private void TriggerAmuletSave()
     {
         UnityEngine.Debug.Log($"<color=green>[Server] {playerName} saved by Life Amulet!</color>");
-
+        AudioManager.Instance?.Play3D("护符碎裂", transform.position);
         // 1. 消耗保护状态
         isProtectedByAmulet = false;
 
@@ -7803,6 +7998,8 @@ public class WitchPlayer : GamePlayer
     {
         if (!isInSecondChance || isPermanentDead) return;
 
+        GameManager.Instance?.ServerPlay3DAt("传送门", transform.position);
+
         isInSecondChance = false;
         currentHealth = maxHealth;
         morphedPropID = -1; // 变回人类
@@ -7952,6 +8149,7 @@ public class WitchPlayer : GamePlayer
     [TargetRpc]
     void TargetShowRewardUI(NetworkConnection target, RewardOption[] options)
     {
+        AudioManager.Instance?.Play2D("叮");
         // 客户端存一份，用于 UI 显示
         currentRewardPool = new List<RewardOption>(options);
         
@@ -8973,7 +9171,7 @@ public class DogSkillBehavior : NetworkBehaviour
     [ClientRpc]
     void RpcBarkEffect(Vector3 pos)
     {
-        // 这里可以播放音效
+        AudioManager.Instance?.Play3D("dogBarking", pos);
         Debug.Log("Dog: Bark! Found Witch!");
     }
 
@@ -9044,11 +9242,15 @@ public class HunterSkill_Dog : SkillBase
         // 这样猎人看向哪里，狗就面朝哪里
         Quaternion spawnRot = ownerPlayer.transform.rotation;
 
+        GameManager.Instance?.ServerPlay3DAt("哨子音", ownerPlayer.transform.position);
+        //2D 
+        //AudioManager.Instance?.Play2D("哨子音");
         // 3. 生成实例
         GameObject dog = Instantiate(dogPrefab, spawnPos, spawnRot);
         
         // 4. 网络生成
         NetworkServer.Spawn(dog);
+        
     }
 }
 ```
@@ -9432,10 +9634,13 @@ public class HunterSkill_Shockwave : SkillBase
     public bool hitAnyWitch = false; // 是否命中至少一个女巫s
     protected override void OnCast()
     {
+        hitAnyWitch = false;
         RpcPlayVFX();
+        GameManager.Instance?.ServerPlay3DAt("shockwave砸地", ownerPlayer.transform.position);
 
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
         Debug.Log($"<color=green>[Hunter] {ownerPlayer.playerName} used skill: Shockwave! Affected {hits.Length} targets.</color>");
+        bool sentHitFeedback = false;
         foreach (var hit in hits)
         {
             // 找到女巫
@@ -9468,24 +9673,27 @@ public class HunterSkill_Shockwave : SkillBase
                 // 标记命中
                 hitAnyWitch = true;
 
-                if (hitAnyWitch)
+                if (hitAnyWitch && !sentHitFeedback)
                 {
                     // 【核心修复】获取安全的连接对象
                     // 如果 connectionToClient 为空（即 Host），则尝试使用 NetworkServer.localConnection
                     NetworkConnection targetConn = ownerPlayer.connectionToClient;
-                    
+
                     // 如果是 Host 模式，connectionToClient 可能为 null，需要特殊处理
                     if (targetConn == null && ownerPlayer.isLocalPlayer)
                     {
                         // 如果是 Host 自己释放技能，直接在本地打印日志或调用 UI，不走 RPC
+                        AudioManager.Instance?.Play2D("叮");
                         Debug.Log("<color=yellow>[Host] Shockwave hit a witch!</color>");
                         // 你也可以直接调用本地 UI 函数，例如：
-                        // SceneScript.Instance.ShowHitFeedback(); 
+                        // SceneScript.Instance.ShowHitFeedback();
+                        sentHitFeedback = true;
                     }
                     else if (targetConn != null)
                     {
                         // 如果是远程客户端，正常发送 TargetRpc
                         TargetHitFeedback(targetConn);
+                        sentHitFeedback = true;
                     }
                 }
             }
@@ -9495,6 +9703,7 @@ public class HunterSkill_Shockwave : SkillBase
     [TargetRpc]
     void TargetHitFeedback(NetworkConnection conn)
     {
+        AudioManager.Instance?.Play2D("叮");
         // UI 显示 "Hit!"
         Debug.Log("<color=yellow>[Hunter] Shockwave hit a witch!</color>");
     }
@@ -9588,6 +9797,7 @@ public class HunterSkill_Trap : SkillBase
                 
                 GameObject trap = Instantiate(trapPrefab, finalSpawnPos, trapRotation);
                 NetworkServer.Spawn(trap);
+                GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", finalSpawnPos);
             }
             catch (System.Exception e)
             {
@@ -9814,6 +10024,7 @@ public class TrapBehavior : NetworkBehaviour
 
             // --- 物理层面移动方案 ---
             Vector3 targetPos = witch.transform.position;
+            GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", targetPos);
 
             // 1. 先把刚体设为 Kinematic，这样它就不会被物理引擎推走或卡住
             rb.isKinematic = true; 
@@ -10171,7 +10382,8 @@ public class WitchSkill_Chaos : SkillBase
     protected override void OnCast()
     {
         Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} used skill: Chaos! Disturbing nearby trees.</color>");
-        
+        GameManager.Instance?.ServerPlay3DAt("地动声", ownerPlayer.transform.position);
+
         // 找到周围的普通树
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
         foreach (var hit in hits)
@@ -10310,6 +10522,7 @@ public class WitchSkill_Curse : SkillBase
     [ClientRpc]
     void RpcCurseEffect(Vector3 pos)
     {
+        
         // 播放一点紫色的粒子特效，提示女巫诅咒成功
     }
 }
@@ -10332,6 +10545,8 @@ public class WitchSkill_Decoy : SkillBase
         WitchPlayer witch = ownerPlayer as WitchPlayer;
         if (witch == null) return;
 
+        GameManager.Instance?.ServerPlay3DAt("pop_sound", ownerPlayer.transform.position);
+        
         // 如果没变身，就复制人类 (或者禁止使用)
         // 这里假设复制当前的 morphedPropID
         int idToCopy = witch.isMorphed ? witch.morphedPropID : -1; // -1 表示没变身
@@ -10384,14 +10599,17 @@ public class WitchSkill_Mist : SkillBase
         
         // 稍微抬高一点，防止生成在地板下
         spawnPos.y += 0.5f;
-
+        GameManager.Instance?.ServerPlay3DAt("女巫迷雾", spawnPos);
         // 2. 生成实例
         GameObject mist = Instantiate(mistPrefab, spawnPos, Quaternion.identity);
+
         // 【核心修改】应用奖励带来的缩放
         // 缩放 Transform 会同时增大其子物体的 Trigger 碰撞体范围
         mist.transform.localScale *= mistScale;
+        
         // 3. 网络同步
         NetworkServer.Spawn(mist);
+        
     }
 }
 ```
@@ -10547,6 +10765,8 @@ public class ConnectUIManager : MonoBehaviour
         }
         // ------------------------
 
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         string pwd = (passwordToggle && passwordToggle.isOn) ? passwordInput.text : "";
         
         Debug.Log($"发送创建请求: 房间名='{rName}', 有密码={(!string.IsNullOrEmpty(pwd))}");
@@ -10628,6 +10848,8 @@ public class ConnectUIManager : MonoBehaviour
     {
         if (selectedRoomId == -1) return;
 
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         if (selectedRoomHasPwd)
         {
             // 有密码 -> 弹出密码输入框
@@ -10659,6 +10881,7 @@ public class ConnectUIManager : MonoBehaviour
     // --- UI 逻辑: 密码弹窗确认 ---
     void OnConfirmPwd()
     {
+        AudioManager.Instance?.Play2D("UI点击（木头）");
         if (joinPwdInput) SendJoinRequest(joinPwdInput.text);
     }
 
@@ -11590,6 +11813,8 @@ public class LobbyScript : NetworkBehaviour
     // 点击准备按钮
     public void OnClickReady()
     {
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         // 安全获取本地玩家
         if (NetworkClient.connection == null || NetworkClient.connection.identity == null) return;
         
@@ -11610,6 +11835,8 @@ public class LobbyScript : NetworkBehaviour
     // 点击开始游戏按钮
     public void OnClickStartGame()
     {
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         // 安全获取本地玩家
         var localPlayer = NetworkClient.connection.identity.GetComponent<PlayerScript>();
         if (localPlayer == null) return;
@@ -13445,6 +13672,8 @@ public class StartMenu : MonoBehaviour
     public void OnButtonJoin()
     {
         if (!joinButton.interactable) return;  // 保險起見再檢查一次
+        //AudioManager.Instance?.Play2D("UI点击（木头）");
+
         // 1. 儲存玩家輸入的名字
         string name = "";
         if (inputFieldPlayerName != null && !string.IsNullOrWhiteSpace(inputFieldPlayerName.text))
@@ -13917,6 +14146,7 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
     {
         transform.localScale = initialScale * hoverScale;
         // 如果想做发光效果，可以在这里开启一个隐藏的 Glow 图片
+        AudioManager.Instance?.Play2D("UI选择");
     }
 
     // 鼠标移出
@@ -13931,6 +14161,7 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
     {
         transform.localScale = initialScale * pressScale;
         if (targetImage != null) targetImage.color = pressColor;
+        AudioManager.Instance?.Play2D("UI点击（木头）");
     }
 
     // 鼠标抬起

@@ -35,7 +35,7 @@ public class MyNetworkManager : NetworkManager
     [Header("Victory Special Prefabs")]
     public GameObject youngWitchMalePrefab;   // 新增：Young版男巫
     public GameObject youngWitchFemalePrefab; // 新增：Young版女巫
-
+    public GameObject maleHunterVictoryPrefab; // 【新增】在此处拖入你的 malehuntervictoryzone Prefab
     [Header("System Prefabs")]
     // 【新增】拖入你做好的 GameManager Prefab (必须带 NetworkIdentity)
     public GameObject gameManagerPrefab;
