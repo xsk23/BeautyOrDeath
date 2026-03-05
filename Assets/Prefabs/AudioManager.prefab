@@ -49,18 +49,18 @@ MonoBehaviour:
   - soundName: "\u5973\u5DEB\u53D8\u8EAB"
     clips:
     - {fileID: 8300000, guid: 20a3de561bf52da4ca2557a58790f814, type: 3}
-    volume: 0
+    volume: 1
     randomPitch: 1
   - soundName: "UI\u70B9\u51FB\uFF08\u6728\u5934\uFF09"
     clips:
     - {fileID: 8300000, guid: 20fae21a8187e19499432e4b8b48de8f, type: 3}
     volume: 1
-    randomPitch: 1
+    randomPitch: 0
   - soundName: "\u673A\u68B0click\u97F3\u9677\u9631\u7528"
     clips:
     - {fileID: 8300000, guid: d0155ef3a01618e44bd2138214c3323e, type: 3}
     volume: 1
-    randomPitch: 1
+    randomPitch: 0
   - soundName: "\u54E8\u5B50\u97F3"
     clips:
     - {fileID: 8300000, guid: aca8314b19ec9464d9462f2763f48f9f, type: 3}
@@ -109,6 +109,36 @@ MonoBehaviour:
   - soundName: "\u5973\u5DEB\u8FF7\u96FE"
     clips:
     - {fileID: 8300000, guid: 9d18504ac271a4e4bac9c47da93d2786, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: "UI\u9009\u62E9"
+    clips:
+    - {fileID: 8300000, guid: 98289837f58bc88499708abaff9aa115, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: "\u5973\u5DEB\u53D8\u4EBA"
+    clips:
+    - {fileID: 8300000, guid: a8ea83d6a8356d94f9d44fef192f94dd, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: "\u5973\u5DEB\u53D8\u4EBA"
+    clips:
+    - {fileID: 8300000, guid: a8ea83d6a8356d94f9d44fef192f94dd, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: "\u62F3\u5934\u653B\u51FB"
+    clips:
+    - {fileID: 8300000, guid: f04788323d04e2948bf7c3bff762d63f, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: jump_sound
+    clips:
+    - {fileID: 8300000, guid: 3d44f00e3729dd04182e1ca8a323fdfb, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: cloak_activate_sound
+    clips:
+    - {fileID: 8300000, guid: beac702c8f275e84ea3dc8775df20686, type: 3}
     volume: 1
     randomPitch: 1
   source2D: {fileID: 8815305643914776443}

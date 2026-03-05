@@ -13,7 +13,7 @@ public class HunterSkill_Shockwave : SkillBase
     {
         hitAnyWitch = false;
         RpcPlayVFX();
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("shockwave砸地", ownerPlayer.transform.position);
+        GameManager.Instance?.ServerPlay3DAt("shockwave砸地", ownerPlayer.transform.position);
 
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
         Debug.Log($"<color=green>[Hunter] {ownerPlayer.playerName} used skill: Shockwave! Affected {hits.Length} targets.</color>");

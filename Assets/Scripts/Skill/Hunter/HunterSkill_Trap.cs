@@ -66,7 +66,7 @@ public class HunterSkill_Trap : SkillBase
                 
                 GameObject trap = Instantiate(trapPrefab, finalSpawnPos, trapRotation);
                 NetworkServer.Spawn(trap);
-                NetworkAudioBridge.Instance?.ServerPlay3DAt("机械click音陷阱用", finalSpawnPos);
+                GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", finalSpawnPos);
             }
             catch (System.Exception e)
             {

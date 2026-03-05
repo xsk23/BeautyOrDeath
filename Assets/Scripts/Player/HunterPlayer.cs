@@ -542,6 +542,7 @@ public class HunterPlayer : GamePlayer
             // 3. 先设置随机索引，再触发 Trigger
             hunterAnimator.SetInteger("JumpIndex", index);
             hunterAnimator.SetTrigger("isJump");
+            AudioManager.Instance?.Play2D("jump_sound");
             
             // 调试打印，方便你查看触发了哪一个
             // Debug.Log($"[Jump] Triggered animation index: {index}");

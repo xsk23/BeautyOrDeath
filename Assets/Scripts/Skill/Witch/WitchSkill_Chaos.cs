@@ -11,7 +11,7 @@ public class WitchSkill_Chaos : SkillBase
     protected override void OnCast()
     {
         Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} used skill: Chaos! Disturbing nearby trees.</color>");
-        NetworkAudioBridge.Instance?.ServerPlay3DAt("地动声", ownerPlayer.transform.position);
+        GameManager.Instance?.ServerPlay3DAt("地动声", ownerPlayer.transform.position);
 
         // 找到周围的普通树
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
