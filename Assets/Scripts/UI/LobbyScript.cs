@@ -256,6 +256,8 @@ public class LobbyScript : NetworkBehaviour
     // 点击准备按钮
     public void OnClickReady()
     {
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         // 安全获取本地玩家
         if (NetworkClient.connection == null || NetworkClient.connection.identity == null) return;
         
@@ -276,6 +278,8 @@ public class LobbyScript : NetworkBehaviour
     // 点击开始游戏按钮
     public void OnClickStartGame()
     {
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         // 安全获取本地玩家
         var localPlayer = NetworkClient.connection.identity.GetComponent<PlayerScript>();
         if (localPlayer == null) return;

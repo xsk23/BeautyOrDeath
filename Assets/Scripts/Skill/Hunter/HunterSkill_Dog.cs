@@ -26,5 +26,6 @@ public class HunterSkill_Dog : SkillBase
         
         // 4. 网络生成
         NetworkServer.Spawn(dog);
+        NetworkAudioBridge.Instance?.ServerPlay3DAt("哨子声", spawnPos);
     }
 }

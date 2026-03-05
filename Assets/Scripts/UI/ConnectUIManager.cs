@@ -133,6 +133,8 @@ public class ConnectUIManager : MonoBehaviour
         }
         // ------------------------
 
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         string pwd = (passwordToggle && passwordToggle.isOn) ? passwordInput.text : "";
         
         Debug.Log($"发送创建请求: 房间名='{rName}', 有密码={(!string.IsNullOrEmpty(pwd))}");
@@ -214,6 +216,8 @@ public class ConnectUIManager : MonoBehaviour
     {
         if (selectedRoomId == -1) return;
 
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+
         if (selectedRoomHasPwd)
         {
             // 有密码 -> 弹出密码输入框
@@ -245,6 +249,7 @@ public class ConnectUIManager : MonoBehaviour
     // --- UI 逻辑: 密码弹窗确认 ---
     void OnConfirmPwd()
     {
+        AudioManager.Instance?.Play2D("UI点击（木头）");
         if (joinPwdInput) SendJoinRequest(joinPwdInput.text);
     }
 

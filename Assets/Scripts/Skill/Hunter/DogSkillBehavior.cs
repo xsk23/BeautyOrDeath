@@ -201,7 +201,7 @@ public class DogSkillBehavior : NetworkBehaviour
     [ClientRpc]
     void RpcBarkEffect(Vector3 pos)
     {
-        // 这里可以播放音效
+        AudioManager.Instance?.Play3D("dogBarking", pos);
         Debug.Log("Dog: Bark! Found Witch!");
     }
 

@@ -34,6 +34,7 @@ public class WitchSkill_Curse : SkillBase
     [ClientRpc]
     void RpcCurseEffect(Vector3 pos)
     {
+        AudioManager.Instance?.Play3D("护符碎裂", pos);
         // 播放一点紫色的粒子特效，提示女巫诅咒成功
     }
 }

@@ -32,5 +32,6 @@ public class WitchSkill_Mist : SkillBase
         mist.transform.localScale *= mistScale;
         // 3. 网络同步
         NetworkServer.Spawn(mist);
+        NetworkAudioBridge.Instance?.ServerPlay3DAt("女巫迷雾", spawnPos);
     }
 }
