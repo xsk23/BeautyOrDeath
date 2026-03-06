@@ -1,10 +1,8 @@
 from PIL import Image
 from rembg import remove
 
-input_path = r"D:\Program Files\Downloads\grok-image-37c8da96-aaf1-4e58-944d-f7452513a14d.png"
-output_path = (
-    "Assets/Image/UI/lobbyroom_title_output.png"
-)
+input_path = r"Assets/Image/UI/progressbar.png"
+output_path = "Assets/Image/UI/progressbar1.png"
 
 # 打开图片
 input_image = Image.open(input_path)

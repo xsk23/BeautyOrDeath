@@ -258,10 +258,12 @@ public class GameManager : NetworkBehaviour
         // 【关键修复 1】如果已经处理过结束，直接跳出
         if (currentState == GameState.GameOver) return;
 
+        // --- 新增：把倒计时归零，避免触发 SceneScript 里的 UI 覆盖 ---
+        restartCountdown = 0; 
+
         // 【关键修复 2】立即切换状态，阻断 Update 的再次进入
         SetGameState(GameState.GameOver);
         gameWinner = winner;
-        // SetGameState(GameState.GameOver);
         
         // 开启新的胜利序列协程
         StartCoroutine(VictorySequenceRoutine(winner));
@@ -1033,7 +1035,7 @@ public class GameManager : NetworkBehaviour
         currentState = GameState.Lobby;
         gameTimer = 300f;
         gameWinner = PlayerRole.None;
-        
+        restartCountdown = 0;  // <-- 加上这一句
         // 重置统计人数
         aliveHuntersCount = 0;
         aliveWitchesCount = 0;
@@ -4755,6 +4757,15 @@ public abstract class GamePlayer : NetworkBehaviour
         // 将外力叠加到当前的 impact 上
         impact += force;
     }
+    [TargetRpc]
+    public void TargetNotifyHitConfirmed(NetworkConnection target)
+    {
+        // 1. 播放准星UI动画
+        if (CrosshairController.Instance != null)
+        {
+            CrosshairController.Instance.ShowHitFeedback();
+        }
+    }
 }
 ```
 
@@ -4807,6 +4818,12 @@ public class GunWeapon : WeaponBase
                     if (canDamage)
                     {
                         target.ServerTakeDamage(damage);
+                        // --- 【新增：如果是猎人打中了女巫】 ---
+                        if (attacker.playerRole == PlayerRole.Hunter && target.playerRole == PlayerRole.Witch)
+                        {
+                            // 通过 TargetRpc 通知发起攻击的猎人客户端
+                            attacker.TargetNotifyHitConfirmed(attacker.connectionToClient);
+                        }
                         Debug.Log($"[GunWeapon] {attacker.playerName} shot {target.playerName}. FF: {isSameTeam}");
                     }
                     else
@@ -10707,6 +10724,45 @@ public class CameraData : ScriptableObject
 }
 ```
 
+## UI\CircularProgressGlow.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+
+public class CircularProgressGlow : MonoBehaviour
+{
+    [Header("References")]
+    public Image fillImage;         // 拖入 Fill 物体
+    public RectTransform headDot;   // 拖入 ProgressHead 物体
+
+    [Header("Settings")]
+    public float radius = 50f;      // 圆环的半径（根据你进度条的大小调整）
+
+    public void UpdateProgress(float progress)
+    {
+        // 1. 设置进度条填充
+        fillImage.fillAmount = progress;
+
+        // 2. 计算末端圆点的位置
+        // Unity 的 Radial Fill 0是从顶部(90度)顺时针开始
+        float angle = progress * 360f;
+        float rad = (90f - angle) * Mathf.Deg2Rad; // 转换为弧度
+
+        float x = Mathf.Cos(rad) * radius;
+        float y = Mathf.Sin(rad) * radius;
+
+        // 3. 更新圆点位置
+        if (headDot != null)
+        {
+            headDot.anchoredPosition = new Vector2(x, y);
+            // 只有当进度 > 0 时才显示圆点，防止起始位置露出
+            headDot.gameObject.SetActive(progress > 0.01f && progress < 0.99f);
+        }
+    }
+}
+```
+
 ## UI\ConnectUIManager.cs
 
 ```csharp
@@ -10989,6 +11045,93 @@ public class ConnectUIManager : MonoBehaviour
         }
     }
 
+}
+```
+
+## UI\CrosshairController.cs
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using System.Collections;
+
+public class CrosshairController : MonoBehaviour
+{
+    public static CrosshairController Instance;
+
+    [Header("Components")]
+    public Image centerDot;           // 中心圆点
+    public CanvasGroup hitMarkerGroup; // 包含四个矩形的组
+
+    [Header("Settings")]
+    public Color normalColor = Color.white;
+    public Color hitColor = Color.red;    // 击中时圆点的颜色
+    public float fadeDuration = 0.2f;     // 击中反馈持续时间
+
+    private Vector3 originalScale;        // 用于保存初始缩放
+    private Coroutine hitRoutine;
+
+    private void Awake()
+    {
+        Instance = this;
+        
+        // 核心修改：在初始化时保存 Inspector 中设置的缩放值
+        if (centerDot != null)
+        {
+            originalScale = centerDot.transform.localScale;
+            centerDot.color = normalColor;
+        }
+
+        // 初始隐藏击中标记
+        if (hitMarkerGroup != null) hitMarkerGroup.alpha = 0;
+    }
+
+    // 供外部调用的击中方法
+    public void ShowHitFeedback()
+    {
+        if (hitRoutine != null) StopCoroutine(hitRoutine);
+        hitRoutine = StartCoroutine(HitFeedbackRoutine());
+    }
+
+    private IEnumerator HitFeedbackRoutine()
+    {
+        // 计算目标放大尺寸（原始尺寸的 1.5 倍）
+        Vector3 peakScale = originalScale * 1.5f;
+
+        // 1. 显示反馈瞬间
+        if (hitMarkerGroup != null) hitMarkerGroup.alpha = 1f;
+        if (centerDot != null)
+        {
+            centerDot.color = hitColor;
+            centerDot.transform.localScale = peakScale;
+        }
+
+        float timer = 0;
+        while (timer < fadeDuration)
+        {
+            timer += Time.deltaTime;
+            float progress = timer / fadeDuration;
+
+            // 2. 平滑过渡：从 peakScale 回到 originalScale
+            if (hitMarkerGroup != null) hitMarkerGroup.alpha = 1f - progress;
+            
+            if (centerDot != null)
+            {
+                centerDot.color = Color.Lerp(hitColor, normalColor, progress);
+                centerDot.transform.localScale = Vector3.Lerp(peakScale, originalScale, progress);
+            }
+
+            yield return null;
+        }
+
+        // 3. 强制设回原始采样状态，确保精准还原
+        if (hitMarkerGroup != null) hitMarkerGroup.alpha = 0f;
+        if (centerDot != null)
+        {
+            centerDot.color = normalColor;
+            centerDot.transform.localScale = originalScale; // 使用保存的变量
+        }
+    }
 }
 ```
 
@@ -13277,10 +13420,8 @@ public class RandomAnimationPlayer : MonoBehaviour
 from PIL import Image
 from rembg import remove
 
-input_path = r"D:\Program Files\Downloads\grok-image-37c8da96-aaf1-4e58-944d-f7452513a14d.png"
-output_path = (
-    "Assets/Image/UI/lobbyroom_title_output.png"
-)
+input_path = r"Assets/Image/UI/progressbar.png"
+output_path = "Assets/Image/UI/progressbar1.png"
 
 # 打开图片
 input_image = Image.open(input_path)
@@ -13416,7 +13557,7 @@ public class SceneScript : MonoBehaviour
     public TextMeshProUGUI GoalText;//显示目标的文本
     public GameObject Crosshair;//准心
     [Header("Witch UI")]
-    public Image revertProgressBar; // 拖入刚才创建的 Image
+    public GameObject revertProgressBar; // 拖入刚才创建的 Image
     [Header("Hunter UI")]
     public TextMeshProUGUI ExecutionText;//显示猎人处决提示文本
     [Header("Result UI")]
@@ -13433,6 +13574,7 @@ public class SceneScript : MonoBehaviour
     [Header("Special Action Slots")]
     public SkillSlotUI morphSlot; // 在 Inspector 中拖入一个新的 SkillSlotUI 预制体（通常放在 Q/E 旁边）
     public Sprite morphIcon;      // 拖入一张代表变身的图标（如魔法棒或圈圈图标）
+    public CircularProgressGlow revertProgressController; 
     private void Awake()
     {
         // 1. 单例赋值
@@ -13471,7 +13613,7 @@ public class SceneScript : MonoBehaviour
         }
         if(revertProgressBar != null)
         {
-            revertProgressBar.gameObject.SetActive(false);
+            revertProgressBar.SetActive(false);
         }
         if (RunText != null)
         {
@@ -13552,7 +13694,7 @@ public class SceneScript : MonoBehaviour
         {
             // 只有当 restartCountdown 被服务器明确设置为 20 以下（且大于 0）时，
             // 说明此时玩家已经在 VictoryZone 站好了，正在等回大厅
-            if (gameRestartText != null && GameManager.Instance.restartCountdown > 0 && GameManager.Instance.restartCountdown < 20)
+            if (gameRestartText != null && GameManager.Instance.restartCountdown > 0 && GameManager.Instance.restartCountdown <= 20)
             {
                 gameRestartText.text = $"Returning to Lobby in <color=orange>{GameManager.Instance.restartCountdown}</color>";
             }
@@ -13638,14 +13780,12 @@ public class SceneScript : MonoBehaviour
     public void UpdateRevertUI(float progress, bool isActive)
     {
         if (revertProgressBar == null) return;
-
-        // 设置显示或隐藏
-        revertProgressBar.gameObject.SetActive(isActive);
         
-        // 设置进度
-        if (isActive)
+        // 如果有高级控制器，用高级的
+        if (revertProgressController != null)
         {
-            revertProgressBar.fillAmount = progress;
+            revertProgressController.gameObject.SetActive(isActive);
+            revertProgressController.UpdateProgress(progress);
         }
     }
 

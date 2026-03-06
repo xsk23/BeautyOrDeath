@@ -24,7 +24,7 @@ public class SceneScript : MonoBehaviour
     public TextMeshProUGUI GoalText;//显示目标的文本
     public GameObject Crosshair;//准心
     [Header("Witch UI")]
-    public Image revertProgressBar; // 拖入刚才创建的 Image
+    public GameObject revertProgressBar; // 拖入刚才创建的 Image
     [Header("Hunter UI")]
     public TextMeshProUGUI ExecutionText;//显示猎人处决提示文本
     [Header("Result UI")]
@@ -41,6 +41,7 @@ public class SceneScript : MonoBehaviour
     [Header("Special Action Slots")]
     public SkillSlotUI morphSlot; // 在 Inspector 中拖入一个新的 SkillSlotUI 预制体（通常放在 Q/E 旁边）
     public Sprite morphIcon;      // 拖入一张代表变身的图标（如魔法棒或圈圈图标）
+    public CircularProgressGlow revertProgressController; 
     private void Awake()
     {
         // 1. 单例赋值
@@ -79,7 +80,7 @@ public class SceneScript : MonoBehaviour
         }
         if(revertProgressBar != null)
         {
-            revertProgressBar.gameObject.SetActive(false);
+            revertProgressBar.SetActive(false);
         }
         if (RunText != null)
         {
@@ -245,15 +246,17 @@ public class SceneScript : MonoBehaviour
 
     public void UpdateRevertUI(float progress, bool isActive)
     {
+        // 1. 安全检查：检查整个进度条组物体是否存在
         if (revertProgressBar == null) return;
 
-        // 设置显示或隐藏
-        revertProgressBar.gameObject.SetActive(isActive);
-        
-        // 设置进度
-        if (isActive)
+        // 2. 控制整个 UI 组的显隐
+        revertProgressBar.SetActive(isActive);
+
+        // 3. 如果处于激活状态，且关联了高级控制器脚本
+        if (isActive && revertProgressController != null)
         {
-            revertProgressBar.fillAmount = progress;
+            // 调用我们之前写的 CircularProgressGlow 脚本里的 UpdateProgress 方法
+            revertProgressController.UpdateProgress(progress);
         }
     }
 
