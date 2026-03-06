@@ -110,6 +110,7 @@
 游戏采用 Room-Instanced（一房一进程）架构，需在 Linux 上开放一段端口范围（例如 7771-7780）供子进程使用。
 
 ```bash
+记得在inspector中修改LobbyServer的public string publicIP = "你的公网IP";(本机测试用 127.0.0.1)
 # 1. 开放所需端口 (根据实际 LobbyServer 配置修改范围)
 sudo firewall-cmd --zone=public --add-port=7771-7780/udp --permanent
 sudo firewall-cmd --reload
@@ -120,6 +121,11 @@ rm -rf build_linux_Data
 
 # 3. 赋予执行权限并后台启动主大厅服务器进程
 chmod +x build_linux.x86_64   
+ln -s build_linux.x86_64 MyGameServer.exe
+# 确保这个链接文件也有执行权限
+chmod +x MyGameServer.exe
+chmod -R 755 /unity/
+or chmod -R 777 /unity/
 nohup ./build_linux.x86_64 -batchmode -nographics > server_log.txt 2>&1 &
 
 # 此时玩家连接大厅并点击“创建房间”后，主进程会自动派生携带 -port 参数的子游戏进程

@@ -4757,15 +4757,6 @@ public abstract class GamePlayer : NetworkBehaviour
         // 将外力叠加到当前的 impact 上
         impact += force;
     }
-    [TargetRpc]
-    public void TargetNotifyHitConfirmed(NetworkConnection target)
-    {
-        // 1. 播放准星UI动画
-        if (CrosshairController.Instance != null)
-        {
-            CrosshairController.Instance.ShowHitFeedback();
-        }
-    }
 }
 ```
 
@@ -4818,12 +4809,6 @@ public class GunWeapon : WeaponBase
                     if (canDamage)
                     {
                         target.ServerTakeDamage(damage);
-                        // --- 【新增：如果是猎人打中了女巫】 ---
-                        if (attacker.playerRole == PlayerRole.Hunter && target.playerRole == PlayerRole.Witch)
-                        {
-                            // 通过 TargetRpc 通知发起攻击的猎人客户端
-                            attacker.TargetNotifyHitConfirmed(attacker.connectionToClient);
-                        }
                         Debug.Log($"[GunWeapon] {attacker.playerName} shot {target.playerName}. FF: {isSameTeam}");
                     }
                     else
@@ -11048,93 +11033,6 @@ public class ConnectUIManager : MonoBehaviour
 }
 ```
 
-## UI\CrosshairController.cs
-
-```csharp
-using UnityEngine;
-using UnityEngine.UI;
-using System.Collections;
-
-public class CrosshairController : MonoBehaviour
-{
-    public static CrosshairController Instance;
-
-    [Header("Components")]
-    public Image centerDot;           // 中心圆点
-    public CanvasGroup hitMarkerGroup; // 包含四个矩形的组
-
-    [Header("Settings")]
-    public Color normalColor = Color.white;
-    public Color hitColor = Color.red;    // 击中时圆点的颜色
-    public float fadeDuration = 0.2f;     // 击中反馈持续时间
-
-    private Vector3 originalScale;        // 用于保存初始缩放
-    private Coroutine hitRoutine;
-
-    private void Awake()
-    {
-        Instance = this;
-        
-        // 核心修改：在初始化时保存 Inspector 中设置的缩放值
-        if (centerDot != null)
-        {
-            originalScale = centerDot.transform.localScale;
-            centerDot.color = normalColor;
-        }
-
-        // 初始隐藏击中标记
-        if (hitMarkerGroup != null) hitMarkerGroup.alpha = 0;
-    }
-
-    // 供外部调用的击中方法
-    public void ShowHitFeedback()
-    {
-        if (hitRoutine != null) StopCoroutine(hitRoutine);
-        hitRoutine = StartCoroutine(HitFeedbackRoutine());
-    }
-
-    private IEnumerator HitFeedbackRoutine()
-    {
-        // 计算目标放大尺寸（原始尺寸的 1.5 倍）
-        Vector3 peakScale = originalScale * 1.5f;
-
-        // 1. 显示反馈瞬间
-        if (hitMarkerGroup != null) hitMarkerGroup.alpha = 1f;
-        if (centerDot != null)
-        {
-            centerDot.color = hitColor;
-            centerDot.transform.localScale = peakScale;
-        }
-
-        float timer = 0;
-        while (timer < fadeDuration)
-        {
-            timer += Time.deltaTime;
-            float progress = timer / fadeDuration;
-
-            // 2. 平滑过渡：从 peakScale 回到 originalScale
-            if (hitMarkerGroup != null) hitMarkerGroup.alpha = 1f - progress;
-            
-            if (centerDot != null)
-            {
-                centerDot.color = Color.Lerp(hitColor, normalColor, progress);
-                centerDot.transform.localScale = Vector3.Lerp(peakScale, originalScale, progress);
-            }
-
-            yield return null;
-        }
-
-        // 3. 强制设回原始采样状态，确保精准还原
-        if (hitMarkerGroup != null) hitMarkerGroup.alpha = 0f;
-        if (centerDot != null)
-        {
-            centerDot.color = normalColor;
-            centerDot.transform.localScale = originalScale; // 使用保存的变量
-        }
-    }
-}
-```
-
 ## UI\edit_video.py
 
 ```python
@@ -13779,12 +13677,16 @@ public class SceneScript : MonoBehaviour
 
     public void UpdateRevertUI(float progress, bool isActive)
     {
+        // 1. 安全检查：检查整个进度条组物体是否存在
         if (revertProgressBar == null) return;
-        
-        // 如果有高级控制器，用高级的
-        if (revertProgressController != null)
+
+        // 2. 控制整个 UI 组的显隐
+        revertProgressBar.SetActive(isActive);
+
+        // 3. 如果处于激活状态，且关联了高级控制器脚本
+        if (isActive && revertProgressController != null)
         {
-            revertProgressController.gameObject.SetActive(isActive);
+            // 调用我们之前写的 CircularProgressGlow 脚本里的 UpdateProgress 方法
             revertProgressController.UpdateProgress(progress);
         }
     }

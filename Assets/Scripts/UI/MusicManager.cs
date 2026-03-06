@@ -36,6 +36,7 @@ public class MusicManager : MonoBehaviour
     private int currentGroupIndex = -1;
     private SceneZone currentZone = SceneZone.None;
     private bool isFastModeActive = false; // 标记是否已经切到了快节奏音乐
+    private bool hasHandledGameOverMusic = false; // 新增变量
 
     private void Awake()
     {
@@ -115,6 +116,7 @@ public class MusicManager : MonoBehaviour
         {
             // 刚进游戏场景，播放正常的 InGame BGM
             isFastModeActive = false;
+            hasHandledGameOverMusic = false; // 重置游戏结束音乐处理标志
             CrossFadeTo(musicGroups[currentGroupIndex].inGameNormalBGM);
         }
     }
@@ -139,13 +141,11 @@ public class MusicManager : MonoBehaviour
 
     private void CheckGameOver()
     {
-        // 检测是否进入了结算流程（GameOver 状态）
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
-            // 如果当前还在播放音乐（音量大于0），则淡出
-            AudioSource activeSource = isSourceAActive ? sourceA : sourceB;
-            if (activeSource.clip != null && activeSource.volume > 0)
+            if (!hasHandledGameOverMusic) // 增加判断
             {
+                hasHandledGameOverMusic = true;
                 Debug.Log("[Music] Victory Zone Entered. Fading out In-Game BGM.");
                 CrossFadeTo(null);
             }
