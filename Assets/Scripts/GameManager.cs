@@ -248,10 +248,15 @@ public class GameManager : NetworkBehaviour
     [Server]
     public void ServerEndGame(PlayerRole winner)
     {
+        // 【关键修复 1】如果已经处理过结束，直接跳出
         if (currentState == GameState.GameOver) return;
 
+        // --- 新增：把倒计时归零，避免触发 SceneScript 里的 UI 覆盖 ---
+        restartCountdown = 0; 
+
+        // 【关键修复 2】立即切换状态，阻断 Update 的再次进入
+        SetGameState(GameState.GameOver);
         gameWinner = winner;
-        // SetGameState(GameState.GameOver);
         
         // 开启新的胜利序列协程
         StartCoroutine(VictorySequenceRoutine(winner));
@@ -260,13 +265,13 @@ public class GameManager : NetworkBehaviour
     private IEnumerator VictorySequenceRoutine(PlayerRole winner)
     {
         // --- 新增：转场前的倒计时 UI 表现 ---
-        for (int i = 3; i > 0; i--)
+        for (int i = 5; i > 0; i--)
         {
             RpcUpdateVictoryTransitionUI(winner, i);
             yield return new WaitForSeconds(1f);
         }
         // 【新增】转场开始时，正式进入 GameOver 状态
-        SetGameState(GameState.GameOver);
+        // SetGameState(GameState.GameOver);
         
         // 【关键修复】在统计胜败者之前，先清理 AllPlayers 中的无效引用
         GamePlayer.CleanupDeadReferences();
@@ -1023,7 +1028,7 @@ public class GameManager : NetworkBehaviour
         currentState = GameState.Lobby;
         gameTimer = 300f;
         gameWinner = PlayerRole.None;
-        
+        restartCountdown = 0;  // <-- 加上这一句
         // 重置统计人数
         aliveHuntersCount = 0;
         aliveWitchesCount = 0;

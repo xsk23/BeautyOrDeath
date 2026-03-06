@@ -255,8 +255,11 @@ public class GameManager : NetworkBehaviour
     [Server]
     public void ServerEndGame(PlayerRole winner)
     {
+        // 【关键修复 1】如果已经处理过结束，直接跳出
         if (currentState == GameState.GameOver) return;
 
+        // 【关键修复 2】立即切换状态，阻断 Update 的再次进入
+        SetGameState(GameState.GameOver);
         gameWinner = winner;
         // SetGameState(GameState.GameOver);
         
@@ -267,13 +270,13 @@ public class GameManager : NetworkBehaviour
     private IEnumerator VictorySequenceRoutine(PlayerRole winner)
     {
         // --- 新增：转场前的倒计时 UI 表现 ---
-        for (int i = 3; i > 0; i--)
+        for (int i = 5; i > 0; i--)
         {
             RpcUpdateVictoryTransitionUI(winner, i);
             yield return new WaitForSeconds(1f);
         }
         // 【新增】转场开始时，正式进入 GameOver 状态
-        SetGameState(GameState.GameOver);
+        // SetGameState(GameState.GameOver);
         
         // 【关键修复】在统计胜败者之前，先清理 AllPlayers 中的无效引用
         GamePlayer.CleanupDeadReferences();
@@ -4102,6 +4105,16 @@ public abstract class GamePlayer : NetworkBehaviour
                 }
             }
             // ====================================================
+            // ================== 【调试按键：修改剩余时间】 ==================
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                // 如果是编辑模式或调试版本（安全性检查，防止正式服玩家乱点）
+                if (Application.isEditor || UnityEngine.Debug.isDebugBuild)
+                {
+                    CmdDebugSetTimer(65f); // 1分05秒 = 65秒
+                }
+            }
+            // =============================================================
             // 【新增】如果引用为空，尝试再次查找（防空指针）
             if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
             if (gameChatUI == null) gameChatUI = FindObjectOfType<GameChatUI>();
@@ -4158,7 +4171,16 @@ public abstract class GamePlayer : NetworkBehaviour
             ServerRegenerateMana();
         }
     }
-
+    // 必须通过 Command 让服务器去修改 SyncVar
+    [Command]
+    private void CmdDebugSetTimer(float newTime)
+    {
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.gameTimer = newTime;
+            UnityEngine.Debug.Log($"[Debug] Player {playerName} set game timer to {newTime}s");
+        }
+    }
     // --------------------------------------------------------
     // 功能函数
     // --------------------------------------------------------
@@ -11058,11 +11080,11 @@ def extract_audio_segment(video_path, output_audio_path, start_time, end_time=No
 # --- 使用示例 ---
 
 # 路径
-input_video = r"D:\RecordedVideos\2026-03-06 01-42-23.mp4"
-output_audio = r"D:\RecordedVideos\2026-03-06 01-42-23_extracted_audio.mp3"
+input_video = r"D:\RecordedVideos\2026-03-06 11-15-18.mp4"
+output_audio = r"D:\RecordedVideos\2026-03-06 11-15-18_extracted_audio.mp3"
 
 # 示例 1: 从第 5 秒开始，到第 15 秒结束
-extract_audio_segment(input_video, output_audio, start_time=2, end_time=187)
+extract_audio_segment(input_video, output_audio, start_time=7, end_time=236)
 
 # 示例 2: 从第 1 分 20 秒开始，直到视频结束
 # extract_audio_segment(input_video, output_audio, start_time="00:01:20")
@@ -12685,6 +12707,216 @@ public class MessageItem : MonoBehaviour
 }
 ```
 
+## UI\MusicManager.cs
+
+```csharp
+using UnityEngine;
+using System.Collections;
+using UnityEngine.SceneManagement;
+
+public class MusicManager : MonoBehaviour
+{
+    public static MusicManager Instance { get; private set; }
+
+    [System.Serializable]
+    public struct MusicGroup
+    {
+        public string groupName;
+        [Header("Menu & Lobby")]
+        public AudioClip startMenuBGM;
+        public AudioClip lobbyRoomBGM;
+        [Header("In Game")]
+        public AudioClip inGameNormalBGM;
+        public AudioClip inGameFastBGM;
+    }
+
+    public enum SceneZone { None, Menu, Lobby, Game }
+
+    [Header("BGM Sets (成套配对)")]
+    public MusicGroup[] musicGroups;
+
+    [Header("Settings")]
+    public float maxVolume = 0.5f;
+    public float fadeDuration = 1.5f;
+    public float fastModeThreshold = 60f; // 剩余60秒切换
+
+    private AudioSource sourceA;
+    private AudioSource sourceB;
+    private bool isSourceAActive = true;
+    private Coroutine activeFadeRoutine;
+
+    private int currentGroupIndex = -1;
+    private SceneZone currentZone = SceneZone.None;
+    private bool isFastModeActive = false; // 标记是否已经切到了快节奏音乐
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
+        sourceA = gameObject.AddComponent<AudioSource>();
+        sourceB = gameObject.AddComponent<AudioSource>();
+        SetupSource(sourceA);
+        SetupSource(sourceB);
+
+        SceneManager.activeSceneChanged += OnSceneChanged;
+    }
+
+    private void SetupSource(AudioSource source)
+    {
+        source.loop = true;
+        source.playOnAwake = false;
+        source.volume = 0;
+    }
+
+    private void Start()
+    {
+        HandleBGMForScene(SceneManager.GetActiveScene().name);
+    }
+
+    private void OnDestroy()
+    {
+        SceneManager.activeSceneChanged -= OnSceneChanged;
+    }
+
+    private void OnSceneChanged(Scene oldScene, Scene newScene)
+    {
+        HandleBGMForScene(newScene.name);
+    }
+
+    private void Update()
+    {
+        // 只有在游戏对局中才需要检测时间切换 BGM
+        if (currentZone == SceneZone.Game)
+        {
+            CheckGameTimer();
+            CheckGameOver();
+        }
+    }
+
+    private void HandleBGMForScene(string sceneName)
+    {
+        if (musicGroups == null || musicGroups.Length == 0) return;
+
+        SceneZone lastZone = currentZone;
+        currentZone = GetZoneForScene(sceneName);
+
+        // 如果是从游戏区回到非游戏区，或者初次进入，则重置随机索引
+        if (lastZone == SceneZone.Game || lastZone == SceneZone.None)
+        {
+            currentGroupIndex = Random.Range(0, musicGroups.Length);
+            isFastModeActive = false; // 重置快节奏标记
+            Debug.Log($"[Music] Session Reset. Picked Music Group: {musicGroups[currentGroupIndex].groupName}");
+        }
+
+        // 播放对应分区的音乐
+        if (currentZone == SceneZone.Menu)
+        {
+            CrossFadeTo(musicGroups[currentGroupIndex].startMenuBGM);
+        }
+        else if (currentZone == SceneZone.Lobby)
+        {
+            CrossFadeTo(musicGroups[currentGroupIndex].lobbyRoomBGM);
+        }
+        else if (currentZone == SceneZone.Game)
+        {
+            // 刚进游戏场景，播放正常的 InGame BGM
+            isFastModeActive = false;
+            CrossFadeTo(musicGroups[currentGroupIndex].inGameNormalBGM);
+        }
+    }
+
+    private void CheckGameTimer()
+    {
+        // 检查 GameManager 里的计时器
+        if (GameManager.Instance != null && !isFastModeActive)
+        {
+            // 如果计时器小于 60s 且游戏还没结束
+            if (GameManager.Instance.gameTimer > 0 && GameManager.Instance.gameTimer <= fastModeThreshold)
+            {
+                if (GameManager.Instance.CurrentState == GameManager.GameState.InGame)
+                {
+                    isFastModeActive = true;
+                    Debug.Log("[Music] Time Running Out! Switching to Fast BGM.");
+                    CrossFadeTo(musicGroups[currentGroupIndex].inGameFastBGM);
+                }
+            }
+        }
+    }
+
+    private void CheckGameOver()
+    {
+        // 检测是否进入了结算流程（GameOver 状态）
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        {
+            // 如果当前还在播放音乐（音量大于0），则淡出
+            AudioSource activeSource = isSourceAActive ? sourceA : sourceB;
+            if (activeSource.clip != null && activeSource.volume > 0)
+            {
+                Debug.Log("[Music] Victory Zone Entered. Fading out In-Game BGM.");
+                CrossFadeTo(null);
+            }
+        }
+    }
+
+    private SceneZone GetZoneForScene(string sceneName)
+    {
+        if (sceneName.StartsWith("MyScene")) return SceneZone.Game;
+        if (sceneName == "LobbyRoom") return SceneZone.Lobby;
+        return SceneZone.Menu; // StartMenu, ConnectRoom 等
+    }
+
+    public void CrossFadeTo(AudioClip newClip)
+    {
+        AudioSource activeSource = isSourceAActive ? sourceA : sourceB;
+        if (activeSource.clip == newClip && activeSource.isPlaying && activeSource.volume > 0) return;
+
+        if (activeFadeRoutine != null) StopCoroutine(activeFadeRoutine);
+        activeFadeRoutine = StartCoroutine(CrossFadeRoutine(newClip));
+    }
+
+    private IEnumerator CrossFadeRoutine(AudioClip newClip)
+    {
+        AudioSource fadeInSource = isSourceAActive ? sourceB : sourceA;
+        AudioSource fadeOutSource = isSourceAActive ? sourceA : sourceB;
+
+        if (newClip != null)
+        {
+            fadeInSource.clip = newClip;
+            fadeInSource.Play();
+        }
+
+        float timer = 0;
+        float startOutVol = fadeOutSource.volume;
+
+        while (timer < fadeDuration)
+        {
+            timer += Time.deltaTime;
+            float t = timer / fadeDuration;
+
+            fadeOutSource.volume = Mathf.Lerp(startOutVol, 0, t);
+            if (newClip != null) fadeInSource.volume = Mathf.Lerp(0, maxVolume, t);
+
+            yield return null;
+        }
+
+        fadeOutSource.volume = 0;
+        fadeOutSource.Stop();
+        fadeOutSource.clip = null;
+        
+        if (newClip != null) fadeInSource.volume = maxVolume;
+
+        isSourceAActive = !isSourceAActive;
+        activeFadeRoutine = null;
+    }
+}
+```
+
 ## UI\PlayerOutline.cs
 
 ```csharp
@@ -13318,11 +13550,11 @@ public class SceneScript : MonoBehaviour
         // 如果处于 GameOver 状态，更新重启倒计时文字
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
-            // 【修改建议】只有当开始 20 秒倒计时后（即 restartCountdown 发生变化且不为默认大值时）才覆盖
-            // 或者直接依靠 GameManager 的状态控制
-            if (gameRestartText != null && GameManager.Instance.restartCountdown < 20)
+            // 只有当 restartCountdown 被服务器明确设置为 20 以下（且大于 0）时，
+            // 说明此时玩家已经在 VictoryZone 站好了，正在等回大厅
+            if (gameRestartText != null && GameManager.Instance.restartCountdown > 0 && GameManager.Instance.restartCountdown < 20)
             {
-                gameRestartText.text = $"<color=white>Returning to Lobby in </color><color=orange>{GameManager.Instance.restartCountdown}</color>";
+                gameRestartText.text = $"Returning to Lobby in <color=orange>{GameManager.Instance.restartCountdown}</color>";
             }
         }
     }
@@ -13447,14 +13679,30 @@ public class SceneScript : MonoBehaviour
             // 格式化字符串为 05:00 格式
             GameTime.text = string.Format("{0:00}:{1:00}", minutes, seconds);
             
-            // 可选：时间少于30秒变红
-            if (timeLeft <= 30 && timeLeft > 0)
+            // --- 核心逻辑修改：醒目效果 ---
+            if (timeLeft <= 60 && timeLeft > 0)
             {
+                // 1. 颜色变红
                 GameTime.color = Color.red;
+
+                // 2. 添加呼吸脉冲缩放效果 (醒目表现)
+                // 基于正弦波计算缩放值，范围在 1.0 到 1.25 之间
+                // 使用 Time.time * 5f 让脉冲速度随紧急感稍微加快
+                float pulse = 1.0f + (Mathf.Sin(Time.time * 5f) * 0.15f);
+                GameTime.transform.localScale = new Vector3(pulse, pulse, 1f);
+
+                // 可选：添加轻微的抖动或在最后 10 秒加快脉冲速度
+                if (timeLeft <= 10)
+                {
+                    float fastPulse = 1.0f + (Mathf.Sin(Time.time * 10f) * 0.25f);
+                    GameTime.transform.localScale = new Vector3(fastPulse, fastPulse, 1f);
+                }
             }
             else
             {
+                // 恢复默认状态
                 GameTime.color = Color.white;
+                GameTime.transform.localScale = Vector3.one;
             }
         }
     }

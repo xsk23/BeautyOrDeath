@@ -252,6 +252,16 @@ public abstract class GamePlayer : NetworkBehaviour
                 }
             }
             // ====================================================
+            // ================== 【调试按键：修改剩余时间】 ==================
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                // 如果是编辑模式或调试版本（安全性检查，防止正式服玩家乱点）
+                if (Application.isEditor || UnityEngine.Debug.isDebugBuild)
+                {
+                    CmdDebugSetTimer(65f); // 1分05秒 = 65秒
+                }
+            }
+            // =============================================================
             // 【新增】如果引用为空，尝试再次查找（防空指针）
             if (sceneScript == null) sceneScript = FindObjectOfType<SceneScript>();
             if (gameChatUI == null) gameChatUI = FindObjectOfType<GameChatUI>();
@@ -308,7 +318,16 @@ public abstract class GamePlayer : NetworkBehaviour
             ServerRegenerateMana();
         }
     }
-
+    // 必须通过 Command 让服务器去修改 SyncVar
+    [Command]
+    private void CmdDebugSetTimer(float newTime)
+    {
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.gameTimer = newTime;
+            UnityEngine.Debug.Log($"[Debug] Player {playerName} set game timer to {newTime}s");
+        }
+    }
     // --------------------------------------------------------
     // 功能函数
     // --------------------------------------------------------

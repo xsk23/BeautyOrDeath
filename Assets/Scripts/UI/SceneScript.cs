@@ -158,11 +158,11 @@ public class SceneScript : MonoBehaviour
         // 如果处于 GameOver 状态，更新重启倒计时文字
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
-            // 【修改建议】只有当开始 20 秒倒计时后（即 restartCountdown 发生变化且不为默认大值时）才覆盖
-            // 或者直接依靠 GameManager 的状态控制
-            if (gameRestartText != null && GameManager.Instance.restartCountdown < 20)
+            // 只有当 restartCountdown 被服务器明确设置为 20 以下（且大于 0）时，
+            // 说明此时玩家已经在 VictoryZone 站好了，正在等回大厅
+            if (gameRestartText != null && GameManager.Instance.restartCountdown > 0 && GameManager.Instance.restartCountdown <= 20)
             {
-                gameRestartText.text = $"<color=white>Returning to Lobby in </color><color=orange>{GameManager.Instance.restartCountdown}</color>";
+                gameRestartText.text = $"Returning to Lobby in <color=orange>{GameManager.Instance.restartCountdown}</color>";
             }
         }
     }
@@ -287,14 +287,30 @@ public class SceneScript : MonoBehaviour
             // 格式化字符串为 05:00 格式
             GameTime.text = string.Format("{0:00}:{1:00}", minutes, seconds);
             
-            // 可选：时间少于30秒变红
-            if (timeLeft <= 30 && timeLeft > 0)
+            // --- 核心逻辑修改：醒目效果 ---
+            if (timeLeft <= 60 && timeLeft > 0)
             {
+                // 1. 颜色变红
                 GameTime.color = Color.red;
+
+                // 2. 添加呼吸脉冲缩放效果 (醒目表现)
+                // 基于正弦波计算缩放值，范围在 1.0 到 1.25 之间
+                // 使用 Time.time * 5f 让脉冲速度随紧急感稍微加快
+                float pulse = 1.0f + (Mathf.Sin(Time.time * 5f) * 0.15f);
+                GameTime.transform.localScale = new Vector3(pulse, pulse, 1f);
+
+                // 可选：添加轻微的抖动或在最后 10 秒加快脉冲速度
+                if (timeLeft <= 10)
+                {
+                    float fastPulse = 1.0f + (Mathf.Sin(Time.time * 10f) * 0.25f);
+                    GameTime.transform.localScale = new Vector3(fastPulse, fastPulse, 1f);
+                }
             }
             else
             {
+                // 恢复默认状态
                 GameTime.color = Color.white;
+                GameTime.transform.localScale = Vector3.one;
             }
         }
     }

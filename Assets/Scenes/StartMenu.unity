@@ -551,10 +551,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2758a4ffbc324d4492c6054a7c890cf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  startMenuBGM: {fileID: 8300000, guid: c9a2bb766c7d9664684376f20d76b736, type: 3}
-  lobbyRoomBGM: {fileID: 8300000, guid: 4ecd0fa68bbd07145b2e1f6669266980, type: 3}
+  musicGroups:
+  - groupName: BGM1
+    startMenuBGM: {fileID: 8300000, guid: c9a2bb766c7d9664684376f20d76b736, type: 3}
+    lobbyRoomBGM: {fileID: 8300000, guid: 4ecd0fa68bbd07145b2e1f6669266980, type: 3}
+    inGameNormalBGM: {fileID: 8300000, guid: 2e99fcd368bdb0247b3b4d75c182afd3, type: 3}
+    inGameFastBGM: {fileID: 8300000, guid: 3eaaa07d20df75141853c135f9244aa5, type: 3}
+  - groupName: BGM2
+    startMenuBGM: {fileID: 8300000, guid: 54d58d0960a0a024cbd63fdb79acb7e5, type: 3}
+    lobbyRoomBGM: {fileID: 8300000, guid: 0471125629f0a8e428a24a6a35b6f0a6, type: 3}
+    inGameNormalBGM: {fileID: 8300000, guid: 66990b3c1236d0943ad708b4d6039ff9, type: 3}
+    inGameFastBGM: {fileID: 8300000, guid: c4ed3f91dbffc414d897cc5b9f85443e, type: 3}
   maxVolume: 0.5
   fadeDuration: 1.5
+  fastModeThreshold: 60
 --- !u!4 &1651333619
 Transform:
   m_ObjectHideFlags: 0
