@@ -143,8 +143,8 @@ public class HunterPlayer : GamePlayer
             // 【核心修改】切换武器时，通知 Animator 是否正在持枪
             if (hunterAnimator != null && weaponBase != null)
             {
-                bool isGun = (weaponBase.weaponName == "Gun");
-                hunterAnimator.SetBool("isHoldingGun", isGun);
+                bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
+                hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
             }
         }
     }
@@ -220,14 +220,16 @@ public class HunterPlayer : GamePlayer
                             CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
                             OnWeaponFired?.Invoke(currentWeaponIndex);
                         }
-                        else if (currentWeapon.weaponName == "Gun")
+                        // --- 修改这里：将 NetLauncher 加入 Gun 的逻辑 ---
+                        else if (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher")
                         {
-                            // 猎枪：只触发开火动画，真正的射线伤害等待第11帧事件
+                            // 统统只触发开火动画，真正的逻辑等待第11帧事件
                             CmdTriggerGunAnimation();
                         }
+                        // --------------------------------------------
                         else
                         {
-                            // 兜网等：立即开火
+                            // 这里的 else 现在通常只走没有特殊定义的武器
                             CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
                             OnWeaponFired?.Invoke(currentWeaponIndex);
                         }
@@ -291,7 +293,7 @@ public class HunterPlayer : GamePlayer
             WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
             
             // 确保第11帧时，玩家手里拿的还是枪（防止动画期间切枪导致 Bug）
-            if (currentWeapon != null && currentWeapon.weaponName == "Gun")
+            if (currentWeapon != null && (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher"))
             {
                 Vector3 origin = Camera.main.transform.position;
                 Vector3 dir = Camera.main.transform.forward;
@@ -303,7 +305,7 @@ public class HunterPlayer : GamePlayer
     private void CmdExecuteRealGunFire(Vector3 origin, Vector3 direction)
     {
         WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-        if (currentWeapon != null && currentWeapon.weaponName == "Gun")
+        if (currentWeapon != null && (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher"))
         {
             // 1. 服务器执行真正的伤害和射线检测
             currentWeapon.OnFire(origin, direction);
