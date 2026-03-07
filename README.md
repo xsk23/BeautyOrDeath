@@ -105,6 +105,10 @@
 2.  克隆本仓库并在 Unity Hub 中打开。
 3.  在 Build Settings 中确保包含场景顺序：`StartMenu` -> `ConnectRoom` -> `LobbyRoom` -> `MyScene`。
 4.  在编辑器中运行 `StartMenu` 场景，选择 `Localhost` 即可作为 Host 体验。
+    ---
+    **📢 普通玩家连接提示：**
+    在游戏启动界面的下拉菜单中，请选择 **`Server`** 而不是 `Localhost`，以连接到我们的公开游戏服务器进行联机体验！
+    ---
 
 ### 🐧 Linux 独立服务器部署 (Dedicated Server)
 游戏采用 Room-Instanced（一房一进程）架构，需在 Linux 上开放一段端口范围（例如 7771-7780）供子进程使用。
