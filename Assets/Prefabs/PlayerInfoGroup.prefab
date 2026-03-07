@@ -74,6 +74,7 @@ GameObject:
   - component: {fileID: 7175383301115400011}
   - component: {fileID: 182284216481438767}
   - component: {fileID: 3528213599212015697}
+  - component: {fileID: 733426540039884311}
   m_Layer: 5
   m_Name: EditButton
   m_TagString: Untagged
@@ -184,6 +185,23 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &733426540039884311
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 608813978335623078}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0b0b0dc97f070594ca10ba579e52cd75, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverScale: 1.05
+  pressScale: 0.95
+  targetImage: {fileID: 376109198309143121}
+  hoverColor: {r: 1, g: 1, b: 1, a: 1}
+  pressColor: {r: 0.7, g: 0.7, b: 0.7, a: 1}
 --- !u!1 &816253571552022300
 GameObject:
   m_ObjectHideFlags: 0

@@ -447,6 +447,8 @@ public class GameManager : NetworkBehaviour
             {
                 GameObject displayObj = Instantiate(prefab, spawnPos, lookRotation);
                 NetworkServer.Spawn(displayObj);
+                // 【关键修复 1】通知所有客户端禁用该物体的玩家逻辑
+                RpcDisablePlayerLogic(displayObj);
                 // 【修改】传入选中的 danceIndex
                 RpcApplyVictoryAnimation(displayObj, danceIndex, i, winner);
                 RpcSetVictoryModelName(displayObj, winners[i].playerName, winners[i].playerRole);
@@ -487,7 +489,8 @@ public class GameManager : NetworkBehaviour
                 
                 // 【关键修改】：不再禁用 Animator，而是交给客户端去初始化
                 NetworkServer.Spawn(loserObj);
-                
+                // 【关键修复 2】同样禁用失败者的逻辑
+                RpcDisablePlayerLogic(loserObj);                
                 // 1. 设置名字（你原有的）
                 RpcSetVictoryModelName(loserObj, losers[j].playerName, losers[j].playerRole);
                 
@@ -503,6 +506,38 @@ public class GameManager : NetworkBehaviour
             }
         }
     }
+    [ClientRpc]
+    private void RpcDisablePlayerLogic(GameObject targetObj)
+    {
+        if (targetObj == null) return;
+
+        // 1. 禁用所有业务脚本
+        MonoBehaviour[] allScripts = targetObj.GetComponents<MonoBehaviour>();
+        foreach (var s in allScripts)
+        {
+            if (s is GamePlayer || s is HunterPlayer || s is WitchPlayer || s is TeamVision || s is CharacterController)
+            {
+                s.enabled = false;
+            }
+        }
+
+        // 2. 彻底移除 CharacterController 的影响
+        CharacterController cc = targetObj.GetComponent<CharacterController>();
+        if (cc != null) cc.enabled = false;
+
+        // 3. 强制清空 Animator 的旧参数，防止它跳回 Lobby 动画
+        Animator anim = targetObj.GetComponentInChildren<Animator>();
+        if (anim != null)
+        {
+            anim.enabled = true;
+            foreach (var param in anim.parameters)
+            {
+                if (param.type == AnimatorControllerParameterType.Float) anim.SetFloat(param.name, 0f);
+                if (param.type == AnimatorControllerParameterType.Bool) anim.SetBool(param.name, false);
+            }
+        }
+    }
+
     [ClientRpc]
     private void RpcSetupLoserFailLogic(GameObject loserObj)
     {
@@ -622,16 +657,23 @@ public class GameManager : NetworkBehaviour
 
         // 【修改】直接通过索引拿配置
         GroupDanceConfig config = animData.GetConfigByIndex(danceIndex);
-        RuntimeAnimatorController[] anims = config.individualAnimators;
-
-        if (anims != null && positionIndex < anims.Length)
+        // 【排查点】确保你的 individualAnimators 数组长度 >= winners 的人数
+        if (config.individualAnimators != null && positionIndex < config.individualAnimators.Length)
         {
             Animator anim = targetObj.GetComponentInChildren<Animator>();
             if (anim != null)
             {
-                anim.runtimeAnimatorController = anims[positionIndex];
+                anim.runtimeAnimatorController = config.individualAnimators[positionIndex];
+                // 跳舞通常需要开启 Root Motion，否则模型会原地踏步
                 anim.applyRootMotion = true; 
+                
+                // 强制从第0帧开始播放，防止逻辑卡在旧状态
+                anim.Play(0, -1, 0f); 
             }
+        }
+        else
+        {
+            Debug.LogError($"[Victory] 动画配置不足! 舞蹈:{config.danceName}, 需要索引:{positionIndex}, 但数组只有:{config.individualAnimators.Length}");
         }
     }
     // 修改辅助方法：增加 isWinner 参数
