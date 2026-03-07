@@ -62,6 +62,13 @@ MonoBehaviour:
     - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
     - {fileID: 9100000, guid: 0b01b596f36ffcf449ae6a2902bfbe0d, type: 2}
     victoryMusic: {fileID: 8300000, guid: 18e717db495acd147b9097045e2864cd, type: 3}
+  - danceName: uptown3
+    playerCount: 3
+    individualAnimators:
+    - {fileID: 9100000, guid: 73b9e83b4fae1f24a8a01455ac0a2e2f, type: 2}
+    - {fileID: 9100000, guid: f6d766e99d2f08e4692a3c4a323c1da6, type: 2}
+    - {fileID: 9100000, guid: 69ae6ba23cedc4149a7d4e8a0b267f62, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 71570a114aa474f4cae80b39a1048ccc, type: 3}
   - danceName: uptown4
     playerCount: 4
     individualAnimators:
