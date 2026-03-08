@@ -1,5 +1,6 @@
 using UnityEngine;
 using Mirror;
+using System.Collections.Generic;
 //using System.Diagnostics;
 
 
@@ -16,43 +17,36 @@ public class HunterSkill_Shockwave : SkillBase
         GameManager.Instance?.ServerPlay3DAt("shockwave砸地", ownerPlayer.transform.position);
 
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
+
+        HashSet<WitchPlayer> affectedWitches = new HashSet<WitchPlayer>();
+
         Debug.Log($"<color=green>[Hunter] {ownerPlayer.playerName} used skill: Shockwave! Affected {hits.Length} targets.</color>");
+
         bool sentHitFeedback = false;
         foreach (var hit in hits)
         {
             // 找到女巫
-            WitchPlayer witch = hit.GetComponent<WitchPlayer>();
-            if (witch == null) {
-                continue;
-            }
-            else
-            {
-                Debug.Log($"[Hunter] Found witch: {witch.playerName}");
-            }
+            WitchPlayer witch = hit.GetComponent<WitchPlayer>() ?? hit.GetComponentInParent<WitchPlayer>();
+            if (witch == null || affectedWitches.Contains(witch)) continue; // 没有找到女巫或者这个女巫已经被处理了，跳过
+            affectedWitches.Add(witch);
 
             if (!witch.isPermanentDead)
             {
                 // 1. 强制显形
                 if (witch.isMorphed)
                 {
-                    // 调用女巫现有的 Revert 命令逻辑
-                    // 由于这是服务器端，我们不能调用 Cmd，需要把 CmdRevert 的逻辑拆分出一个 ServerRevert
-                    // 或者我们这里简单暴力点，直接修改变量并调用 ApplyRevert
-                    witch.isMorphed = false;
-                    witch.morphedPropID = -1;
-                    // 通过 Rpc 通知女巫客户端 (WitchPlayer 需要对应修改 OnMorphedPropIDChanged 钩子来处理逻辑)
-                    // 目前代码里 OnMorphedPropIDChanged 已经处理了 ApplyRevert
+                    witch.ServerForceRevert(); 
                 }
 
-                // 2. 减速 (需要给 GamePlayer 加个 StatusEffect 系统，这里简化直接改速度，3秒后改回)
-                StartCoroutine(SlowDownWitch(witch));
+                // 2. 减速 (0.4倍速即为 5f * 0.4 = 2f) 后面是持续时间
+                witch.ServerApplySlow(0.4f, 3f);
 
                 // 标记命中
                 hitAnyWitch = true;
 
                 if (hitAnyWitch && !sentHitFeedback)
                 {
-                    // 【核心修复】获取安全的连接对象
+                    
                     // 如果 connectionToClient 为空（即 Host），则尝试使用 NetworkServer.localConnection
                     NetworkConnection targetConn = ownerPlayer.connectionToClient;
 
@@ -92,12 +86,12 @@ public class HunterSkill_Shockwave : SkillBase
         else Debug.LogWarning("[HunterSkill_Shockwave] VFX Prefab is not assigned!");
     }
 
-    [Server]
-    System.Collections.IEnumerator SlowDownWitch(WitchPlayer witch)
-    {
-        float originalSpeed = witch.moveSpeed;
-        witch.moveSpeed = 2f; // 极慢
-        yield return new WaitForSeconds(3f);
-        witch.moveSpeed = originalSpeed;
-    }
+    // [Server]
+    // System.Collections.IEnumerator SlowDownWitch(WitchPlayer witch)
+    // {
+    //     float originalSpeed = witch.moveSpeed;
+    //     witch.moveSpeed /= 2f; 
+    //     yield return new WaitForSeconds(1f);
+    //     witch.moveSpeed = originalSpeed;
+    // }
 }

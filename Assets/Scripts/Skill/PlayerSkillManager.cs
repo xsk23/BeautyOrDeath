@@ -118,7 +118,7 @@ public class PlayerSkillManager : NetworkBehaviour
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
             return;
         // 处理技能按键触发
-        if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned)
+        if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned && !player.isInSecondChance && !player.isPermanentDead)
         {
             foreach (var skill in activeSkillsArray)
             {

@@ -23,7 +23,7 @@ public class GunWeapon : WeaponBase
             // 方案：起点稍微向前偏移 0.6米，跳出猎人自己的 CharacterController 范围
             Vector3 startPos = origin + direction * 1.2f;
 
-            if (Physics.Raycast(startPos, direction, out RaycastHit hit, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
+            if (Physics.Raycast(startPos, direction, out RaycastHit hit, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
             {
                 // CharacterController 会被识别为 hit.collider
                 // 【核心修复】使用 GetComponentInParent，因为 Collider 可能在模型子节点上

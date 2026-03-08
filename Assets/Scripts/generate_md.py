@@ -30,6 +30,22 @@ def get_file_content(file_path):
         return f"Error reading file: {e}"
 
 
+def resolve_output_path(input_dir, output_filename="unity_code.md", place="inside"):
+    """
+    根据输入目录计算输出 markdown 路径
+    place: "inside" -> 输入目录下
+           "parent" -> 输入目录上一级
+    """
+    input_dir = os.path.abspath(input_dir)
+
+    if place == "inside":
+        return os.path.join(input_dir, output_filename)
+    if place == "parent":
+        return os.path.join(os.path.dirname(input_dir), output_filename)
+
+    raise ValueError("place 只能是 'inside' 或 'parent'")
+
+
 def generate_wp_code_markdown(
     root_dir,
     output_file,
@@ -202,9 +218,13 @@ def generate_wp_code_markdown(
 
 # ================= 配置区域 =================
 
-# WordPress 根目录路径
+# 输入目录路径
 root_directory = r"E:\UnityProjects\Mirror_Lobby\Assets\Scripts"
-output_md = "unity_code.md"
+
+# 输出文件名与位置: inside(输入目录下) / parent(输入目录上一级)
+output_filename = "unity_code.md"
+output_place = "inside"
+output_md = resolve_output_path(root_directory, output_filename, output_place)
 
 # 如果只想导出特定目录 (例如只看主题或插件)
 # include_dirs = ['wp-content', 'themes', 'plugins']
