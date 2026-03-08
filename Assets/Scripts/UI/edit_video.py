@@ -32,9 +32,9 @@ def trim_video(input_path, output_path, start_time, end_time=None):
 # --- 使用示例 ---
 
 # 你的原始视频路径
-input_video = r"E:\downloads\b\uptown1.mp4"
+input_video = r"E:\downloads\b\xinbaodao.mp4"
 # 裁剪后的保存路径
-output_video = r"E:\downloads\b\uptown1_trimmed.mp4"
+output_video = r"E:\downloads\b\xinbaodao_trimmed.mp4"
 
 # 裁剪从第 13 秒到第 30 秒
-trim_video(input_video, output_video, start_time=15, end_time=35)
+trim_video(input_video, output_video, start_time=1120, end_time=1145)

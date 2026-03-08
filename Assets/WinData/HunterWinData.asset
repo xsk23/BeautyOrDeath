@@ -167,3 +167,38 @@ MonoBehaviour:
     - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
     - {fileID: 9100000, guid: 262be1d1b03f80641a74a3ca8c6e5be8, type: 2}
     victoryMusic: {fileID: 8300000, guid: 3c931c10aa611cd4793676ff4a350bbd, type: 3}
+  - danceName: xinbaodao1
+    playerCount: 1
+    individualAnimators:
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 39e79fe106f42574896110ea6177b1aa, type: 3}
+  - danceName: xinbaodao2
+    playerCount: 2
+    individualAnimators:
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 39e79fe106f42574896110ea6177b1aa, type: 3}
+  - danceName: xinbaodao3
+    playerCount: 3
+    individualAnimators:
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 39e79fe106f42574896110ea6177b1aa, type: 3}
+  - danceName: xinbaodao4
+    playerCount: 4
+    individualAnimators:
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 39e79fe106f42574896110ea6177b1aa, type: 3}
+  - danceName: xinbaodao5
+    playerCount: 5
+    individualAnimators:
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    - {fileID: 9100000, guid: 870ad39b16738ab4791d4157bd1353d1, type: 2}
+    victoryMusic: {fileID: 8300000, guid: 39e79fe106f42574896110ea6177b1aa, type: 3}
