@@ -5,7 +5,7 @@ using Mirror;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using TMPro;
-
+using UnityEngine.Video; // 必须引用
 public class SceneScript : MonoBehaviour
 {
     public static SceneScript Instance { get; private set; } // 单例方便访问
@@ -42,6 +42,10 @@ public class SceneScript : MonoBehaviour
     public SkillSlotUI morphSlot; // 在 Inspector 中拖入一个新的 SkillSlotUI 预制体（通常放在 Q/E 旁边）
     public Sprite morphIcon;      // 拖入一张代表变身的图标（如魔法棒或圈圈图标）
     public CircularProgressGlow revertProgressController; 
+    [Header("Video Settings")]
+    public VideoPlayer victoryVideoPlayer; // 在 Inspector 中拖入 VideoPlayer 组件
+    public RawImage videoDisplay;         // 拖入用于显示视频的 RawImage
+    public float videoFadeSpeed = 1.5f;    // 音频淡入淡出速度
     private void Awake()
     {
         // 1. 单例赋值
@@ -394,5 +398,70 @@ public class SceneScript : MonoBehaviour
     {
         yield return new WaitForSeconds(3f);
         gameResultText.gameObject.SetActive(false);
+    }
+    // 提供给 GameManager 调用的接口
+    public void PlayVictoryVideo(float duration)
+    {
+        if (victoryVideoPlayer == null || videoDisplay == null) return;
+        
+        StartCoroutine(VideoPlaybackRoutine(duration));
+    }
+    private IEnumerator VideoPlaybackRoutine(float duration)
+    {
+        // 1. 初始状态：显示 UI 但先设为全透明（防止闪烁）
+        videoDisplay.gameObject.SetActive(true);
+        videoDisplay.color = new Color(1, 1, 1, 0); // 必须确保 RGB 是 1,1,1
+        
+        victoryVideoPlayer.Prepare();
+
+        // 2. 等待准备就绪
+        float timeout = 5f; // 5秒超时防止死循环
+        while (!victoryVideoPlayer.isPrepared && timeout > 0)
+        {
+            timeout -= Time.deltaTime;
+            yield return null;
+        }
+
+        if (!victoryVideoPlayer.isPrepared)
+        {
+            Debug.LogError("视频准备超时！请检查视频格式。");
+            videoDisplay.gameObject.SetActive(false);
+            yield break;
+        }
+
+        // 3. 【关键点】在准备好后重新赋值纹理，并强制 Alpha 为 1
+        videoDisplay.texture = victoryVideoPlayer.texture;
+        videoDisplay.color = Color.white; 
+
+        // 4. 开始播放并音频淡入
+        victoryVideoPlayer.SetDirectAudioVolume(0, 0f);
+        victoryVideoPlayer.Play();
+
+        // 淡入音量
+        float timer = 0f;
+        while (timer < 1.0f)
+        {
+            timer += Time.deltaTime * videoFadeSpeed;
+            victoryVideoPlayer.SetDirectAudioVolume(0, Mathf.Lerp(0f, 1f, timer));
+            yield return null;
+        }
+
+        // 5. 播放过程（建议直接使用视频自身的时长，而不是服务器传回的时长）
+        float videoLength = (float)victoryVideoPlayer.length;
+        yield return new WaitForSeconds(Mathf.Max(0.5f, videoLength - 2.0f));
+
+        // 6. 音频淡出
+        timer = 0f;
+        while (timer < 1.0f)
+        {
+            timer += Time.deltaTime * videoFadeSpeed;
+            victoryVideoPlayer.SetDirectAudioVolume(0, Mathf.Lerp(1f, 0f, timer));
+            yield return null;
+        }
+
+        // 7. 清理
+        victoryVideoPlayer.Stop();
+        videoDisplay.gameObject.SetActive(false);
+        videoDisplay.texture = null; // 释放纹理引用
     }
 }

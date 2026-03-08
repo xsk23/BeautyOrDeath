@@ -71,6 +71,8 @@ public class GameManager : NetworkBehaviour
     public AudioSource victoryAudioSource; // 在 Inspector 中把 GameManager 身上挂的 AudioSource 拖进来
     [Header("失败表现配置")]
     public RuntimeAnimatorController failAnimatorController; // 在 Inspector 中拖入你的 failanimation.controller
+    [Header("视频配置")]
+    public float witchVictoryVideoDuration = 12f; // 视频文件的长度（秒）
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -296,6 +298,15 @@ public class GameManager : NetworkBehaviour
                 losers.Add(p);
             }
         }
+        // --- 阶段 2：播放视频 (如果是巫师胜利) ---
+        if (winner == PlayerRole.Witch)
+        {
+            // 通知所有客户端播放视频
+            RpcPlayVictoryVideo(witchVictoryVideoDuration);
+            
+            // 服务器等待视频播完
+            yield return new WaitForSeconds(witchVictoryVideoDuration);
+        }
         // 2. 【核心修改】由服务器选定这局用哪套舞蹈
         VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
         int selectedDanceIndex = animData.GetRandomConfigIndex(winners.Count);
@@ -316,6 +327,16 @@ public class GameManager : NetworkBehaviour
         RpcStopVictoryMusic(); // 先通知所有客户端停掉音乐
         ResetGame();
         NetworkManager.singleton.ServerChangeScene(MyNetworkManager.singleton.onlineScene);
+    }
+    [ClientRpc]
+    private void RpcPlayVictoryVideo(float duration)
+    {
+        if (SceneScript.Instance != null)
+        {
+            // 隐藏 HUD 以便看清视频
+            SceneScript.Instance.HideHUDForVictory();
+            SceneScript.Instance.PlayVictoryVideo(duration);
+        }
     }
     [ClientRpc]
     private void RpcUpdateVictoryTransitionUI(PlayerRole winner, int seconds)

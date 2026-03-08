@@ -14,13 +14,28 @@ public class StartMenuVisuals : MonoBehaviour
     void Start()
     {
         RandomizeTrees();
+        // 新增：初始化随机旋转
+        RandomizeInitialCameraRotation();
     }
 
     void Update()
     {
         RotateCamera();
     }
+    // 新增：随机设置相机初始角度的方法
+    private void RandomizeInitialCameraRotation()
+    {
+        if (cameraTransform == null) return;
 
+        // 在 0 到 360 度之间取随机值
+        float randomAngle = Random.Range(0f, 360f);
+
+        // 沿指定的轴旋转相机
+        // 使用 Space.World 确保旋转逻辑与 Update 中的 RotateCamera 保持一致
+        cameraTransform.Rotate(rotationAxis, randomAngle, Space.World);
+        
+        Debug.Log($"[Visuals] 相机初始随机旋转角度: {randomAngle} 度");
+    }
     private void RandomizeTrees()
     {
         if (treesParent == null)

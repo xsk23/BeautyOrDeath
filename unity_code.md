@@ -78,6 +78,8 @@ public class GameManager : NetworkBehaviour
     public AudioSource victoryAudioSource; // 在 Inspector 中把 GameManager 身上挂的 AudioSource 拖进来
     [Header("失败表现配置")]
     public RuntimeAnimatorController failAnimatorController; // 在 Inspector 中拖入你的 failanimation.controller
+    [Header("视频配置")]
+    public float witchVictoryVideoDuration = 12f; // 视频文件的长度（秒）
     // 提供一个接口供 TreeManager 获取计算后的古树总数
     [Server]
     public int GetCalculatedAncientTreeCount()
@@ -303,6 +305,15 @@ public class GameManager : NetworkBehaviour
                 losers.Add(p);
             }
         }
+        // --- 阶段 2：播放视频 (如果是巫师胜利) ---
+        if (winner == PlayerRole.Witch)
+        {
+            // 通知所有客户端播放视频
+            RpcPlayVictoryVideo(witchVictoryVideoDuration);
+            
+            // 服务器等待视频播完
+            yield return new WaitForSeconds(witchVictoryVideoDuration);
+        }
         // 2. 【核心修改】由服务器选定这局用哪套舞蹈
         VictoryAnimData animData = (winner == PlayerRole.Witch) ? witchVictoryData : hunterVictoryData;
         int selectedDanceIndex = animData.GetRandomConfigIndex(winners.Count);
@@ -323,6 +334,16 @@ public class GameManager : NetworkBehaviour
         RpcStopVictoryMusic(); // 先通知所有客户端停掉音乐
         ResetGame();
         NetworkManager.singleton.ServerChangeScene(MyNetworkManager.singleton.onlineScene);
+    }
+    [ClientRpc]
+    private void RpcPlayVictoryVideo(float duration)
+    {
+        if (SceneScript.Instance != null)
+        {
+            // 隐藏 HUD 以便看清视频
+            SceneScript.Instance.HideHUDForVictory();
+            SceneScript.Instance.PlayVictoryVideo(duration);
+        }
     }
     [ClientRpc]
     private void RpcUpdateVictoryTransitionUI(PlayerRole winner, int seconds)
@@ -5038,8 +5059,8 @@ public class HunterPlayer : GamePlayer
             // 【核心修改】切换武器时，通知 Animator 是否正在持枪
             if (hunterAnimator != null && weaponBase != null)
             {
-                bool isGun = (weaponBase.weaponName == "Gun");
-                hunterAnimator.SetBool("isHoldingGun", isGun);
+                bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
+                hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
             }
         }
     }
@@ -5115,14 +5136,16 @@ public class HunterPlayer : GamePlayer
                             CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
                             OnWeaponFired?.Invoke(currentWeaponIndex);
                         }
-                        else if (currentWeapon.weaponName == "Gun")
+                        // --- 修改这里：将 NetLauncher 加入 Gun 的逻辑 ---
+                        else if (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher")
                         {
-                            // 猎枪：只触发开火动画，真正的射线伤害等待第11帧事件
+                            // 统统只触发开火动画，真正的逻辑等待第11帧事件
                             CmdTriggerGunAnimation();
                         }
+                        // --------------------------------------------
                         else
                         {
-                            // 兜网等：立即开火
+                            // 这里的 else 现在通常只走没有特殊定义的武器
                             CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
                             OnWeaponFired?.Invoke(currentWeaponIndex);
                         }
@@ -5186,7 +5209,7 @@ public class HunterPlayer : GamePlayer
             WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
             
             // 确保第11帧时，玩家手里拿的还是枪（防止动画期间切枪导致 Bug）
-            if (currentWeapon != null && currentWeapon.weaponName == "Gun")
+            if (currentWeapon != null && (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher"))
             {
                 Vector3 origin = Camera.main.transform.position;
                 Vector3 dir = Camera.main.transform.forward;
@@ -5198,7 +5221,7 @@ public class HunterPlayer : GamePlayer
     private void CmdExecuteRealGunFire(Vector3 origin, Vector3 direction)
     {
         WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-        if (currentWeapon != null && currentWeapon.weaponName == "Gun")
+        if (currentWeapon != null && (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher"))
         {
             // 1. 服务器执行真正的伤害和射线检测
             currentWeapon.OnFire(origin, direction);
@@ -13478,7 +13501,7 @@ using Mirror;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using TMPro;
-
+using UnityEngine.Video; // 必须引用
 public class SceneScript : MonoBehaviour
 {
     public static SceneScript Instance { get; private set; } // 单例方便访问
@@ -13515,6 +13538,10 @@ public class SceneScript : MonoBehaviour
     public SkillSlotUI morphSlot; // 在 Inspector 中拖入一个新的 SkillSlotUI 预制体（通常放在 Q/E 旁边）
     public Sprite morphIcon;      // 拖入一张代表变身的图标（如魔法棒或圈圈图标）
     public CircularProgressGlow revertProgressController; 
+    [Header("Video Settings")]
+    public VideoPlayer victoryVideoPlayer; // 在 Inspector 中拖入 VideoPlayer 组件
+    public RawImage videoDisplay;         // 拖入用于显示视频的 RawImage
+    public float videoFadeSpeed = 1.5f;    // 音频淡入淡出速度
     private void Awake()
     {
         // 1. 单例赋值
@@ -13868,8 +13895,47 @@ public class SceneScript : MonoBehaviour
         yield return new WaitForSeconds(3f);
         gameResultText.gameObject.SetActive(false);
     }
-}
+    // 提供给 GameManager 调用的接口
+    public void PlayVictoryVideo(float duration)
+    {
+        if (victoryVideoPlayer == null || videoDisplay == null) return;
+        
+        StartCoroutine(VideoPlaybackRoutine(duration));
+    }
+    private IEnumerator VideoPlaybackRoutine(float duration)
+    {
+        // 1. 准备阶段
+        videoDisplay.gameObject.SetActive(true);
+        victoryVideoPlayer.targetCameraAlpha = 1f;
+        victoryVideoPlayer.SetDirectAudioVolume(0, 0f); // 初始音量 0
+        victoryVideoPlayer.Play();
 
+        // 2. 音频淡入
+        float timer = 0f;
+        while (timer < 1.0f)
+        {
+            timer += Time.deltaTime * videoFadeSpeed;
+            victoryVideoPlayer.SetDirectAudioVolume(0, Mathf.Lerp(0f, 1f, timer));
+            yield return null;
+        }
+
+        // 3. 等待视频播放（扣除淡入淡出的时间）
+        yield return new WaitForSeconds(duration - 2.0f);
+
+        // 4. 音频淡出
+        timer = 0f;
+        while (timer < 1.0f)
+        {
+            timer += Time.deltaTime * videoFadeSpeed;
+            victoryVideoPlayer.SetDirectAudioVolume(0, Mathf.Lerp(1f, 0f, timer));
+            yield return null;
+        }
+
+        // 5. 清理阶段
+        victoryVideoPlayer.Stop();
+        videoDisplay.gameObject.SetActive(false);
+    }
+}
 ```
 
 ## UI\SkillButtonUI.cs
