@@ -10,25 +10,32 @@ public class WitchSkill_Chaos : SkillBase
 
     protected override void OnCast()
     {
-        Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} used skill: Chaos! Disturbing nearby trees.</color>");
+        // Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} used skill: Chaos! Disturbing nearby trees.</color>");
         GameManager.Instance?.ServerPlay3DAt("地动声", ownerPlayer.transform.position);
 
         // 找到周围的普通树
         Collider[] hits = Physics.OverlapSphere(ownerPlayer.transform.position, radius);
+
+
         foreach (var hit in hits)
         {
             PropTarget prop = hit.GetComponentInParent<PropTarget>();
             if (prop != null && !prop.isAncientTree && prop.isStaticTree)
             {
+                if (prop.gameObject.GetComponent<ChaosTag>() != null) continue; // 已经在晃动的树不重复添加
+
+                prop.gameObject.AddComponent<ChaosTag>(); // 标记这棵树正在被混乱效果影响
+
                 // 开启协程让它们乱动
-                StartCoroutine(ChaosRoutine(prop.transform));
+                StartCoroutine(ChaosRoutine(prop.gameObject));
             }
         }
     }
 
     [Server]
-    IEnumerator ChaosRoutine(Transform treeTrans)
+    IEnumerator ChaosRoutine(GameObject treeObj)
     {
+        Transform treeTrans = treeObj.transform;
         float timer = 0f;
         Vector3 originalPos = treeTrans.position;
         Quaternion originalRot = treeTrans.rotation;
@@ -108,5 +115,10 @@ public class WitchSkill_Chaos : SkillBase
         // 结束时恢复原样
         treeTrans.position = originalPos;
         treeTrans.rotation = originalRot;
+        if (treeObj != null)
+        {
+            Destroy(treeObj.GetComponent<ChaosTag>());
+        }   
     }
 }
+public class ChaosTag : MonoBehaviour { }

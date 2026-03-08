@@ -10,6 +10,16 @@ public class MistBehavior : NetworkBehaviour
 
     private float nextCheckTime = 0f;
 
+
+
+    private void Awake()
+    {
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+        {
+            col.isTrigger = true; // 强制设为触发器，不阻挡物理移动
+        }
+    }
     public override void OnStartServer()
     {
         // 服务器端负责销毁

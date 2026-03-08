@@ -17,6 +17,8 @@ public class WitchPlayer : GamePlayer
     public float amuletSpeedMultiplier = 1.5f; // 护符加速倍率
     // 【新增】二段跳标记
     private bool doubleJumpUsed = false;
+    [SyncVar] public bool isSlowed = false; // 【新增】是否正在被减速
+    private Coroutine activeSlowRoutine;    // 【新增】当前正在执行的减速协程
 
     [Header("Witch Skill Settings")]
     public GameObject[] witchItems;// 女巫道具数组
@@ -210,7 +212,7 @@ public class WitchPlayer : GamePlayer
         }
         // =========================================================
         // 如果变身了，根据按键实时更新基础移动速度
-        if (isLocalPlayer && isMorphed)
+        if (isLocalPlayer && isMorphed && !isSlowed)
         {
             bool isRunning = Input.GetKey(KeyCode.LeftShift);
             float targetSpeed = isRunning ? morphedRunSpeed : morphedWalkSpeed;
@@ -2125,4 +2127,46 @@ public class WitchPlayer : GamePlayer
         }
     }
 
+    [Server]
+    public void ServerForceRevert()
+    {
+        if (!isMorphed) return;
+        
+        // 强制种下手中的古树（如果有的话）
+        ServerReleaseTreeAtCurrentPosition();
+        // 踢下所有的乘客
+        ServerKickAllPassengers();
+        
+        isMorphed = false;
+        morphedPropID = -1;
+        // 服务器端也执行物理恢复
+        ApplyRevert();
+    }
+    [Server]
+    public void ServerApplySlow(float multiplier, float duration)
+    {
+        // 如果已经有减速了，先停掉上一个，防止时间错乱
+        if (activeSlowRoutine != null)
+        {
+            StopCoroutine(activeSlowRoutine);
+        }
+        activeSlowRoutine = StartCoroutine(SafeSlowRoutine(multiplier, duration));
+    }
+
+     [Server]
+    private IEnumerator SafeSlowRoutine(float multiplier, float duration)
+    {
+        isSlowed = true; // 锁死客户端的速度申请
+
+        // 动态获取她当前该有的正常速度
+        float normalSpeed = isMorphed ? morphedWalkSpeed : originalHumanSpeed;
+        moveSpeed = normalSpeed * multiplier;
+
+        yield return new WaitForSeconds(duration);
+
+        // 恢复时再次检查状态，因为3秒内她可能变身了或解除了变身
+        moveSpeed = isMorphed ? morphedWalkSpeed : originalHumanSpeed;
+        isSlowed = false;
+        activeSlowRoutine = null;
+    }
 }

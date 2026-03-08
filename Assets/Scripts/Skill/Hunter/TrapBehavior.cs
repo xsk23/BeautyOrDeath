@@ -102,7 +102,7 @@ public class TrapBehavior : NetworkBehaviour
 
         WitchPlayer witch = other.GetComponent<WitchPlayer>() ?? other.GetComponentInParent<WitchPlayer>();
         
-        if (witch != null && !witch.isPermanentDead && !witch.isInvulnerable)
+        if (witch != null && !witch.isPermanentDead && !witch.isInvulnerable && !witch.isInSecondChance)
         {
             isTriggered = true; 
 
@@ -127,8 +127,7 @@ public class TrapBehavior : NetworkBehaviour
             
             if (witch.isMorphed)
             {
-                witch.isMorphed = false;
-                witch.morphedPropID = -1;
+                witch.ServerForceRevert();
             }
             StartCoroutine(DestroyAfterDelay());
         }
