@@ -1,8 +1,8 @@
 from PIL import Image
 from rembg import remove
 
-input_path = r"Assets/Image/UI/progressbar.png"
-output_path = "Assets/Image/UI/progressbar1.png"
+input_path = r"Assets/Image/UI/cross.jpg"
+output_path = "Assets/Image/UI/cross.png"
 
 # 打开图片
 input_image = Image.open(input_path)

@@ -3,6 +3,9 @@ using Mirror;
 using System.Collections.Generic;
 using System.Diagnostics; // 用于 Process
 using System.Linq; // 用于 Linq 查询
+using System.Net;         // 新增
+using System.Net.Sockets; // 新增
+using System.Text;        // 新增
 
 public class LobbyServer : MonoBehaviour
 {
@@ -13,7 +16,9 @@ public class LobbyServer : MonoBehaviour
     [Header("Port Management")]
     public int startPort = 7771;
     public int endPort = 7780; // 最多允许 10 个房间同时运行
-
+    // 【新增】用于接收子进程汇报的 UDP 监听器
+    private UdpClient statusListener;
+    private const int LOBBY_STATUS_PORT = 7770; // 大厅监听子进程汇报的固定端口
     // --- 内部数据结构 ---
     class ServerRoomData
     {
@@ -21,6 +26,7 @@ public class LobbyServer : MonoBehaviour
         public string name;
         public string password;
         public int maxPlayers;
+        public int currentPlayers; // 新增
         public ushort port;
         public Process process; // 保存进程引用，用于监听退出事件
     }
@@ -51,16 +57,86 @@ public class LobbyServer : MonoBehaviour
 
         // 注册消息
         if (NetworkServer.active)
-        {
+            {
             NetworkServer.RegisterHandler<CreateRoomReq>(OnCreateRoom);
             NetworkServer.RegisterHandler<GetRoomListReq>(OnGetRoomList);
             NetworkServer.RegisterHandler<JoinRoomReq>(OnJoinRoom);
+            NetworkServer.RegisterHandler<CancelRoomReq>(OnCancelRoom); // 【新增注册】
+            // 【新增】开启本地 UDP 监听
+            StartStatusListener();
             UnityEngine.Debug.Log("[Lobby] Message callbacks registered successfully, lobby ready!");
         }
         else
         {
             UnityEngine.Debug.LogError("[Lobby] NetworkServer not active, lobby startup failed!");
         }
+    }
+    // --- 逻辑二：处理取消连接，立即杀掉进程 ---
+    void OnCancelRoom(NetworkConnectionToClient conn, CancelRoomReq msg)
+    {
+        // 只要 ID 存在于 activeRooms 字典中，就执行杀死逻辑
+        if (activeRooms.TryGetValue(msg.roomId, out ServerRoomData room))
+        {
+            UnityEngine.Debug.Log($"[LobbyServer] 执行强制销毁请求: Room {msg.roomId}");
+            try
+            {
+                if (room.process != null && !room.process.HasExited)
+                {
+                    room.process.Kill(); // 强杀子进程
+                }
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"强杀进程失败: {e.Message}");
+            }
+            // activeRooms.Remove(msg.roomId); // 进程退出回调会自动移除，这里可写可不写
+        }
+        else
+        {
+            UnityEngine.Debug.LogWarning($"[LobbyServer] 收到无效销毁请求，ID: {msg.roomId} 不存在");
+        }
+    }
+    // 【新增】后台监听子进程发来的人数更新
+    private void StartStatusListener()
+    {
+        try 
+        {
+            statusListener = new UdpClient(LOBBY_STATUS_PORT);
+            statusListener.BeginReceive(OnStatusReceived, null);
+            UnityEngine.Debug.Log($"[LobbyServer] UDP IPC Listener started on port {LOBBY_STATUS_PORT}");
+        } 
+        catch (System.Exception e) 
+        {
+            UnityEngine.Debug.LogError($"[LobbyServer] Failed to start UDP listener: {e.Message}");
+        }
+    }
+    private void OnStatusReceived(System.IAsyncResult res)
+    {
+        try 
+        {
+            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+            byte[] data = statusListener.EndReceive(res, ref remoteEP);
+            string msg = Encoding.UTF8.GetString(data);
+
+            // 解析收到的消息，格式为 "端口:人数" (例如 "7771:2")
+            string[] parts = msg.Split(':');
+            if (parts.Length == 2 && int.TryParse(parts[0], out int pPort) && int.TryParse(parts[1], out int pCount))
+            {
+                // 放回主线程处理
+                dispatcher.Enqueue(() => 
+                {
+                    var room = activeRooms.Values.FirstOrDefault(r => r.port == pPort);
+                    if (room != null) 
+                    {
+                        room.currentPlayers = pCount;
+                        // UnityEngine.Debug.Log($"[LobbyServer] Room on port {pPort} updated to {pCount} players.");
+                    }
+                });
+            }
+            // 继续监听下一条
+            statusListener.BeginReceive(OnStatusReceived, null);
+        } 
+        catch { /* 大厅关闭时会触发异常，忽略即可 */ }
     }
     // 辅助方法：判断当前是否是子进程
     bool IsSubProcess()
@@ -79,10 +155,17 @@ public class LobbyServer : MonoBehaviour
             conn.Send(new CreateRoomRes { success = false, message = "服务器爆满，无可用房间" });
             return;
         }
+        // --- 新增：后端强制截断 ---
+        string safeName = msg.roomName;
+        if (!string.IsNullOrEmpty(safeName) && safeName.Length > 10)
+            safeName = safeName.Substring(0, 10);
+
+        string safePwd = msg.password;
+        if (!string.IsNullOrEmpty(safePwd) && safePwd.Length > 10)
+            safePwd = safePwd.Substring(0, 10);
 
         // B. 启动子进程
-        Process p = SpawnGameProcess(port, msg.roomName); // 传入房间名参数
-
+        Process p = SpawnGameProcess(port, msg.roomName, msg.maxPlayers); // 注意：这里传递了 maxPlayers 参数，子进程可以根据需要使用它来限制玩家数量
         if (p != null)
         {
             // 生成唯一房间ID
@@ -92,8 +175,8 @@ public class LobbyServer : MonoBehaviour
             ServerRoomData newRoom = new ServerRoomData
             {
                 roomId = newId,
-                name = string.IsNullOrEmpty(msg.roomName) ? $"Room {newId}" : msg.roomName,
-                password = msg.password,
+                name = string.IsNullOrEmpty(safeName) ? $"Room {newId}" : safeName,
+                password = safePwd,
                 maxPlayers = msg.maxPlayers,
                 port = (ushort)port,
                 process = p
@@ -120,6 +203,7 @@ public class LobbyServer : MonoBehaviour
             conn.Send(new CreateRoomRes
             {
                 success = true,
+                roomId = newId,      // <--- 之前这里漏掉了这一行！
                 serverIp = publicIP,
                 serverPort = (ushort)port
             });
@@ -136,7 +220,8 @@ public class LobbyServer : MonoBehaviour
     // --- 2. 处理获取列表请求 ---
     void OnGetRoomList(NetworkConnectionToClient conn, GetRoomListReq msg)
     {
-        var query = activeRooms.Values.AsEnumerable();
+        // 过滤掉当前人数 <= 0 的房间（这样房主没进去前，别人看不见）
+        var query = activeRooms.Values.Where(r => r.currentPlayers > 0);
 
         // 搜索过滤逻辑
         if (!string.IsNullOrEmpty(msg.searchKeyword))
@@ -154,7 +239,7 @@ public class LobbyServer : MonoBehaviour
             roomId = r.roomId,
             roomName = r.name,
             hasPassword = !string.IsNullOrEmpty(r.password),
-            currentPlayers = 0, // 暂时写0，进阶需进程间通信(IPC)获取实时人数
+            currentPlayers = r.currentPlayers, // 修改点：使用字典里记录的当前人数
             maxPlayers = r.maxPlayers,
             port = r.port
         }).ToArray();
@@ -213,7 +298,7 @@ public class LobbyServer : MonoBehaviour
         return id;
     }
     // --- 辅助方法：启动子进程 ---
-    Process SpawnGameProcess(int port, string roomName)// 增加 roomName 参数
+    Process SpawnGameProcess(int port, string roomName, int maxPlayers)
     {
         string fileName = "MyGameServer.exe"; // 请确保这是你 Build 出来的 exe 名字
 
@@ -245,7 +330,7 @@ public class LobbyServer : MonoBehaviour
             ProcessStartInfo info = new ProcessStartInfo();
             info.FileName = path;
             // --- 核心修改：添加 -name 参数，注意名称中可能有空格，需要用引号包裹 ---
-            info.Arguments = $"-batchmode -nographics -port {port} -name \"{roomName}\"";
+            info.Arguments = $"-batchmode -nographics -port {port} -name \"{roomName}\" -maxPlayers {maxPlayers}";
             info.UseShellExecute = false;
 
             // 开启日志重定向 (可选，方便调试子进程报错)
@@ -298,6 +383,7 @@ public class LobbyServer : MonoBehaviour
     // 在大厅关闭时清理所有子进程 (防止残留僵尸进程)
     void OnApplicationQuit()
     {
+        statusListener?.Close(); // 【新增】关闭监听器
         foreach (var room in activeRooms.Values)
         {
             try

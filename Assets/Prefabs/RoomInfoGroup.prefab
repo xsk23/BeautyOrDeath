@@ -282,7 +282,7 @@ GameObject:
   - component: {fileID: 6398042887233202857}
   - component: {fileID: 2762607693960484697}
   m_Layer: 5
-  m_Name: RoomButton
+  m_Name: RoomInfoGroup
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

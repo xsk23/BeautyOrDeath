@@ -21,6 +21,11 @@ public class StartMenu : MonoBehaviour
     [Header("Transition UI")]
     public GameObject loadingPanel; // 在 Inspector 中拖入你新增的那个 Panel
     public TextMeshProUGUI countdownText; // 1. 拖入你的 CountDownText (TMP)
+    public Button cancelLoadingButton; // 【新增】拖入 LoadingPanel 下的 Button
+    [Header("Disconnect UI")]
+    public GameObject reconnectPanel;      // 对应你截图里的 ReconnectImage
+    public TextMeshProUGUI errorText;      // 对应面板里的 Text (TMP)
+    public Button okButton;                // 对应面板里的 Button
     private void Start()
     {
         if (manager == null)
@@ -59,6 +64,100 @@ public class StartMenu : MonoBehaviour
         else
         {
             if(loadingPanel != null) loadingPanel.SetActive(false);
+        }
+        // 【新增】绑定取消按钮事件
+        if (cancelLoadingButton != null)
+        {
+            cancelLoadingButton.onClick.AddListener(OnCancelConnection);
+        }
+        // 绑定确认按钮点击事件
+        if (okButton != null)
+        {
+            okButton.onClick.AddListener(OnCloseReconnectPanel);
+        }
+
+        // 【核心逻辑】检查是否有待显示的断线错误
+        CheckForPendingDisconnect();
+    }
+    private void CheckForPendingDisconnect()
+    {
+        // 检查 MyNetworkManager 里存的静态错误字符串
+        if (!string.IsNullOrEmpty(MyNetworkManager.PendingErrorMessage))
+        {
+            // 显示面板
+            if (reconnectPanel != null)
+            {
+                reconnectPanel.SetActive(true);
+            }
+
+            // 设置文字内容
+            if (errorText != null)
+            {
+                errorText.text = MyNetworkManager.PendingErrorMessage;
+            }
+
+            // 播放提示音 (可选)
+            // AudioManager.Instance?.Play2D("Error_Sound");
+        }
+        else
+        {
+            // 如果没有错误，确保面板是关闭的
+            if (reconnectPanel != null) reconnectPanel.SetActive(false);
+        }
+    }
+    // 点击 OK~ 按钮执行的逻辑
+    public void OnCloseReconnectPanel()
+    {
+        // 1. 关闭面板
+        if (reconnectPanel != null)
+        {
+            reconnectPanel.SetActive(false);
+        }
+
+        // 2. 【重要】清除静态错误信息，防止下次进主菜单又弹出来
+        MyNetworkManager.PendingErrorMessage = "";
+
+        // 3. 播放按钮音效
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+    }
+    public void OnCancelConnection()
+    {
+        Debug.Log("[UI] 用户取消加载，准备回大厅销毁房间进程...");
+
+        // 1. 停止 UI 表现
+        StopAllCoroutines();
+        if (loadingPanel != null) loadingPanel.SetActive(false);
+
+        // 2. 标记“下次连上大厅就杀掉房间”
+        // 只有当我们确实有一个创建出来的 ID 时才标记
+        if (MyNetworkManager.GlobalPendingRoomId > 0)
+        {
+            MyNetworkManager.PendingKillOnConnect = true;
+        }
+
+        // 3. 开启重连协程
+        StartCoroutine(CancelAndReconnectRoutine());
+        
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+    }
+    // 【新增】等待底层断开再重连，极其简单稳定
+    private IEnumerator CancelAndReconnectRoutine()
+    {
+        MyNetworkManager.AbortTransition();
+
+        // 等待 Mirror 彻底释放网络资源
+        while (NetworkClient.active)
+        {
+            yield return null;
+        }
+
+        // 【核心修改】读取静态变量
+        if (MyNetworkManager.GlobalPendingRoomId > 0)
+        {
+            Debug.Log($"[UI] Cancelling... Reconnecting to kill Room {MyNetworkManager.GlobalPendingRoomId}");
+            
+            // 重新连接大厅，利用 MyNetworkManager.OnClientConnect 里的逻辑自动发包
+            OnButtonJoin(); 
         }
     }
     private void ShowLoadingPanel()

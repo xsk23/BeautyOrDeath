@@ -13,10 +13,15 @@ public struct CreateRoomRes : NetworkMessage
 {
     public bool success;
     public string message;
+    public int roomId;        // 【新增】返回房间ID，方便取消时指定
     public string serverIp;   // 新增：告诉客户端连哪个 IP
     public ushort serverPort; // 新增：告诉客户端连哪个 端口
 }
-
+// 【新增】客户端请求大厅强行关闭刚创建的房间
+public struct CancelRoomReq : NetworkMessage
+{
+    public int roomId;
+}
 
 // 3. 房间数据 (用于之后刷新列表)
 [System.Serializable]

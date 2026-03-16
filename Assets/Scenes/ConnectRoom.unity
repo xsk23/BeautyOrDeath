@@ -406,7 +406,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4027211545326174645, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: -0.000030517578
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4136929243209880768, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_Pivot.x
@@ -492,6 +492,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: ConnectRoomCanvas
       objectReference: {fileID: 0}
+    - target: {fileID: 7066374418056098918, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7405946172218956704, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_Size
       value: 1
@@ -499,6 +503,10 @@ PrefabInstance:
     - target: {fileID: 7405946172218956704, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_Value
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8078173929150796833, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
