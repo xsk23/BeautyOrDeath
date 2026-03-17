@@ -2434,13 +2434,17 @@ public class MyNetworkManager : NetworkManager
             Debug.Log("[Client] 已从大厅主动断开，准备连接目标房间...");
             return; 
         }
+        // 3. 处理游戏中异常掉线（被踢、服务器崩溃、网络超时等）
+        if (string.IsNullOrEmpty(PendingErrorMessage))
+        {
+            PendingErrorMessage = "Lost connection to server.";
+        }
         base.OnClientDisconnect();
 
         // 游戏中异常掉线
         if (SceneManager.GetActiveScene().name != "StartMenu")
         {
-            PendingErrorMessage = "Room closed by host.";
-            HandleConnectionFailure();
+            SceneManager.LoadScene("StartMenu");
         }
     }
 
@@ -5317,13 +5321,17 @@ public class MyNetworkManager : NetworkManager
             Debug.Log("[Client] 已从大厅主动断开，准备连接目标房间...");
             return; 
         }
+        // 3. 处理游戏中异常掉线（被踢、服务器崩溃、网络超时等）
+        if (string.IsNullOrEmpty(PendingErrorMessage))
+        {
+            PendingErrorMessage = "Lost connection to server.";
+        }
         base.OnClientDisconnect();
 
         // 游戏中异常掉线
         if (SceneManager.GetActiveScene().name != "StartMenu")
         {
-            PendingErrorMessage = "Room closed by host.";
-            HandleConnectionFailure();
+            SceneManager.LoadScene("StartMenu");
         }
     }
 
@@ -7174,10 +7182,13 @@ using Mirror;
 public class FistWeapon : WeaponBase
 {
     [Header("近战特有设置")]
-    public float attackRadius = 0.5f; // 拳头的判定半径
     public float attackDistance = 2.0f; // 攻击距离
-    public float stunDuration = 0.5f; // 眩晕时间
 
+    [Range(0, 180)]
+    public float attackAngle = 90f;     // 攻击扇形角度（面前90度）
+    public float stunDuration = 0.5f; // 眩晕时间
+    // 缓存引用
+    private HunterPlayer ownerHunter;
     private void Awake()
     {
         // 初始化默认值
@@ -7188,33 +7199,79 @@ public class FistWeapon : WeaponBase
 
     public override void OnFire(Vector3 origin, Vector3 direction)
     {   
-        AudioManager.Instance?.Play2D("拳头攻击");
-        Debug.Log($" fired a punch!");
+        // 1. 获取所有者引用（用于判断自身朝向）
+        if (ownerHunter == null) ownerHunter = GetComponentInParent<HunterPlayer>();
+        
+        // 播放音效（本地/所有客户端由 HunterPlayer 控制，这里仅处理逻辑）
+        // 注意：原代码逻辑在 HunterPlayer 中有 RpcFireEffect 处理音效
+        
         nextFireTime = Time.time + fireRate;
+
         if (isServer)
         {
-            if (Physics.SphereCast(origin, attackRadius, direction, out RaycastHit hit, attackDistance))
+            PerformMeleeScan();
+        }
+    }
+    [Server]
+    private void PerformMeleeScan()
+    {
+        // 1. 在猎人周围找出所有碰撞体
+        // 使用猎人脚底或中心作为圆心，而不是摄像机
+        Vector3 scanCenter = ownerHunter.transform.position + Vector3.up * 1.0f;
+        Collider[] hits = Physics.OverlapSphere(scanCenter, attackDistance);
+
+        GamePlayer bestTarget = null;
+        float minAngle = float.MaxValue;
+
+        foreach (var hit in hits)
+        {
+            // 2. 排除自己
+            if (hit.gameObject == ownerHunter.gameObject) continue;
+
+            // 3. 获取玩家组件
+            GamePlayer target = hit.GetComponent<GamePlayer>() ?? hit.GetComponentInParent<GamePlayer>();
+            if (target == null || target.isPermanentDead) continue;
+
+            // 4. 扇形角度判断
+            Vector3 dirToTarget = (target.transform.position - ownerHunter.transform.position).normalized;
+            dirToTarget.y = 0; // 忽略高度差带来的角度偏移，只看平面朝向
+            
+            Vector3 hunterForward = ownerHunter.transform.forward;
+            hunterForward.y = 0;
+
+            float angle = Vector3.Angle(hunterForward, dirToTarget);
+
+            // 如果在扇形范围内
+            if (angle <= attackAngle / 2f)
             {
-                GamePlayer target = hit.collider.GetComponent<GamePlayer>();
-                if (target == null)
-                    target = hit.collider.GetComponentInParent<GamePlayer>();
+                // 队友伤害检查 (复用 GunWeapon 的逻辑)
+                bool isSameTeam = (target.playerRole == ownerHunter.playerRole);
+                bool canDamage = !isSameTeam || GameManager.Instance.FriendlyFire;
 
-                if (target != null)
+                if (canDamage)
                 {
-                    // 造成伤害
-                    target.ServerTakeDamage(damage);
-                    if (target is WitchPlayer)
+                    // 为了手感，我们通常只打击范围内最接近准星/正前方的那个
+                    if (angle < minAngle)
                     {
-                        StartCoroutine(ApplyMicroStun(target));
+                        minAngle = angle;
+                        bestTarget = target;
                     }
-
-                    Debug.Log($"[Fist] Punched {target.playerName}!");
                 }
             }
         }
+
+        // 5. 对最终选定的目标造成伤害
+        if (bestTarget != null)
+        {
+            bestTarget.ServerTakeDamage(damage);
+            if (bestTarget is WitchPlayer)
+            {
+                StartCoroutine(ApplyMicroStun(bestTarget));
+            }
+            Debug.Log($"[Fist] Melee Hit: {bestTarget.playerName} (Angle: {minAngle})");
+        }
     }
 
-    // 服务器端协程：短暂眩晕
     [Server]
     private IEnumerator ApplyMicroStun(GamePlayer target)
     {
@@ -7222,8 +7279,27 @@ public class FistWeapon : WeaponBase
         {
             target.isStunned = true;
             yield return new WaitForSeconds(stunDuration);
-            target.isStunned = false;
+            // 只有当玩家没有被陷阱抓到时才解除眩晕（防止拳头解除陷阱禁锢）
+            if (!target.isTrappedByNet)
+                target.isStunned = false;
         }
+    }
+
+    // 调试绘图：在编辑器里看扇形范围
+    private void OnDrawGizmosSelected()
+    {
+        if (ownerHunter == null) ownerHunter = GetComponentInParent<HunterPlayer>();
+        if (ownerHunter == null) return;
+
+        Gizmos.color = Color.red;
+        Vector3 pos = ownerHunter.transform.position + Vector3.up * 1.0f;
+        Gizmos.DrawWireSphere(pos, attackDistance);
+
+        Vector3 leftBoundary = Quaternion.Euler(0, -attackAngle / 2f, 0) * ownerHunter.transform.forward;
+        Vector3 rightBoundary = Quaternion.Euler(0, attackAngle / 2f, 0) * ownerHunter.transform.forward;
+
+        Gizmos.DrawLine(pos, pos + leftBoundary * attackDistance);
+        Gizmos.DrawLine(pos, pos + rightBoundary * attackDistance);
     }
 }
 ```
@@ -8154,6 +8230,9 @@ public class GunWeapon : WeaponBase
     private void Awake()
     {
         weaponName = "Gun";
+        // 在这里添加一行来设置射速
+        fireRate = 1.2f; // 设置为 1.2 秒冷却一次
+        damage = 30f;    // 顺便也可以调整伤害
     }
     public override void OnFire(Vector3 origin, Vector3 direction)
     {
@@ -8233,6 +8312,8 @@ using Unity.VisualScripting;
 using UnityEngine;
 using Mirror;
 using System;
+using System.Collections.Generic; // 引用 List
+using System.Collections;
 
 public class HunterPlayer : GamePlayer
 {
@@ -8262,6 +8343,11 @@ public class HunterPlayer : GamePlayer
     private float meleeLockEndTime = 0f; // 记录锁定结束的具体时间点
     // 定义一个快捷属性判断是否处于锁定状态
     private bool IsInMeleeLockout => Time.time < meleeLockEndTime;
+    [Header("开枪偏转设置")]
+    private float shootVisualAngle = 20f; // 向右偏转的角度
+    private float returnSmoothTime = 0.3f; // 转回来的平滑时间
+    private Quaternion originalModelRotation; // 记录模型原始旋转
+    private bool hasCapturedRotation = false;
     // 【新增】重写父类的起跳许可，出拳硬直期间禁止起跳
     protected override bool CanJump()
     {
@@ -8317,29 +8403,26 @@ public class HunterPlayer : GamePlayer
     public override void OnStartLocalPlayer()
     {
         base.OnStartLocalPlayer();
-        // 确保鼠标锁定在准星上
+        
+        // 初始锁定鼠标
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
-        // 先禁用所有武器，由脚本控制active状态
-        foreach (GameObject weapon in hunterWeapon)
+
+        // 本地玩家也执行一次初始化刷新
+        RefreshWeaponVisibility(currentWeaponIndex);
+        
+        // 更新 UI
+        if (sceneScript != null && currentWeaponIndex < hunterWeapon.Length)
         {
-            weapon.SetActive(false);
+            var wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
         }
-        ChangeWeapon(currentWeaponIndex);
-    // 确保本地猎人看到的是隐藏的女巫相关 UI
+
+        // 隐藏女巫 UI
         if (SceneScript.Instance != null)
         {
-            // 1. 隐藏女巫的 F 键道具槽（你原本已有的逻辑）
-            if (SceneScript.Instance.itemSlot != null)
-            {
-                SceneScript.Instance.itemSlot.gameObject.SetActive(false);
-            }
-
-            // 2. 【新增】隐藏女巫的变身技能槽
-            if (SceneScript.Instance.morphSlot != null)
-            {
-                SceneScript.Instance.morphSlot.gameObject.SetActive(false);
-            }
+            if (SceneScript.Instance.itemSlot != null) SceneScript.Instance.itemSlot.gameObject.SetActive(false);
+            if (SceneScript.Instance.morphSlot != null) SceneScript.Instance.morphSlot.gameObject.SetActive(false);
         }
     }
     public override void OnStartClient()
@@ -8347,6 +8430,9 @@ public class HunterPlayer : GamePlayer
         base.OnStartClient();
         // 记录出生时的位置，防止 00 第一帧计算出巨大的瞬移距离
         lastPosition = transform.position;
+        // 【关键修复点】：远程玩家模型加载时，根据当前的 SyncVar 强制刷新一次武器
+        // 这解决了“中途加入”或“初始状态不触发 Hook”的问题
+        RefreshWeaponVisibility(currentWeaponIndex);
     }
     public override void OnStartServer()
     {
@@ -8356,26 +8442,43 @@ public class HunterPlayer : GamePlayer
         // mouseSensitivity = 2.5f;
         // manaRegenRate = 8f;
     }
+    // 当远程玩家连接或 SyncVar 同步时执行
     public void OnWeaponChanged(int oldWeaponIndex, int newWeaponIndex)
     {
-        if (oldWeaponIndex >= 0 && oldWeaponIndex < hunterWeapon.Length)
+        // 核心修复：直接使用最新的 newWeaponIndex 刷新全量状态
+        RefreshWeaponVisibility(newWeaponIndex);
+    }
+
+    // 抽象出一个统一的显隐控制方法
+    private void RefreshWeaponVisibility(int activeIndex)
+    {
+        if (hunterWeapon == null || hunterWeapon.Length == 0) return;
+
+        for (int i = 0; i < hunterWeapon.Length; i++)
         {
-            hunterWeapon[oldWeaponIndex].SetActive(false);
-        }
-        if (newWeaponIndex >= 0 && newWeaponIndex < hunterWeapon.Length)
-        {
-            hunterWeapon[newWeaponIndex].SetActive(true);
-            // 【新增】防止切枪时如果粒子正在播放卡在半空中，强制停止
-            var weaponBase = hunterWeapon[newWeaponIndex].GetComponent<WeaponBase>();
-            if (weaponBase != null && weaponBase.muzzleFlash != null)
+            if (hunterWeapon[i] == null) continue;
+
+            // 只有索引匹配的激活，其余全部隐藏
+            bool shouldBeActive = (i == activeIndex);
+            hunterWeapon[i].SetActive(shouldBeActive);
+
+            // 如果是当前激活的武器，处理相关的额外逻辑（如动画、特效清空）
+            if (shouldBeActive)
             {
-                weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-            }
-            // 【核心修改】切换武器时，通知 Animator 是否正在持枪
-            if (hunterAnimator != null && weaponBase != null)
-            {
-                bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
-                hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
+                var weaponBase = hunterWeapon[i].GetComponent<WeaponBase>();
+                
+                // 清理可能残留的粒子
+                if (weaponBase != null && weaponBase.muzzleFlash != null)
+                {
+                    weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                }
+
+                // 更新动画状态机（只要是猎人模型，不管本地还是远程，动画都得对）
+                if (hunterAnimator != null && weaponBase != null)
+                {
+                    bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
+                    hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
+                }
             }
         }
     }
@@ -8510,6 +8613,19 @@ public class HunterPlayer : GamePlayer
         if (hunterAnimator != null)
         {
             hunterAnimator.SetTrigger("Shoot");
+            // --- 1. 开始转身 ---
+            // 我们旋转的是包含 Animator 的模型物体，这样不会干扰摄像机和射击方向
+            Transform modelTrans = hunterAnimator.transform;
+            
+            // 第一次执行时记录原始角度（通常是 0,0,0）
+            if (!hasCapturedRotation)
+            {
+                originalModelRotation = modelTrans.localRotation;
+                hasCapturedRotation = true;
+            }
+
+            // 瞬间偏转或极快偏转到右侧
+            modelTrans.localRotation = originalModelRotation * Quaternion.Euler(0, shootVisualAngle, 0);
         }
     }
     // ----------------------------------------------------
@@ -8517,6 +8633,13 @@ public class HunterPlayer : GamePlayer
     // ----------------------------------------------------
     public void ExecuteAttackEffect()
     {
+        // --- 逻辑 A：所有客户端都会执行的视觉还原 ---
+        if (hunterAnimator != null && hasCapturedRotation)
+        {
+            // 停止之前的协程（防止多次开火冲突）并平滑转回
+            StopCoroutine("RotateBackRoutine"); 
+            StartCoroutine("RotateBackRoutine");
+        }
         // 只有按下左键的本地玩家，才有资格在第11帧向服务器发送真实的开枪指令
         // 防止所有客户端上的第11帧都跑去让服务器开火，导致一次开出N枪
         if (isLocalPlayer)
@@ -8531,6 +8654,23 @@ public class HunterPlayer : GamePlayer
                 CmdExecuteRealGunFire(origin, dir);
             }
         }
+    }
+    // 平滑转回来的协程
+    private IEnumerator RotateBackRoutine()
+    {
+        Transform modelTrans = hunterAnimator.transform;
+        float elapsed = 0f;
+        Quaternion startRot = modelTrans.localRotation;
+
+        while (elapsed < returnSmoothTime)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / returnSmoothTime;
+            // 使用 Slerp 平滑插值回到原始位置
+            modelTrans.localRotation = Quaternion.Slerp(startRot, originalModelRotation, t);
+            yield return null;
+        }
+        modelTrans.localRotation = originalModelRotation;
     }
     [Command]
     private void CmdExecuteRealGunFire(Vector3 origin, Vector3 direction)
@@ -8581,6 +8721,13 @@ public class HunterPlayer : GamePlayer
         { 
             if (currentWeapon != null && currentWeapon.weaponName == "Fist") 
             {
+                // --- 【核心修改：精准音效控制】 ---
+                // 根据即将播放的动画方向，选择对应的音效条目
+                string soundName = nextPunchIsRight ? "Punch_R" : "Punch_L";
+                
+                // 使用 Play3D 播放，这样其他玩家在附近也能听到
+                AudioManager.Instance?.Play3D(soundName, transform.position);
+                // ---------------------------------
                 // 1. 设置布尔值，决定这次走左边还是右边的动画分支
                 hunterAnimator.SetBool("isPunchRight", nextPunchIsRight);
 
@@ -8772,6 +8919,9 @@ public class HunterPlayer : GamePlayer
     {
         if (hunterAnimator != null)
         {
+            // 【关键修复】跳跃前强制把模型子物体的局部旋转归零
+            // 防止由于开火导致的偏转还没转回来就直接进入了跳跃动画
+            hunterAnimator.transform.localRotation = Quaternion.identity; 
             // 3. 先设置随机索引，再触发 Trigger
             hunterAnimator.SetInteger("JumpIndex", index);
             hunterAnimator.SetTrigger("isJump");
@@ -9025,7 +9175,6 @@ public class OnFireEffect : MonoBehaviour
     [Header("引用")]
     public HunterPlayer hunterPlayer;
     public AudioSource audioSource;
-
     void OnEnable()
     {
         // 订阅事件
@@ -9058,8 +9207,16 @@ public class OnFireEffect : MonoBehaviour
             audioSource.PlayOneShot(currentWeapon.fireSound);
         }
 
-        // 4. 甚至可以加屏幕震动
-        // CameraShaker.Shake(0.1f); 
+        if (currentWeapon.weaponName == "Gun")
+        {
+            // 开启协程，延迟 0.4 秒（根据你拉栓动画的时长调整）播放上膛音
+            StartCoroutine(PlayChamberDelayed(0.2f));
+        }
+    }
+    private IEnumerator PlayChamberDelayed(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        AudioManager.Instance?.Play3D("Chamber", transform.position);
     }
 }
 
@@ -17778,6 +17935,10 @@ public class StartMenu : MonoBehaviour
     public GameObject loadingPanel; // 在 Inspector 中拖入你新增的那个 Panel
     public TextMeshProUGUI countdownText; // 1. 拖入你的 CountDownText (TMP)
     public Button cancelLoadingButton; // 【新增】拖入 LoadingPanel 下的 Button
+    [Header("Disconnect UI")]
+    public GameObject reconnectPanel;      // 对应你截图里的 ReconnectImage
+    public TextMeshProUGUI errorText;      // 对应面板里的 Text (TMP)
+    public Button okButton;                // 对应面板里的 Button
     private void Start()
     {
         if (manager == null)
@@ -17822,6 +17983,55 @@ public class StartMenu : MonoBehaviour
         {
             cancelLoadingButton.onClick.AddListener(OnCancelConnection);
         }
+        // 绑定确认按钮点击事件
+        if (okButton != null)
+        {
+            okButton.onClick.AddListener(OnCloseReconnectPanel);
+        }
+
+        // 【核心逻辑】检查是否有待显示的断线错误
+        CheckForPendingDisconnect();
+    }
+    private void CheckForPendingDisconnect()
+    {
+        // 检查 MyNetworkManager 里存的静态错误字符串
+        if (!string.IsNullOrEmpty(MyNetworkManager.PendingErrorMessage))
+        {
+            // 显示面板
+            if (reconnectPanel != null)
+            {
+                reconnectPanel.SetActive(true);
+            }
+
+            // 设置文字内容
+            if (errorText != null)
+            {
+                errorText.text = MyNetworkManager.PendingErrorMessage;
+            }
+
+            // 播放提示音 (可选)
+            // AudioManager.Instance?.Play2D("Error_Sound");
+        }
+        else
+        {
+            // 如果没有错误，确保面板是关闭的
+            if (reconnectPanel != null) reconnectPanel.SetActive(false);
+        }
+    }
+    // 点击 OK~ 按钮执行的逻辑
+    public void OnCloseReconnectPanel()
+    {
+        // 1. 关闭面板
+        if (reconnectPanel != null)
+        {
+            reconnectPanel.SetActive(false);
+        }
+
+        // 2. 【重要】清除静态错误信息，防止下次进主菜单又弹出来
+        MyNetworkManager.PendingErrorMessage = "";
+
+        // 3. 播放按钮音效
+        AudioManager.Instance?.Play2D("UI点击（木头）");
     }
     public void OnCancelConnection()
     {

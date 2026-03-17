@@ -197,8 +197,8 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_LocalScale: {x: 1.2, y: 1.2, z: 1.2}
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 5204263869384690163}
   - {fileID: 7762923490116116496}
@@ -242,9 +242,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  isLocalTempRevealed: 0
   propID: 0
+  isAncientTree: 0
   runtimeID: 0
+  isHiddenByPossession: 0
   isStaticTree: 1
+  isScouted: 0
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
 --- !u!114 &-2556285564865613033
 MonoBehaviour:

@@ -2,6 +2,8 @@ using Unity.VisualScripting;
 using UnityEngine;
 using Mirror;
 using System;
+using System.Collections.Generic; // 引用 List
+using System.Collections;
 
 public class HunterPlayer : GamePlayer
 {
@@ -31,6 +33,11 @@ public class HunterPlayer : GamePlayer
     private float meleeLockEndTime = 0f; // 记录锁定结束的具体时间点
     // 定义一个快捷属性判断是否处于锁定状态
     private bool IsInMeleeLockout => Time.time < meleeLockEndTime;
+    [Header("开枪偏转设置")]
+    private float shootVisualAngle = 20f; // 向右偏转的角度
+    private float returnSmoothTime = 0.3f; // 转回来的平滑时间
+    private Quaternion originalModelRotation; // 记录模型原始旋转
+    private bool hasCapturedRotation = false;
     // 【新增】重写父类的起跳许可，出拳硬直期间禁止起跳
     protected override bool CanJump()
     {
@@ -86,29 +93,26 @@ public class HunterPlayer : GamePlayer
     public override void OnStartLocalPlayer()
     {
         base.OnStartLocalPlayer();
-        // 确保鼠标锁定在准星上
+        
+        // 初始锁定鼠标
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
-        // 先禁用所有武器，由脚本控制active状态
-        foreach (GameObject weapon in hunterWeapon)
+
+        // 本地玩家也执行一次初始化刷新
+        RefreshWeaponVisibility(currentWeaponIndex);
+        
+        // 更新 UI
+        if (sceneScript != null && currentWeaponIndex < hunterWeapon.Length)
         {
-            weapon.SetActive(false);
+            var wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
         }
-        ChangeWeapon(currentWeaponIndex);
-    // 确保本地猎人看到的是隐藏的女巫相关 UI
+
+        // 隐藏女巫 UI
         if (SceneScript.Instance != null)
         {
-            // 1. 隐藏女巫的 F 键道具槽（你原本已有的逻辑）
-            if (SceneScript.Instance.itemSlot != null)
-            {
-                SceneScript.Instance.itemSlot.gameObject.SetActive(false);
-            }
-
-            // 2. 【新增】隐藏女巫的变身技能槽
-            if (SceneScript.Instance.morphSlot != null)
-            {
-                SceneScript.Instance.morphSlot.gameObject.SetActive(false);
-            }
+            if (SceneScript.Instance.itemSlot != null) SceneScript.Instance.itemSlot.gameObject.SetActive(false);
+            if (SceneScript.Instance.morphSlot != null) SceneScript.Instance.morphSlot.gameObject.SetActive(false);
         }
     }
     public override void OnStartClient()
@@ -116,6 +120,9 @@ public class HunterPlayer : GamePlayer
         base.OnStartClient();
         // 记录出生时的位置，防止 00 第一帧计算出巨大的瞬移距离
         lastPosition = transform.position;
+        // 【关键修复点】：远程玩家模型加载时，根据当前的 SyncVar 强制刷新一次武器
+        // 这解决了“中途加入”或“初始状态不触发 Hook”的问题
+        RefreshWeaponVisibility(currentWeaponIndex);
     }
     public override void OnStartServer()
     {
@@ -125,26 +132,43 @@ public class HunterPlayer : GamePlayer
         // mouseSensitivity = 2.5f;
         // manaRegenRate = 8f;
     }
+    // 当远程玩家连接或 SyncVar 同步时执行
     public void OnWeaponChanged(int oldWeaponIndex, int newWeaponIndex)
     {
-        if (oldWeaponIndex >= 0 && oldWeaponIndex < hunterWeapon.Length)
+        // 核心修复：直接使用最新的 newWeaponIndex 刷新全量状态
+        RefreshWeaponVisibility(newWeaponIndex);
+    }
+
+    // 抽象出一个统一的显隐控制方法
+    private void RefreshWeaponVisibility(int activeIndex)
+    {
+        if (hunterWeapon == null || hunterWeapon.Length == 0) return;
+
+        for (int i = 0; i < hunterWeapon.Length; i++)
         {
-            hunterWeapon[oldWeaponIndex].SetActive(false);
-        }
-        if (newWeaponIndex >= 0 && newWeaponIndex < hunterWeapon.Length)
-        {
-            hunterWeapon[newWeaponIndex].SetActive(true);
-            // 【新增】防止切枪时如果粒子正在播放卡在半空中，强制停止
-            var weaponBase = hunterWeapon[newWeaponIndex].GetComponent<WeaponBase>();
-            if (weaponBase != null && weaponBase.muzzleFlash != null)
+            if (hunterWeapon[i] == null) continue;
+
+            // 只有索引匹配的激活，其余全部隐藏
+            bool shouldBeActive = (i == activeIndex);
+            hunterWeapon[i].SetActive(shouldBeActive);
+
+            // 如果是当前激活的武器，处理相关的额外逻辑（如动画、特效清空）
+            if (shouldBeActive)
             {
-                weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-            }
-            // 【核心修改】切换武器时，通知 Animator 是否正在持枪
-            if (hunterAnimator != null && weaponBase != null)
-            {
-                bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
-                hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
+                var weaponBase = hunterWeapon[i].GetComponent<WeaponBase>();
+                
+                // 清理可能残留的粒子
+                if (weaponBase != null && weaponBase.muzzleFlash != null)
+                {
+                    weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                }
+
+                // 更新动画状态机（只要是猎人模型，不管本地还是远程，动画都得对）
+                if (hunterAnimator != null && weaponBase != null)
+                {
+                    bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
+                    hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
+                }
             }
         }
     }
@@ -279,6 +303,19 @@ public class HunterPlayer : GamePlayer
         if (hunterAnimator != null)
         {
             hunterAnimator.SetTrigger("Shoot");
+            // --- 1. 开始转身 ---
+            // 我们旋转的是包含 Animator 的模型物体，这样不会干扰摄像机和射击方向
+            Transform modelTrans = hunterAnimator.transform;
+            
+            // 第一次执行时记录原始角度（通常是 0,0,0）
+            if (!hasCapturedRotation)
+            {
+                originalModelRotation = modelTrans.localRotation;
+                hasCapturedRotation = true;
+            }
+
+            // 瞬间偏转或极快偏转到右侧
+            modelTrans.localRotation = originalModelRotation * Quaternion.Euler(0, shootVisualAngle, 0);
         }
     }
     // ----------------------------------------------------
@@ -286,6 +323,13 @@ public class HunterPlayer : GamePlayer
     // ----------------------------------------------------
     public void ExecuteAttackEffect()
     {
+        // --- 逻辑 A：所有客户端都会执行的视觉还原 ---
+        if (hunterAnimator != null && hasCapturedRotation)
+        {
+            // 停止之前的协程（防止多次开火冲突）并平滑转回
+            StopCoroutine("RotateBackRoutine"); 
+            StartCoroutine("RotateBackRoutine");
+        }
         // 只有按下左键的本地玩家，才有资格在第11帧向服务器发送真实的开枪指令
         // 防止所有客户端上的第11帧都跑去让服务器开火，导致一次开出N枪
         if (isLocalPlayer)
@@ -300,6 +344,23 @@ public class HunterPlayer : GamePlayer
                 CmdExecuteRealGunFire(origin, dir);
             }
         }
+    }
+    // 平滑转回来的协程
+    private IEnumerator RotateBackRoutine()
+    {
+        Transform modelTrans = hunterAnimator.transform;
+        float elapsed = 0f;
+        Quaternion startRot = modelTrans.localRotation;
+
+        while (elapsed < returnSmoothTime)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / returnSmoothTime;
+            // 使用 Slerp 平滑插值回到原始位置
+            modelTrans.localRotation = Quaternion.Slerp(startRot, originalModelRotation, t);
+            yield return null;
+        }
+        modelTrans.localRotation = originalModelRotation;
     }
     [Command]
     private void CmdExecuteRealGunFire(Vector3 origin, Vector3 direction)
@@ -350,6 +411,13 @@ public class HunterPlayer : GamePlayer
         { 
             if (currentWeapon != null && currentWeapon.weaponName == "Fist") 
             {
+                // --- 【核心修改：精准音效控制】 ---
+                // 根据即将播放的动画方向，选择对应的音效条目
+                string soundName = nextPunchIsRight ? "Punch_R" : "Punch_L";
+                
+                // 使用 Play3D 播放，这样其他玩家在附近也能听到
+                AudioManager.Instance?.Play3D(soundName, transform.position);
+                // ---------------------------------
                 // 1. 设置布尔值，决定这次走左边还是右边的动画分支
                 hunterAnimator.SetBool("isPunchRight", nextPunchIsRight);
 
@@ -541,6 +609,9 @@ public class HunterPlayer : GamePlayer
     {
         if (hunterAnimator != null)
         {
+            // 【关键修复】跳跃前强制把模型子物体的局部旋转归零
+            // 防止由于开火导致的偏转还没转回来就直接进入了跳跃动画
+            hunterAnimator.transform.localRotation = Quaternion.identity; 
             // 3. 先设置随机索引，再触发 Trigger
             hunterAnimator.SetInteger("JumpIndex", index);
             hunterAnimator.SetTrigger("isJump");

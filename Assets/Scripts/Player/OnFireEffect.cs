@@ -10,7 +10,6 @@ public class OnFireEffect : MonoBehaviour
     [Header("引用")]
     public HunterPlayer hunterPlayer;
     public AudioSource audioSource;
-
     void OnEnable()
     {
         // 订阅事件
@@ -43,7 +42,15 @@ public class OnFireEffect : MonoBehaviour
             audioSource.PlayOneShot(currentWeapon.fireSound);
         }
 
-        // 4. 甚至可以加屏幕震动
-        // CameraShaker.Shake(0.1f); 
+        if (currentWeapon.weaponName == "Gun")
+        {
+            // 开启协程，延迟 0.4 秒（根据你拉栓动画的时长调整）播放上膛音
+            StartCoroutine(PlayChamberDelayed(0.2f));
+        }
+    }
+    private IEnumerator PlayChamberDelayed(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        AudioManager.Instance?.Play3D("Chamber", transform.position);
     }
 }

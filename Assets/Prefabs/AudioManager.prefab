@@ -141,6 +141,21 @@ MonoBehaviour:
     - {fileID: 8300000, guid: beac702c8f275e84ea3dc8775df20686, type: 3}
     volume: 1
     randomPitch: 1
+  - soundName: Punch_L
+    clips:
+    - {fileID: 8300000, guid: 2e67cfafb4daf1b4d832448fe702c3ec, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: Punch_R
+    clips:
+    - {fileID: 8300000, guid: d6b15b7fdf23e8146b609d68c949c36f, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: Chamber
+    clips:
+    - {fileID: 8300000, guid: b5cacde7ece42f944a053ab09fe73736, type: 3}
+    volume: 1
+    randomPitch: 1
   source2D: {fileID: 8815305643914776443}
   audioSourcePrefab: {fileID: 7512640438773938583, guid: 8db3e1d4d17a5dc4880956b224857f86, type: 3}
   poolSize: 10

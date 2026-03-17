@@ -19316,7 +19316,7 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   spawnSafeRadius: 3
-  minTreeSpacing: 2.5
+  minTreeSpacing: 4
   maxAdjustmentAttempts: 5
   adjustmentStep: 1.5
   positionOffsetRange: 0.5
@@ -64675,7 +64675,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3658232948533378544, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 8.500585
+      value: 8.500022
       objectReference: {fileID: 0}
     - target: {fileID: 3658232948533378544, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_AnchoredPosition.y

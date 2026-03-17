@@ -801,6 +801,7 @@ MonoBehaviour:
   isStealthed: 0
   isProtectedByAmulet: 0
   amuletSpeedMultiplier: 1.5
+  isSlowed: 0
   witchItems:
   - {fileID: 8662503824625256742}
   - {fileID: 4195865155964937013}
@@ -896,6 +897,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: 
   cooldownTime: 5
+  manaCost: 20
   triggerKey: 113
   radius: 15
   duration: 5
@@ -917,6 +919,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: 
   cooldownTime: 5
+  manaCost: 20
   triggerKey: 101
   range: 10
   treeLayer:
@@ -939,6 +942,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: 
   cooldownTime: 5
+  manaCost: 20
   triggerKey: 114
   decoyPrefab: {fileID: 7437291211915263204, guid: 634b8befe1a028a4589d4215135a37c1, type: 3}
   spawnCount: 1
@@ -959,6 +963,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: Mist
   cooldownTime: 3
+  manaCost: 20
   triggerKey: 118
   mistPrefab: {fileID: 1275068132262897948, guid: 3b490b52b8b695a4f88ac938390a9434, type: 3}
   spawnOffset: 1

@@ -11,6 +11,9 @@ public class GunWeapon : WeaponBase
     private void Awake()
     {
         weaponName = "Gun";
+        // 在这里添加一行来设置射速
+        fireRate = 1.2f; // 设置为 1.2 秒冷却一次
+        damage = 30f;    // 顺便也可以调整伤害
     }
     public override void OnFire(Vector3 origin, Vector3 direction)
     {

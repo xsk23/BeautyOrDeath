@@ -300,8 +300,8 @@ MonoBehaviour:
   muzzleFlash: {fileID: 0}
   fireSound: {fileID: 0}
   nextFireTime: 0
-  attackRadius: 0.5
   attackDistance: 2
+  attackAngle: 90
   stunDuration: 0.5
 --- !u!1 &4516135911683214189
 GameObject:
@@ -676,6 +676,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: Dog
   cooldownTime: 5
+  manaCost: 20
   triggerKey: 113
   dogPrefab: {fileID: 8002851003523270300, guid: 72653d407bf6edf4099d18f1afc9fe95, type: 3}
   spawnDistance: 3
@@ -696,6 +697,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: Shock
   cooldownTime: 5
+  manaCost: 20
   triggerKey: 114
   radius: 8
   vfxPrefab: {fileID: 178152044478350897, guid: 0406ac7feb4695842b6f8f41616cf86e, type: 3}
@@ -717,6 +719,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: Trap
   cooldownTime: 5
+  manaCost: 20
   triggerKey: 101
   trapPrefab: {fileID: 3650691871401806780, guid: 59c67f2eba8e4034e81dd83923ce4485, type: 3}
   yOffset: 0.1
@@ -739,6 +742,7 @@ MonoBehaviour:
   syncInterval: 0
   skillName: Scan
   cooldownTime: 2
+  manaCost: 20
   triggerKey: 118
   scanRadius: 30
   visualDuration: 5
@@ -1149,6 +1153,14 @@ PrefabInstance:
       propertyPath: m_Controller
       value: 
       objectReference: {fileID: 9100000, guid: 157929db3080bd94f88a82d22e152943, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
+      propertyPath: m_UpdateMode
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
+      propertyPath: m_CullingMode
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5866666021909216657, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
       propertyPath: m_WarningMessage
       value: 
