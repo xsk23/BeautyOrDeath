@@ -826,6 +826,7 @@ MonoBehaviour:
   pendingRewards: 0
   scoutedCount: 0
   animator: {fileID: 1554438618472465387}
+  isGhosted: 0
 --- !u!114 &273187763104958596
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -921,10 +922,13 @@ MonoBehaviour:
   cooldownTime: 5
   manaCost: 20
   triggerKey: 101
-  range: 10
-  treeLayer:
+  ghostDuration: 4
+  gracePeriod: 1
+  stunDuration: 2
+  searchRadius: 5
+  obstacleLayers:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 9
 --- !u!114 &1962078256799744433
 MonoBehaviour:
   m_ObjectHideFlags: 0

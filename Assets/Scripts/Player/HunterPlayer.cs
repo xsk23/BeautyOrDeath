@@ -564,8 +564,14 @@ public class HunterPlayer : GamePlayer
         {
             AudioManager.Instance?.Play2D("致盲耳鸣音");
         }
+        // 让猎人中女巫毒雾时，屏幕也产生眩晕扭曲
+        if (CameraDrunkEffect.Instance != null)
+        {
+            // 迷雾的扭曲可以稍微猛一点 (0.1f 强度)
+            CameraDrunkEffect.Instance.PlayDrunkEffect(duration, 0.1f);
+        }
 
-        StartCoroutine(BlindRoutine(duration));
+        //StartCoroutine(BlindRoutine(duration));
         Debug.Log($"[Hunter] {playerName} is Blinded for {duration} seconds.");
     }
 
