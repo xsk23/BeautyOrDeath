@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections;
 
 [RequireComponent(typeof(Camera))]
-[ExecuteInEditMode] // 【新增】允许在编辑模式下运行，实时预览！
+[ExecuteInEditMode] // 允许在编辑模式下运行，实时预览
 public class CameraDrunkEffect : MonoBehaviour
 {
     public static CameraDrunkEffect Instance;
@@ -12,8 +12,8 @@ public class CameraDrunkEffect : MonoBehaviour
 
     [Header("Editor 预览测试 (仅在不播放技能时有效)")]
     [Range(0f, 0.5f)] 
-    public float previewIntensity = 0f; // 拖动这个滑块就能看到效果
-
+    public float previewIntensity = 0f;
+    
     private float currentIntensity = 0f;
     private Coroutine activeRoutine;
 
