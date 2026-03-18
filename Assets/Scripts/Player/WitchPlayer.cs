@@ -107,6 +107,51 @@ public class WitchPlayer : GamePlayer
     // ========================================================================
     [SerializeField] private Animator animator; // 在Inspector中拖入你的Animator
 
+    // 幽灵态穿墙变量
+    [SyncVar(hook = nameof(OnGhostedChanged))]
+    public bool isGhosted = false;
+
+    // 当幽灵态发生改变时，自动切换物理层级
+    void OnGhostedChanged(bool oldVal, bool newVal)
+    {
+        UpdatePlayerLayer();
+
+        // 本地 UI 提示
+        if (isLocalPlayer && sceneScript != null && sceneScript.RunText != null)
+        {
+            if (newVal)
+            {
+                sceneScript.RunText.gameObject.SetActive(true);
+                sceneScript.RunText.text = "<color=cyan>GHOST MODE: WALLPASS ACTIVE</color>";
+            }
+            else if (!isInSecondChance && !isPermanentDead) 
+            {
+                sceneScript.RunText.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    // 统管玩家物理 Layer 层级 (封装以防止状态冲突)
+    public void UpdatePlayerLayer()
+    {
+        if (isPermanentDead) {
+            gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            return;
+        }
+        if (isGhosted) {
+            int ghostLayer = LayerMask.NameToLayer("Ghost");
+            if (ghostLayer != -1) gameObject.layer = ghostLayer;
+            return;
+        }
+        if (isMorphed) {
+            gameObject.layer = LayerMask.NameToLayer("Prop");
+            return;
+        }
+        
+        int playerLayer = LayerMask.NameToLayer("Player");
+        gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
+    }
+
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
     {
@@ -410,10 +455,13 @@ public class WitchPlayer : GamePlayer
 
     public override void HandleInput()
     {
-
+        if (isGhosted) return; // 【新增】幽灵态禁止投掷毒药/普攻
+        base.HandleInput();
     }
     private void HandleItemActivation()
     {
+        if (isGhosted) return;
+
         if (isLocalPlayer && !isPermanentDead)
         {
             //使用道具
@@ -453,7 +501,12 @@ public class WitchPlayer : GamePlayer
     }
     // 处理射线检测和高亮
     private void HandleInteraction()
-    {
+    {   
+        if (isGhosted) 
+        {
+            if (currentFocusProp != null) { currentFocusProp.SetHighlight(false); currentFocusProp = null; }
+            return;
+        }
         Ray ray;
         if (sceneScript != null && sceneScript.Crosshair != null)
         {
@@ -523,6 +576,9 @@ public class WitchPlayer : GamePlayer
     // 处理变身输入
     private void HandleMorphInput()
     {
+        // 【新增】幽灵态禁止变身和下车
+        if (isGhosted) return; 
+
         if (isInSecondChance) return; // 复活赛期间锁死形态，不能通过长按左键恢复
         // --- 新增：检查冷却 ---
         bool isCoolingDown = Time.time < nextMorphTime;
@@ -892,7 +948,9 @@ public class WitchPlayer : GamePlayer
             myPropTarget.enabled = true;
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
             myPropTarget.ManualInit(propID, currentVisualProp);
-            gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
+            //gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
+            UpdatePlayerLayer();
+            
             if (isStealthed)
             {
                 Renderer[] newRenderers = currentVisualProp.GetComponentsInChildren<Renderer>(true);
@@ -1256,8 +1314,9 @@ public class WitchPlayer : GamePlayer
         if (myPropTarget != null) myPropTarget.enabled = false;
 
         int playerLayer = LayerMask.NameToLayer("Player");
-        gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
-        // 【新增】恢复人形相机目标
+        //gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
+        UpdatePlayerLayer();
+        // 恢复人形相机目标
         if (isLocalPlayer)
         {
             UpdateCameraView();
@@ -1776,7 +1835,9 @@ public class WitchPlayer : GamePlayer
 
         // 2. 禁用交互：修改物理层级
         // 建议在 Unity 中创建一个 Layer 叫 "Spectator"，并在 Physics Matrix 中设置它不与 Player 碰撞
-        gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+        //gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+
+        UpdatePlayerLayer();
 
         // 3. 禁用碰撞体（针对非本地玩家直接禁用 CC）
         if (!isLocalPlayer)
@@ -2033,9 +2094,9 @@ public class WitchPlayer : GamePlayer
 
             // ======= 诅咒增强 =======
             case "CurseRange":
-                var curseSkill = GetComponent<WitchSkill_Curse>();
-                if (curseSkill) curseSkill.range += val; // 增加射程
-                break;
+                // var curseSkill = GetComponent<WitchSkill_Curse>();
+                // if (curseSkill) curseSkill.range += val; // 增加射程
+                // break;
 
             // ======= 原有的技能增强 =======
             case "DecoyCount":

@@ -114,12 +114,15 @@ public class PlayerSkillManager : NetworkBehaviour
     private void Update()
     {
         if (!isLocalPlayer || activeSkillsArray == null) return;
-        // 2. 【核心修改】如果游戏已结束，直接返回，不处理任何技能按键
-        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
-            return;
+        // 如果游戏已结束，直接返回，不处理任何技能按键
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
+            
         // 处理技能按键触发
         if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned && !player.isInSecondChance && !player.isPermanentDead)
         {
+            // 如果是女巫且处于幽灵穿墙态，禁止释放任何其他技能
+            if (player is WitchPlayer witchPlayer && witchPlayer.isGhosted) return;
+
             foreach (var skill in activeSkillsArray)
             {
                 if (skill != null && Input.GetKeyDown(skill.triggerKey))
