@@ -208,7 +208,7 @@ MonoBehaviour:
   syncInterval: 0
   weaponName: 
   damage: 20
-  fireRate: 2
+  fireRate: 1.2
   firePoint: {fileID: 8292617297444983053}
   muzzleFlash: {fileID: 4915086880266570808}
   fireSound: {fileID: 8300000, guid: 1f2b099c0140d38498259663dd944726, type: 3}
@@ -797,7 +797,7 @@ Transform:
   m_GameObject: {fileID: 8265324607185574783}
   serializedVersion: 2
   m_LocalRotation: {x: -0.7071069, y: -0.00000004470348, z: -0.00000017508863, w: 0.7071067}
-  m_LocalPosition: {x: -0.008, y: 0.606, z: 0.038}
+  m_LocalPosition: {x: 0.021, y: 1.183, z: -0.034}
   m_LocalScale: {x: 0.25063443, y: 0.28021324, z: 1.1903819}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1321,14 +1321,13 @@ MonoBehaviour:
   syncInterval: 0
   weaponName: 
   damage: 20
-  fireRate: 1
+  fireRate: 0.8
   firePoint: {fileID: 3824363578396171531}
   muzzleFlash: {fileID: 0}
   fireSound: {fileID: 0}
   nextFireTime: 0
+  honeyOnObjectPrefab: {fileID: 1170279627823119884, guid: a5b953f91b3ee49419f26202b3c70e23, type: 3}
   netPrefab: {fileID: 7205609430714872807, guid: 1d70454db050b2e4686cc7e6e10a194c, type: 3}
-  BulletSpeed: 20
-  lifeTime: 5
 --- !u!4 &8885724973676673525 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}

@@ -6332,6 +6332,78 @@ namespace Controller
 }
 ```
 
+## Objects\MeshSurfaceWrapper.cs
+
+```csharp
+using UnityEngine;
+
+public class MeshSurfaceWrapper : MonoBehaviour
+{
+    public float maxThickness = 0.2f; // 中心厚度
+    public LayerMask surfaceLayer;    // 要包裹的层级
+    public float raycastDistance = 5f;
+    public bool wrapOnStart = true;
+
+    void Start()
+    {
+        if(wrapOnStart) WrapMesh();
+    }
+
+    [ContextMenu("Wrap Now")]
+    public void WrapMesh()
+    {
+        MeshFilter mf = GetComponent<MeshFilter>();
+        if (mf == null || mf.sharedMesh == null) return;
+
+        // 必须实例化，否则会修改所有使用该 Mesh 的物体
+        Mesh mesh = Instantiate(mf.sharedMesh); 
+        Vector3[] vertices = mesh.vertices;
+        Vector3[] normals = mesh.normals;
+
+        // 获取物体的中心点，用于计算边缘衰减（让边缘变薄，不那么突兀）
+        Bounds bounds = mf.sharedMesh.bounds;
+
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            Vector3 worldPos = transform.TransformPoint(vertices[i]);
+            
+            // 从顶点上方发射射线
+            Vector3 rayOrigin = worldPos + transform.up * 2f; 
+            if (Physics.Raycast(rayOrigin, -transform.up, out RaycastHit hit, raycastDistance, surfaceLayer))
+            {
+                // 计算该点到中心的距离百分比 (0为中心，1为边缘)
+                float distFromCenter = new Vector2(vertices[i].x / bounds.extents.x, vertices[i].z / bounds.extents.z).magnitude;
+                float currentThickness = Mathf.Lerp(maxThickness, 0.01f, distFromCenter);
+
+                // 设置顶点位置：击中点 + 表面法线 * 厚度
+                Vector3 targetWorldPos = hit.point + hit.normal * currentThickness;
+                vertices[i] = transform.InverseTransformPoint(targetWorldPos);
+                
+                // 更新顶点法线为表面法线，保证光照正确
+                normals[i] = transform.InverseTransformDirection(hit.normal);
+                
+                // 调试：在场景窗口画出绿线表示击中
+                Debug.DrawLine(rayOrigin, hit.point, Color.green, 2f);
+            }
+            else
+            {
+                // 调试：红线表示没击中表面
+                Debug.DrawRay(rayOrigin, -transform.up * raycastDistance, Color.red, 2f);
+            }
+        }
+
+        mesh.vertices = vertices;
+        mesh.normals = normals;
+        mesh.RecalculateBounds();
+        mf.mesh = mesh;
+
+        // 如果有碰撞体，更新它，让女巫能踩在变形后的模型上
+        MeshCollider mc = GetComponent<MeshCollider>();
+        if (mc != null) mc.sharedMesh = mesh;
+    }
+}
+```
+
 ## Objects\PropDatabase.cs
 
 ```csharp
@@ -7182,7 +7254,7 @@ using Mirror;
 public class FistWeapon : WeaponBase
 {
     [Header("近战特有设置")]
-    public float attackDistance = 2.0f; // 攻击距离
+    public float attackDistance = 3.0f; // 攻击距离
 
     [Range(0, 180)]
     public float attackAngle = 90f;     // 攻击扇形角度（面前90度）
@@ -7192,7 +7264,7 @@ public class FistWeapon : WeaponBase
     private void Awake()
     {
         // 初始化默认值
-        damage = 10f;
+        damage = 15f;
         fireRate = 0.5f;
         weaponName = "Fist";
     }
@@ -8478,6 +8550,9 @@ public class HunterPlayer : GamePlayer
                 {
                     bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
                     hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
+                    float animSpeed = 1.0f / weaponBase.fireRate;
+                    // 将计算好的倍率传给 Animator
+                    hunterAnimator.SetFloat("ShootSpeed", animSpeed);
                 }
             }
         }
@@ -9083,41 +9158,78 @@ public class MagicBroom : WitchItemBase
 ## Player\NetBullet.cs
 
 ```csharp
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
 
 public class NetBullet : MonoBehaviour
 {
-    [HideInInspector] public PlayerRole ownerRole; // 发射者的阵营
-    [ServerCallback] // 只在服务器运行物理
+    [HideInInspector] public GameObject launcherRoot; 
+    [HideInInspector] public PlayerRole ownerRole;
+    [HideInInspector] public GameObject honeyPuddlePrefab;
+    [HideInInspector] public float puddleDuration = 10f;
+
+    [ServerCallback]
     private void OnTriggerEnter(Collider other)
     {
-        // 当网子碰到 CharacterController 时，other 就是该控制器
-        // 使用 GetComponentInParent 是最保险的，因为脚本可能在根部
-        GamePlayer target = other.GetComponent<GamePlayer>() ?? other.GetComponentInParent<GamePlayer>();
+        // 1. 忽略发射者
+        if (launcherRoot != null && (other.gameObject == launcherRoot || other.transform.IsChildOf(launcherRoot.transform)))
+            return;
 
+        // 2. 忽略触发器
+        if (other.isTrigger) return;
+
+        // 3. 检查是否击中玩家
+        GamePlayer target = other.GetComponent<GamePlayer>() ?? other.GetComponentInParent<GamePlayer>();
+        
         if (target != null)
         {
-            // --- 【队友伤害检查逻辑】 ---
             bool isSameTeam = (target.playerRole == ownerRole);
-            bool canTrap = !isSameTeam || GameManager.Instance.FriendlyFire;
-           if (canTrap)
+            if (!isSameTeam || GameManager.Instance.FriendlyFire)
             {
                 target.ServerGetTrapped();
-                UnityEngine.Debug.Log($"[NetBullet] Trapped {target.playerName}");
-                Destroy(gameObject); // 抓到后销毁
+
+                // 【核心修改】：击中玩家时，传入玩家的 transform 作为父物体
+                // 这里我们将蜂蜜滩的位置设在玩家中心偏下一点 (Vector3.zero 是相对于父物体的局部坐标)
+                HandlePuddleSpawn(target.transform.position, target.transform);
+                
+                Destroy(gameObject);
+                return;
             }
+            return; 
         }
-        // 如果碰到墙壁或地面也销毁
-        else if (other.gameObject.layer == LayerMask.NameToLayer("Default"))
+
+        // 4. 击中环境（墙壁、地面）
+        // 环境物体通常不移动，所以父物体传 null
+        HandlePuddleSpawn(transform.position, null);
+        Destroy(gameObject);
+    }
+
+    [Server]
+    private void HandlePuddleSpawn(Vector3 worldPoint, Transform parent)
+    {
+        if (honeyPuddlePrefab == null) return;
+
+        // 【修改】：不再使用 Quaternion.LookRotation(normal)，直接使用 Prefab 默认旋转
+        // 如果你的 Prefab 已经调好了 X:90 (贴地)，这里用它自带的旋转即可
+        Quaternion spawnRot = honeyPuddlePrefab.transform.rotation;
+
+        GameObject puddle = Instantiate(honeyPuddlePrefab, worldPoint, spawnRot);
+
+        // 【核心修改】：如果命中了玩家，将其设为子物体
+        if (parent != null)
         {
-             Destroy(gameObject);
+            puddle.transform.SetParent(parent);
+            // 局部坐标归零，让它精准对齐玩家中心，或者向上偏移一点点防止埋进地里
+            puddle.transform.localPosition = new Vector3(0, 0.1f, 0); 
         }
+
+        // 全网同步生成
+        NetworkServer.Spawn(puddle);
+
+        // 自动销毁
+        Destroy(puddle, puddleDuration);
     }
 }
-
 ```
 
 ## Player\NetLauncherWeapon.cs
@@ -9128,34 +9240,51 @@ using Mirror;
 
 public class NetLauncherWeapon : WeaponBase
 {
-  [Header("兜网设置")]
-  public GameObject netPrefab; // 拖入上面的兜网 Prefab
-  public float BulletSpeed = 20f; // 网的飞行速度
-  public float lifeTime = 5f; // 网的存在时间
+    [Header("蜂蜜贴花设置")]
+    public GameObject honeyOnObjectPrefab; // 在 Inspector 中拖入 HoneyOnObject Prefab
+    public float puddleLifeTime = 10f;     // 蜂蜜存在时间
+
+    [Header("子弹设置")]
+    public GameObject netPrefab; 
+    public float BulletSpeed = 20f; 
+    public float lifeTime = 5f; 
 
   private void Awake()
   {
     weaponName = "NetLauncher";
   }
 
+  // 在 NetLauncherWeapon.cs 的 OnFire 方法中修改：
   public override void OnFire(Vector3 origin, Vector3 direction)
   {
-    // 冷却
-    nextFireTime = Time.time + fireRate;
+      nextFireTime = Time.time + fireRate;
 
-    //服务器生成实体
-    if (isServer)
-    {
-      // 在枪口位置生成网
-      // 注意：虽然射击方向是 direction (摄像机朝向)，但为了让网从枪口飞出，我们放在 firePoint
-      GameObject net = Instantiate(netPrefab, firePoint.position, Quaternion.LookRotation(direction));
-      net.GetComponent<Rigidbody>().velocity = direction * BulletSpeed;
-      // 【新增】获取发射者的阵营并传给网子
-      PlayerRole shooterRole = GetComponentInParent<GamePlayer>().playerRole;
-      NetworkServer.Spawn(net);
-      // 设置网的生命周期
-      Destroy(net, lifeTime);
-    }
+      if (isServer)
+      {
+          // 1. 在枪口位置生成子弹，但初始旋转对准摄像机的方向（direction）
+          GameObject net = Instantiate(netPrefab, firePoint.position, Quaternion.LookRotation(direction));
+          
+          NetBullet bulletScript = net.GetComponent<NetBullet>();
+          if (bulletScript != null)
+          {
+              // --- 关键：把猎人的根物体传给子弹，用于物理忽略 ---
+              bulletScript.launcherRoot = GetComponentInParent<GamePlayer>().gameObject; 
+              bulletScript.ownerRole = GetComponentInParent<GamePlayer>().playerRole;
+              bulletScript.honeyPuddlePrefab = honeyOnObjectPrefab;
+              bulletScript.puddleDuration = puddleLifeTime;
+          }
+
+          // 2. 赋予初速度：让子弹严格沿着摄像机指向的方向飞行
+          Rigidbody rb = net.GetComponent<Rigidbody>();
+          if (rb != null)
+          {
+              rb.velocity = direction * BulletSpeed;
+              rb.useGravity = false; // 蜂蜜子弹通常建议设为不使用重力，手感更像激光，不会下坠
+          }
+
+          NetworkServer.Spawn(net);
+          Destroy(net, lifeTime);
+      }
   }
 }
 ```
@@ -9940,6 +10069,51 @@ public class WitchPlayer : GamePlayer
     // ========================================================================
     [SerializeField] private Animator animator; // 在Inspector中拖入你的Animator
 
+    // 幽灵态穿墙变量
+    [SyncVar(hook = nameof(OnGhostedChanged))]
+    public bool isGhosted = false;
+
+    // 当幽灵态发生改变时，自动切换物理层级
+    void OnGhostedChanged(bool oldVal, bool newVal)
+    {
+        UpdatePlayerLayer();
+
+        // 本地 UI 提示
+        if (isLocalPlayer && sceneScript != null && sceneScript.RunText != null)
+        {
+            if (newVal)
+            {
+                sceneScript.RunText.gameObject.SetActive(true);
+                sceneScript.RunText.text = "<color=cyan>GHOST MODE: WALLPASS ACTIVE</color>";
+            }
+            else if (!isInSecondChance && !isPermanentDead) 
+            {
+                sceneScript.RunText.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    // 统管玩家物理 Layer 层级 (封装以防止状态冲突)
+    public void UpdatePlayerLayer()
+    {
+        if (isPermanentDead) {
+            gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            return;
+        }
+        if (isGhosted) {
+            int ghostLayer = LayerMask.NameToLayer("Ghost");
+            if (ghostLayer != -1) gameObject.layer = ghostLayer;
+            return;
+        }
+        if (isMorphed) {
+            gameObject.layer = LayerMask.NameToLayer("Prop");
+            return;
+        }
+        
+        int playerLayer = LayerMask.NameToLayer("Player");
+        gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
+    }
+
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
     {
@@ -10243,10 +10417,13 @@ public class WitchPlayer : GamePlayer
 
     public override void HandleInput()
     {
-
+        if (isGhosted) return; // 【新增】幽灵态禁止投掷毒药/普攻
+        base.HandleInput();
     }
     private void HandleItemActivation()
     {
+        if (isGhosted) return;
+
         if (isLocalPlayer && !isPermanentDead)
         {
             //使用道具
@@ -10286,7 +10463,12 @@ public class WitchPlayer : GamePlayer
     }
     // 处理射线检测和高亮
     private void HandleInteraction()
-    {
+    {   
+        if (isGhosted) 
+        {
+            if (currentFocusProp != null) { currentFocusProp.SetHighlight(false); currentFocusProp = null; }
+            return;
+        }
         Ray ray;
         if (sceneScript != null && sceneScript.Crosshair != null)
         {
@@ -10356,6 +10538,9 @@ public class WitchPlayer : GamePlayer
     // 处理变身输入
     private void HandleMorphInput()
     {
+        // 【新增】幽灵态禁止变身和下车
+        if (isGhosted) return; 
+
         if (isInSecondChance) return; // 复活赛期间锁死形态，不能通过长按左键恢复
         // --- 新增：检查冷却 ---
         bool isCoolingDown = Time.time < nextMorphTime;
@@ -10725,7 +10910,9 @@ public class WitchPlayer : GamePlayer
             myPropTarget.enabled = true;
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
             myPropTarget.ManualInit(propID, currentVisualProp);
-            gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
+            //gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
+            UpdatePlayerLayer();
+            
             if (isStealthed)
             {
                 Renderer[] newRenderers = currentVisualProp.GetComponentsInChildren<Renderer>(true);
@@ -11089,8 +11276,9 @@ public class WitchPlayer : GamePlayer
         if (myPropTarget != null) myPropTarget.enabled = false;
 
         int playerLayer = LayerMask.NameToLayer("Player");
-        gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
-        // 【新增】恢复人形相机目标
+        //gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
+        UpdatePlayerLayer();
+        // 恢复人形相机目标
         if (isLocalPlayer)
         {
             UpdateCameraView();
@@ -11609,7 +11797,9 @@ public class WitchPlayer : GamePlayer
 
         // 2. 禁用交互：修改物理层级
         // 建议在 Unity 中创建一个 Layer 叫 "Spectator"，并在 Physics Matrix 中设置它不与 Player 碰撞
-        gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+        //gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+
+        UpdatePlayerLayer();
 
         // 3. 禁用碰撞体（针对非本地玩家直接禁用 CC）
         if (!isLocalPlayer)
@@ -11866,9 +12056,9 @@ public class WitchPlayer : GamePlayer
 
             // ======= 诅咒增强 =======
             case "CurseRange":
-                var curseSkill = GetComponent<WitchSkill_Curse>();
-                if (curseSkill) curseSkill.range += val; // 增加射程
-                break;
+                // var curseSkill = GetComponent<WitchSkill_Curse>();
+                // if (curseSkill) curseSkill.range += val; // 增加射程
+                // break;
 
             // ======= 原有的技能增强 =======
             case "DecoyCount":
@@ -12143,12 +12333,15 @@ public class PlayerSkillManager : NetworkBehaviour
     private void Update()
     {
         if (!isLocalPlayer || activeSkillsArray == null) return;
-        // 2. 【核心修改】如果游戏已结束，直接返回，不处理任何技能按键
-        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
-            return;
+        // 如果游戏已结束，直接返回，不处理任何技能按键
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
+            
         // 处理技能按键触发
         if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned && !player.isInSecondChance && !player.isPermanentDead)
         {
+            // 如果是女巫且处于幽灵穿墙态，禁止释放任何其他技能
+            if (player is WitchPlayer witchPlayer && witchPlayer.isGhosted) return;
+
             foreach (var skill in activeSkillsArray)
             {
                 if (skill != null && Input.GetKeyDown(skill.triggerKey))
@@ -14115,42 +14308,108 @@ public class ChaosTag : MonoBehaviour { }
 ```csharp
 using UnityEngine;
 using Mirror;
+using System.Collections;
 
 public class WitchSkill_Curse : SkillBase
 {
-    public float range = 10f;
-    public LayerMask treeLayer; // 确保树在这个 Layer
+    [Header("Ghost Wallpass Settings (幽灵穿墙)")]
+    public float ghostDuration = 4f;        // 持续时间
+    public float stuckDamagePerSec = 10f;   // 卡在墙内每秒扣血量
+    public float damageTickRate = 0.5f;     // 扣血检测频率（0.5秒扣5点）
+
+    [Tooltip("可能卡住女巫的层级 (必须勾选 Environment, Wall, PropTree 等，切勿勾选 Ground！)")]
+    public LayerMask obstacleLayers;
+
+    private Coroutine activeGhostRoutine;
+
+    private void Awake()
+    {
+        // 强制覆盖默认设定以匹配设计文档
+        cooldownTime = 3f;
+        skillName = "Ghost Wallpass";
+    }
 
     protected override void OnCast()
     {
-        Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} used skill: Curse! Attempting to curse a tree.</color>");
-        // 射线检测
-        Ray ray = new Ray(ownerPlayer.transform.position + Vector3.up, ownerPlayer.transform.forward);
-        if (Physics.Raycast(ray, out RaycastHit hit, range, treeLayer))
+        WitchPlayer witch = ownerPlayer as WitchPlayer;
+        if (witch == null || witch.isGhosted) return;
+
+        Debug.Log($"<color=purple>[Witch] {ownerPlayer.playerName} entered Ghost State!</color>");
+        
+        // 借用现有的女巫迷雾音效作为进入幽灵态的提示
+        GameManager.Instance?.ServerPlay3DAt("女巫迷雾", ownerPlayer.transform.position); 
+        RpcPlayGhostEffect();
+
+        if (activeGhostRoutine != null) StopCoroutine(activeGhostRoutine);
+        activeGhostRoutine = StartCoroutine(GhostRoutine(witch));
+    }
+
+    [Server]
+    private IEnumerator GhostRoutine(WitchPlayer witch)
+    {
+        witch.isGhosted = true; // 触发 SyncVar Hook 修改客户端 Layer
+
+        float timer = 0f;
+        // 如果在持续时间内被陷阱抓住(isTrappedByNet)，则提前强制退出幽灵态
+        while (timer < ghostDuration && witch.isGhosted && !witch.isTrappedByNet)
         {
-            PropTarget prop = hit.collider.GetComponentInParent<PropTarget>();
-            // 只能诅咒普通树，不能诅咒古树
-            if (prop != null && !prop.isAncientTree)
+            timer += Time.deltaTime;
+            yield return null;
+        }
+
+        // 时间到，或被陷阱中断，恢复正常状态
+        if (witch.isGhosted)
+        {
+            witch.isGhosted = false;
+        }
+
+        // 启动卡墙检测扣血 (如果被陷阱抓了且恰好在墙里，依然会扣血作为惩罚)
+        StartCoroutine(StuckInWallCheckRoutine(witch));
+    }
+
+    [Server]
+    private IEnumerator StuckInWallCheckRoutine(WitchPlayer witch)
+    {
+        CharacterController cc = witch.GetComponent<CharacterController>();
+        if (cc == null) yield break;
+
+        // 只要不是幽灵态，且没有彻底死亡/进入复活赛，就持续检测
+        while (!witch.isGhosted && !witch.isPermanentDead && !witch.isInSecondChance)
+        {
+            // 构建与 CharacterController 大小一致的胶囊体检测
+            Vector3 p1 = witch.transform.position + Vector3.up * cc.radius;
+            Vector3 p2 = witch.transform.position + Vector3.up * (cc.height - cc.radius);
+
+            // 如果与障碍物发生重叠 (注意 obstacleLayers 不应该包含 Ground)
+            if (Physics.CheckCapsule(p1, p2, cc.radius * 0.9f, obstacleLayers))
             {
-                // 动态添加组件
-                if (prop.gameObject.GetComponent<CursedTreeTrigger>() == null)
-                {
-                    var curse = prop.gameObject.AddComponent<CursedTreeTrigger>();
-                    curse.casterNetId = ownerPlayer.netId;
-                    // 不需要 NetworkServer.Spawn，因为这是添加组件，但要注意 Mirror 对于动态组件的支持有限
-                    // 更好的做法是生成一个不可见的 Hitbox Prefab 罩住树
-                    // 简易做法：利用 Rpc 通知客户端显示特效
-                    RpcCurseEffect(prop.transform.position);
-                }
+                Debug.Log($"<color=red>[Witch] {witch.playerName} stuck in wall! Taking damage.</color>");
+                // 扣除伤害 (例如 10 * 0.5 = 5点伤害)
+                witch.ServerTakeDamage(stuckDamagePerSec * damageTickRate);
+                RpcPlayStuckEffect(witch.transform.position);
             }
+            else
+            {
+                // 已脱离墙体，结束检测
+                break;
+            }
+
+            yield return new WaitForSeconds(damageTickRate);
         }
     }
 
     [ClientRpc]
-    void RpcCurseEffect(Vector3 pos)
+    private void RpcPlayGhostEffect()
     {
-        
-        // 播放一点紫色的粒子特效，提示女巫诅咒成功
+        // 此处可添加客户端视觉表现，比如播放粒子特效
+        // 目前仅做日志提示
+    }
+
+    [ClientRpc]
+    private void RpcPlayStuckEffect(Vector3 pos)
+    {
+        // 播放卡在墙里受伤的提示音效
+        AudioManager.Instance?.Play3D("护符碎裂", pos); // 暂用现存音效代替
     }
 }
 ```
@@ -17199,8 +17458,8 @@ public class RandomAnimationPlayer : MonoBehaviour
 from PIL import Image
 from rembg import remove
 
-input_path = r"Assets/Image/UI/cross.jpg"
-output_path = "Assets/Image/UI/cross.png"
+input_path = r"Assets/Image/honey_ground/splash_normal.png"
+output_path = "Assets/Image/honey_ground/splash_normal_trans.png"
 
 # 打开图片
 input_image = Image.open(input_path)

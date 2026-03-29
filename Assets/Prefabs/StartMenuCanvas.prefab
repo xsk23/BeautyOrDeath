@@ -1090,6 +1090,9 @@ MonoBehaviour:
   loadingPanel: {fileID: 8550315348905300920}
   countdownText: {fileID: 4542673204384759483}
   cancelLoadingButton: {fileID: 6388229977929549376}
+  reconnectPanel: {fileID: 0}
+  errorText: {fileID: 0}
+  okButton: {fileID: 0}
 --- !u!1 &2882550325798198964
 GameObject:
   m_ObjectHideFlags: 0

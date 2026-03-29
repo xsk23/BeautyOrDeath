@@ -13199,6 +13199,10 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  spawnSafeRadius: 4
+  minTreeSpacing: 2.5
+  maxAdjustmentAttempts: 5
+  adjustmentStep: 1.5
   positionOffsetRange: 0.5
   randomYRotation: 1
 --- !u!114 &642583825
@@ -42209,7 +42213,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3658232948533378544, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 8.500122
+      value: 300.00003
       objectReference: {fileID: 0}
     - target: {fileID: 3658232948533378544, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
       propertyPath: m_AnchoredPosition.y
@@ -42576,11 +42580,20 @@ MonoBehaviour:
   GameTime: {fileID: 8490649607033718469}
   GoalText: {fileID: 6235130959027017853}
   Crosshair: {fileID: 4504839332457138378}
-  revertProgressBar: {fileID: 7538943180507777445}
+  revertProgressBar: {fileID: 0}
   ExecutionText: {fileID: 4555360299996292699}
   gameResultPanel: {fileID: 4555360299996292698}
   gameResultText: {fileID: 1839601287}
   gameRestartText: {fileID: 4555360299996292697}
+  skillSlots: []
+  blindPanel: {fileID: 0}
+  itemSlot: {fileID: 0}
+  morphSlot: {fileID: 0}
+  morphIcon: {fileID: 0}
+  revertProgressController: {fileID: 0}
+  victoryVideoPlayer: {fileID: 0}
+  videoDisplay: {fileID: 0}
+  videoFadeSpeed: 1.5
 --- !u!114 &4791299561130794168
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -43883,7 +43896,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -44076,17 +44089,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 8691003077422902000}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &7538943180507777445 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 7291161633169028341, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
-  m_PrefabInstance: {fileID: 4555360299996292696}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1001 &7706979137660336175
 PrefabInstance:
   m_ObjectHideFlags: 0

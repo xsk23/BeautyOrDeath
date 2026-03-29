@@ -125,7 +125,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -434,7 +434,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -826,6 +826,7 @@ MonoBehaviour:
   pendingRewards: 0
   scoutedCount: 0
   animator: {fileID: 4100839778451681455}
+  isGhosted: 0
 --- !u!114 &273187763104958596
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -921,8 +922,10 @@ MonoBehaviour:
   cooldownTime: 5
   manaCost: 20
   triggerKey: 101
-  range: 10
-  treeLayer:
+  ghostDuration: 4
+  stuckDamagePerSec: 10
+  damageTickRate: 0.5
+  obstacleLayers:
     serializedVersion: 2
     m_Bits: 0
 --- !u!114 &1962078256799744433

@@ -400,7 +400,7 @@ MonoBehaviour:
   syncedAncientRatio: 1.5
   playerNumberText: {fileID: 8342597289205453574}
   btnStartGame: {fileID: 2203080626882019177}
-  roomStatusText: {fileID: 3963033473966133979}
+  roomStatusText: {fileID: 0}
   playerRowPrefab: {fileID: 181870101876309754, guid: e905409c9e66c9441a4ae1e3a5dac71b, type: 3}
   playerListContent: {fileID: 3963033473966133978}
   startButtonText: {fileID: 3963033473966133981}
@@ -1003,7 +1003,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6010596174791527500, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 0.00033569336
+      value: 209.99992
       objectReference: {fileID: 0}
     - target: {fileID: 6010596174791527500, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
       propertyPath: m_AnchoredPosition.y
@@ -1163,17 +1163,6 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 3713031240428900023, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
   m_PrefabInstance: {fileID: 3963033473966133977}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &3963033473966133979 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 7790848459211916013, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}
-  m_PrefabInstance: {fileID: 3963033473966133977}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!224 &3963033473966133980 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 8625778439583813621, guid: afb4f14c86d1a8d448b07a038d302e4d, type: 3}

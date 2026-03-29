@@ -49,6 +49,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   RoleText: {fileID: 1346224018731381939}
   NameText: {fileID: 7349236995242158890}
+  WeaponText: {fileID: 0}
   HealthSlider: {fileID: 7209722442634062700}
   ManaSlider: {fileID: 7037979853160901968}
   PlayerCountText: {fileID: 1376031972660971765}
@@ -57,7 +58,20 @@ MonoBehaviour:
   GameTime: {fileID: 8320524418896181023}
   GoalText: {fileID: 5776722597166426535}
   Crosshair: {fileID: 4046712463844702480}
-  revertProgressBar: {fileID: 7940722366962612351}
+  revertProgressBar: {fileID: 0}
+  ExecutionText: {fileID: 0}
+  gameResultPanel: {fileID: 0}
+  gameResultText: {fileID: 0}
+  gameRestartText: {fileID: 0}
+  skillSlots: []
+  blindPanel: {fileID: 0}
+  itemSlot: {fileID: 0}
+  morphSlot: {fileID: 0}
+  morphIcon: {fileID: 0}
+  revertProgressController: {fileID: 0}
+  victoryVideoPlayer: {fileID: 0}
+  videoDisplay: {fileID: 0}
+  videoFadeSpeed: 1.5
 --- !u!114 &8916586183525160585
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -402,17 +416,6 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!114 &7940722366962612351 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 7291161633169028341, guid: a6fc116fe27cf5c409e94f6200b50e83, type: 3}
-  m_PrefabInstance: {fileID: 800642427817888906}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!114 &8320524418896181023 stripped

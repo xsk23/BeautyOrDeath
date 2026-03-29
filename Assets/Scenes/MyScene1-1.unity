@@ -1927,7 +1927,7 @@ Terrain:
   m_StaticShadowCaster: 0
   m_IgnoreQualitySettings: 0
   m_ReflectionProbeUsage: 1
-  m_MaterialTemplate: {fileID: 10652, guid: 0000000000000000f000000000000000, type: 0}
+  m_MaterialTemplate: {fileID: 2100000, guid: 594ea882c5a793440b60ff72d896021e, type: 2}
   m_BakeLightProbesForTrees: 1
   m_PreserveTreePrototypeLayers: 0
   m_DeringLightProbesForTrees: 1
@@ -12804,7 +12804,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 943304024876635932, guid: 7be315c00ca4e3f4a8ba19c5f995da79, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -8.500006
+      value: -300.00232
       objectReference: {fileID: 0}
     - target: {fileID: 1315677288366718587, guid: 7be315c00ca4e3f4a8ba19c5f995da79, type: 3}
       propertyPath: m_AnchorMax.y

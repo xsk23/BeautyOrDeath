@@ -16,7 +16,7 @@ GameObject:
   - component: {fileID: -6911442059094152985}
   - component: {fileID: 6429218402926685658}
   - component: {fileID: -804542387507456390}
-  m_Layer: 0
+  m_Layer: 11
   m_Name: Bullet2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -199,3 +199,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8038edd722e6e049b18a95854eb0937, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  launcher: {fileID: 0}
+  ownerRole: 0
+  honeyPuddlePrefab: {fileID: 0}
+  puddleDuration: 10

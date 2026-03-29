@@ -168,6 +168,9 @@ public class HunterPlayer : GamePlayer
                 {
                     bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
                     hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
+                    float animSpeed = 1.0f / weaponBase.fireRate;
+                    // 将计算好的倍率传给 Animator
+                    hunterAnimator.SetFloat("ShootSpeed", animSpeed);
                 }
             }
         }
