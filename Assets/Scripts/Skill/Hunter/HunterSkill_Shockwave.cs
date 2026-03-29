@@ -77,6 +77,13 @@ public class HunterSkill_Shockwave : SkillBase
         AudioManager.Instance?.Play2D("叮");
         // UI 显示 "Hit!"
         Debug.Log("<color=yellow>[Hunter] Shockwave hit a witch!</color>");
+
+        // // 女巫被砸中减速时，屏幕也会猛烈震荡/眩晕
+        // if (CameraDrunkEffect.Instance != null)
+        // {
+        //     // 震地的眩晕时间较短，但强度可以极大 (0.15f)
+        //     CameraDrunkEffect.Instance.PlayDrunkEffect(3.0f, 0.15f);
+        // }
     }
 
     [ClientRpc]
