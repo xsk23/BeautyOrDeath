@@ -38,6 +38,19 @@ public class HunterPlayer : GamePlayer
     private float returnSmoothTime = 0.3f; // 转回来的平滑时间
     private Quaternion originalModelRotation; // 记录模型原始旋转
     private bool hasCapturedRotation = false;
+    // 【新增】单独记录当前模型是否处于偏转状态
+    private bool isRotatedForShooting = false;
+    [Header("连发增强设置")]
+    private bool isWaitingForMultiShot = false; // 是否处于连发等待状态
+    private float multiShotTimer = 0f;          // 3秒计时器
+    // 【新增变量】记录是否已经完成了3秒等待，正在播放收尾动画
+    private bool isFinishingSingleShot = false;
+    private const float SHOOT_SINGLE_FIRE_TIME = 11f / 32f;    // 第11帧开火
+    private const float SHOOT_SINGLE_PAUSE_TIME = 24f / 32f;   // 第24帧暂停并转换
+    private const float SHOOT_MULTIPLE_TOTAL_TIME = 15f;       // multiple总帧数
+    private float currentBaseShootSpeed = 1.0f;
+
+
     // 【新增】重写父类的起跳许可，出拳硬直期间禁止起跳
     protected override bool CanJump()
     {
@@ -162,15 +175,18 @@ public class HunterPlayer : GamePlayer
                 {
                     weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
                 }
-
-                // 更新动画状态机（只要是猎人模型，不管本地还是远程，动画都得对）
-                if (hunterAnimator != null && weaponBase != null)
+                bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
+                hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
+                if (isRifleStyle)
                 {
-                    bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
-                    hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
-                    float animSpeed = 1.0f / weaponBase.fireRate;
-                    // 将计算好的倍率传给 Animator
-                    hunterAnimator.SetFloat("ShootSpeed", animSpeed);
+                    currentBaseShootSpeed = 1.0f / weaponBase.fireRate;
+                    hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
+                }
+                else
+                {
+                    // 【核心修复】如果是拳头，立即强制 GunLayer 回到 Default
+                    // 防止切到拳头时，手臂还维持着持枪姿势
+                    hunterAnimator.Play("Default", 1, 0f);
                 }
             }
         }
@@ -186,9 +202,75 @@ public class HunterPlayer : GamePlayer
         }
         if (isLocalPlayer)
         {
+            AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
+            // --- 【核心修改：收尾状态监测】 ---
+            if (isFinishingSingleShot)
+            {
+                // 如果已经切到了 Idle 或 Default，或者当前已经不在 shoot_ending 状态了
+                if (stateInfo.IsName("Holding_Idle") || stateInfo.IsName("Default") || 
+                    (!stateInfo.IsName("shoot_ending") && !stateInfo.IsName("Shoot_multiple")))
+                {
+                    isFinishingSingleShot = false;
+                }
+            }
+            // --- 核心监测：Shoot_Single 运行到第 24 帧时劫持动画 ---
+            // 【修改】增加 !isFinishingSingleShot 条件
+            if (!isWaitingForMultiShot && !isFinishingSingleShot && stateInfo.IsName("Shoot_Single"))
+            {
+                // 24/32 = 0.75。只要进度超过 0.75 且没播完，立刻切换
+                if (stateInfo.normalizedTime >= 0.75f && stateInfo.normalizedTime < 0.95f)
+                {
+                    EnterMultiShotWaitMode();
+                }
+            }
+
+            // --- 连发模式下的逻辑 ---
+            if (isWaitingForMultiShot)
+            {
+                multiShotTimer += Time.deltaTime;
+
+                // 1. 手动开火
+                if (Input.GetMouseButtonDown(0))
+                {
+                    // 只有当动画处于暂停（speed=0）时点击才有效，防止连点导致动作错乱
+                    if (hunterAnimator.GetFloat("ShootSpeed") <= 0.01f)
+                    {
+                        HandleManualMultiShot();
+                    }
+                }
+
+                // 2. 监测 Shoot_multiple 播完一轮
+                if (stateInfo.IsName("Shoot_multiple"))
+                {
+                    if (stateInfo.normalizedTime >= 0.92f && hunterAnimator.GetFloat("ShootSpeed") > 0)
+                    {
+                        hunterAnimator.Play("Shoot_multiple", 1, 0f);
+                        hunterAnimator.SetFloat("ShootSpeed", 0f);
+                    }
+                }
+
+                // 3. 3秒超时回到 Single 播完结尾
+                if (multiShotTimer >= 3.0f)
+                {
+                    ExitMultiShotWaitMode(false);
+                }
+            }
             // 同步动画速度：如果处于锁定中，强制发 0
             float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);
+            // --- 【替换这段代码】 ---
+            // 如果玩家开始移动，且当前模型是偏转的，那么仅回正模型，绝不退出连发状态
+            if (horizontalSpeed > 0.1f && isRotatedForShooting)
+            {
+                isRotatedForShooting = false; // 清除偏转标记
+                if (hasCapturedRotation)
+                {
+                    StopCoroutine("RotateBackRoutine");
+                    StartCoroutine("RotateBackRoutine"); // 平滑转回正前方
+                }
+                CmdResetGunRotation(false); // 同步给其他玩家平滑回正
+            }
+            // ------------------------
             // 切换武器
             if (Input.GetKeyDown(KeyCode.Alpha1))
             {
@@ -250,6 +332,8 @@ public class HunterPlayer : GamePlayer
                         // --- 修改这里：将 NetLauncher 加入 Gun 的逻辑 ---
                         else if (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher")
                         {
+                            // 【新增】每次按下左键开新的一枪时，重置收尾标记
+                            isFinishingSingleShot = false; 
                             // 统统只触发开火动画，真正的逻辑等待第11帧事件
                             CmdTriggerGunAnimation();
                         }
@@ -318,7 +402,17 @@ public class HunterPlayer : GamePlayer
             }
 
             // 瞬间偏转或极快偏转到右侧
-            modelTrans.localRotation = originalModelRotation * Quaternion.Euler(0, shootVisualAngle, 0);
+            // --- 【核心修改】：判断是否处于静止状态 ---
+            // 获取 Animator 中的 "speed" 参数，只有当速度极小（< 0.1f）时，才应用偏转
+            // 获取 Animator 中的 "speed" 参数，只有当速度极小（< 0.1f）时，才应用偏转
+            if (hunterAnimator.GetFloat("speed") < 0.1f)
+            {
+                // 瞬间偏转或极快偏转到右侧
+                modelTrans.localRotation = originalModelRotation * Quaternion.Euler(0, shootVisualAngle, 0);
+                
+                // 【新增】：标记当前处于偏转状态
+                isRotatedForShooting = true; 
+            }
         }
     }
     // ----------------------------------------------------
@@ -327,16 +421,19 @@ public class HunterPlayer : GamePlayer
     public void ExecuteAttackEffect()
     {
         // --- 逻辑 A：所有客户端都会执行的视觉还原 ---
-        if (hunterAnimator != null && hasCapturedRotation)
-        {
-            // 停止之前的协程（防止多次开火冲突）并平滑转回
-            StopCoroutine("RotateBackRoutine"); 
-            StartCoroutine("RotateBackRoutine");
-        }
+        // if (hunterAnimator != null && hasCapturedRotation)
+        // {
+        //     // 停止之前的协程（防止多次开火冲突）并平滑转回
+        //     StopCoroutine("RotateBackRoutine"); 
+        //     StartCoroutine("RotateBackRoutine");
+        // }
         // 只有按下左键的本地玩家，才有资格在第11帧向服务器发送真实的开枪指令
         // 防止所有客户端上的第11帧都跑去让服务器开火，导致一次开出N枪
         if (isLocalPlayer)
         {
+            // 【核心修复】：如果是 3 秒超时后的收尾阶段，无视 Animator 的错误补发事件！
+            if (isFinishingSingleShot) return; 
+
             WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
             
             // 确保第11帧时，玩家手里拿的还是枪（防止动画期间切枪导致 Bug）
@@ -345,6 +442,102 @@ public class HunterPlayer : GamePlayer
                 Vector3 origin = Camera.main.transform.position;
                 Vector3 dir = Camera.main.transform.forward;
                 CmdExecuteRealGunFire(origin, dir);
+                // 如果当前已经在连发模式中，重置3秒计时
+                if (isWaitingForMultiShot)
+                {
+                    multiShotTimer = 0f;
+                }
+            }
+        }
+    }
+    // 3. 进入等待模式的具体实现
+    private void EnterMultiShotWaitMode()
+    {
+        isWaitingForMultiShot = true;
+        multiShotTimer = 0f;
+        // 【新增】：手动清除触发器，防止状态机“记住”了这次点击
+        hunterAnimator.ResetTrigger("Shoot");
+        // 强制切到连发姿态的起始并暂停
+        hunterAnimator.Play("Shoot_multiple", 1, 0f);
+        hunterAnimator.SetFloat("ShootSpeed", 0f); 
+        
+        Debug.Log("[Gun] Entered Multi-shot mode at Frame 24");
+    }
+
+    // 4. 手动连发
+    private void HandleManualMultiShot()
+    {
+        multiShotTimer = 0f;
+        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
+        hunterAnimator.Play("Shoot_multiple", 1, 0f);
+    }
+
+    // 5. 退出等待模式（恢复到 Single 播完剩下的部分）
+    private void ExitMultiShotWaitMode(bool wasInterrupted)
+    {
+        isWaitingForMultiShot = false;
+        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
+        // 【新增】：清理触发器
+        hunterAnimator.ResetTrigger("Shoot");
+        if (wasInterrupted)
+        {
+            hunterAnimator.Play("Default", 1, 0f); 
+            // 【修改】：加上 && isRotatedForShooting
+            if (hasCapturedRotation && isRotatedForShooting)
+            {
+                isRotatedForShooting = false;
+                StopCoroutine("RotateBackRoutine");
+                hunterAnimator.transform.localRotation = originalModelRotation;
+                CmdResetGunRotation(true);
+            }
+        }
+        else
+        {
+            // --- 【核心修改】 ---
+            // 1. 标记为正在播放结尾
+            isFinishingSingleShot = true; 
+            
+            // 2. 播放专门的收尾动画
+            hunterAnimator.Play("shoot_ending", 1, 0f); 
+            hunterAnimator.Update(0); // 强制立即切换
+
+            // 3. 处理旋转还原
+            if (hasCapturedRotation && isRotatedForShooting)
+            {
+                isRotatedForShooting = false;
+                StopCoroutine("RotateBackRoutine");
+                StartCoroutine("RotateBackRoutine");
+                CmdResetGunRotation(false);
+            }
+        }
+    }
+    // ----------------------------------------------------
+    // 【新增】同步模型回正的网络方法
+    // ----------------------------------------------------
+    [Command]
+    private void CmdResetGunRotation(bool snap)
+    {
+        RpcResetGunRotation(snap);
+    }
+
+    [ClientRpc]
+    private void RpcResetGunRotation(bool snap)
+    {
+        // 本地玩家已经在 ExitMultiShotWaitMode 执行过了，直接跳过防止卡顿
+        if (isLocalPlayer) return; 
+
+        if (hunterAnimator != null && hasCapturedRotation)
+        {
+            StopCoroutine("RotateBackRoutine");
+            if (snap)
+            {
+                // 瞬间回正
+                hunterAnimator.transform.localRotation = originalModelRotation;
+            }
+            else
+            {
+                // 平滑回正
+                StartCoroutine("RotateBackRoutine");
             }
         }
     }
@@ -470,6 +663,11 @@ public class HunterPlayer : GamePlayer
 
     private void ChangeWeapon(int weaponIndex)
     {
+        if (isWaitingForMultiShot)
+        {
+            // 如果正在等待时换枪，取消状态并恢复速度
+            ExitMultiShotWaitMode(true);
+        }
         CmdChangeWeapon(weaponIndex);
         if (sceneScript == null) return;
 
