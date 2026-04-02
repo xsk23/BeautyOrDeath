@@ -246,14 +246,14 @@ public class PropTarget : NetworkBehaviour
         if (outlineInstance == null) return;
 
         Color finalColor = Color.yellow;
-        float zTestMode = 8f; // 默认为 Always (穿透)
+        float zTestMode = 4f; // 默认为 Always (穿透)
         float outlineWidth = 0.03f; // 默认宽度（对应你Shader里的默认值）
 
         if (isAncientTree)
         {
             // ================= 古树逻辑 =================
             finalColor = Color.green;
-            zTestMode = 8f; // 常驻穿透，方便女巫远距离看到目标
+            zTestMode = 4f; // 常驻穿透，方便女巫远距离看到目标
             outlineWidth = 0.05f;  // 古树可以稍微加粗，显示重要性
         }
         else
@@ -263,7 +263,7 @@ public class PropTarget : NetworkBehaviour
             {
                 // 正在被检视，但还没完成
                 finalColor = Color.yellow;
-                zTestMode = 8f; // 检视时穿透，方便看清轮廓
+                zTestMode = 4f; // 检视时穿透，方便看清轮廓
                 outlineWidth = 0.03f;
             }
             else if (isScouted)

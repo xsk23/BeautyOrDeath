@@ -1,30 +1,51 @@
 using UnityEngine;
 using System.Collections;
 
-[RequireComponent(typeof(Camera))]
-[ExecuteInEditMode] // 允许在编辑模式下运行，实时预览
 public class CameraDrunkEffect : MonoBehaviour
 {
     public static CameraDrunkEffect Instance;
 
-    [Header("眩晕材质 (拖入使用了 DrunkRipple Shader 的 Material)")]
+    [Header("URP 眩晕材质 (拖入 Mat_DrunkEffect)")]
     public Material effectMaterial;
 
-    [Header("Editor 预览测试 (仅在不播放技能时有效)")]
+    [Header("Editor 预览测试")]
     [Range(0f, 0.5f)] 
     public float previewIntensity = 0f;
     
     private float currentIntensity = 0f;
     private Coroutine activeRoutine;
 
+    private static readonly int StrengthProp = Shader.PropertyToID("_DistortionStrength");
+
     private void Awake()
     {
         Instance = this;
+        // 每次这个脚本醒来（进入游戏对局），强制清零
+        ResetEffect();
     }
 
-    /// <summary>
-    /// 触发屏幕眩晕效果 (游戏运行时调用)
-    /// </summary>
+    // 【新增】无论是因为死亡、切场景还是关游戏，只要脚本被禁用，必须清零！
+    private void OnDisable()
+    {
+        ResetEffect();
+    }
+
+    private void OnApplicationQuit()
+    {
+        ResetEffect();
+    }
+
+    // 统一的清零方法
+    private void ResetEffect()
+    {
+        currentIntensity = 0f;
+        previewIntensity = 0f;
+        if (effectMaterial != null) 
+        {
+            effectMaterial.SetFloat(StrengthProp, 0f);
+        }
+    }
+
     public void PlayDrunkEffect(float duration, float maxIntensity = 0.08f)
     {
         if (activeRoutine != null) StopCoroutine(activeRoutine);
@@ -37,7 +58,6 @@ public class CameraDrunkEffect : MonoBehaviour
         while (timer < duration)
         {
             timer += Time.deltaTime;
-            // 效果随时间逐渐减弱
             currentIntensity = Mathf.Lerp(maxIntensity, 0f, timer / duration);
             yield return null;
         }
@@ -45,25 +65,11 @@ public class CameraDrunkEffect : MonoBehaviour
         activeRoutine = null;
     }
 
-    // 屏幕后处理魔法函数
-    private void OnRenderImage(RenderTexture src, RenderTexture dest)
+    private void Update()
     {
-        if (effectMaterial != null)
-        {
-            // 如果技能正在播放(currentIntensity > 0)，就用技能的强度
-            // 否则，使用你在 Inspector 里拖动的预览强度(previewIntensity)
-            float finalIntensity = (currentIntensity > 0.001f) ? currentIntensity : previewIntensity;
+        if (effectMaterial == null) return;
 
-            if (finalIntensity > 0.001f)
-            {
-                // 将最终强度传递给 Shader 的 _DistortionStrength 属性
-                effectMaterial.SetFloat("_DistortionStrength", finalIntensity);
-                Graphics.Blit(src, dest, effectMaterial);
-                return;
-            }
-        }
-        
-        // 没扭曲时原画输出
-        Graphics.Blit(src, dest);
+        float finalIntensity = (currentIntensity > 0.001f) ? currentIntensity : previewIntensity;
+        effectMaterial.SetFloat(StrengthProp, finalIntensity);
     }
 }
