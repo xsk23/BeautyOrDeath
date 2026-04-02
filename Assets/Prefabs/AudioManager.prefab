@@ -121,9 +121,9 @@ MonoBehaviour:
     - {fileID: 8300000, guid: a8ea83d6a8356d94f9d44fef192f94dd, type: 3}
     volume: 1
     randomPitch: 1
-  - soundName: "\u5973\u5DEB\u53D8\u4EBA"
+  - soundName: "\u53E4\u6811\u53D8\u8EAB"
     clips:
-    - {fileID: 8300000, guid: a8ea83d6a8356d94f9d44fef192f94dd, type: 3}
+    - {fileID: 8300000, guid: 20a3de561bf52da4ca2557a58790f814, type: 3}
     volume: 1
     randomPitch: 1
   - soundName: "\u62F3\u5934\u653B\u51FB"
@@ -154,6 +154,46 @@ MonoBehaviour:
   - soundName: Chamber
     clips:
     - {fileID: 8300000, guid: b5cacde7ece42f944a053ab09fe73736, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: AncientTree_footstep
+    clips:
+    - {fileID: 8300000, guid: ea9d7c2d85978c4478ae646ec1f07f22, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: WitchTaunt_Male
+    clips:
+    - {fileID: 8300000, guid: d45c697244e3ceb4d909c1fd2d4c0a7d, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: WitchTaunt_Female
+    clips:
+    - {fileID: 8300000, guid: 3e78cda6ef158b242a431b6ff335365f, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: WitchJump
+    clips:
+    - {fileID: 8300000, guid: 908d02a2541ae6641b40bbae36334558, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: HunterJump
+    clips:
+    - {fileID: 8300000, guid: 908d02a2541ae6641b40bbae36334558, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: TrapCaught_Male
+    clips:
+    - {fileID: 8300000, guid: 5d75c907b45537d49b19c8c5446f4ff8, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: TrapCaught_Female
+    clips:
+    - {fileID: 8300000, guid: 093c171029bda8047a059dbd2d30cb4c, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: HunterJump
+    clips:
+    - {fileID: 8300000, guid: 908d02a2541ae6641b40bbae36334558, type: 3}
     volume: 1
     randomPitch: 1
   source2D: {fileID: 8815305643914776443}
