@@ -219,7 +219,7 @@ def generate_wp_code_markdown(
 # ================= 配置区域 =================
 
 # 输入目录路径
-root_directory = r"E:\UnityProjects\Mirror_Lobby\Assets\Scripts"
+root_directory = r"D:\hwandDoc\BoDGame\BeautyOrDeath\Assets\Scripts"
 
 # 输出文件名与位置: inside(输入目录下) / parent(输入目录上一级)
 output_filename = "unity_code.md"

@@ -25,7 +25,7 @@ Transform:
   m_GameObject: {fileID: 35618637952527346}
   serializedVersion: 2
   m_LocalRotation: {x: -0.7071069, y: -0.00000004470348, z: -0.00000017508863, w: 0.7071067}
-  m_LocalPosition: {x: -0.008, y: 0.606, z: 0.038}
+  m_LocalPosition: {x: 0.036, y: 0.588, z: 0.067}
   m_LocalScale: {x: 0.25063443, y: 0.28021324, z: 1.1903819}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -121,7 +121,7 @@ MeshRenderer:
   m_ReflectionProbeUsage: 1
   m_RayTracingMode: 2
   m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
+  m_RenderingLayerMask: 2
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: c180895f6da9a854a827cdd3c4f68c53, type: 2}
@@ -754,7 +754,7 @@ MeshRenderer:
   m_ReflectionProbeUsage: 1
   m_RayTracingMode: 2
   m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
+  m_RenderingLayerMask: 2
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 4398739734756267593, guid: c201b878342efa54c94fdbf335a7549d, type: 3}
@@ -857,7 +857,7 @@ MeshRenderer:
   m_ReflectionProbeUsage: 1
   m_RayTracingMode: 2
   m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
+  m_RenderingLayerMask: 2
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1079,6 +1079,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 9004654268449207276, guid: 7264c5dce5d261f4d955d1e77b17dbfa, type: 3}
+      propertyPath: m_RenderingLayerMask
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 9004654268449207276, guid: 7264c5dce5d261f4d955d1e77b17dbfa, type: 3}
       propertyPath: m_Materials.Array.data[0]
       value: 
       objectReference: {fileID: -7846862771939273689, guid: 71cb0e9965176a34a9b2ac722444af8e, type: 3}
@@ -1191,6 +1195,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 104.156
       objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
+      propertyPath: m_RenderingLayerMask
+      value: 2
+      objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
       propertyPath: m_Name
       value: Weapon2
@@ -1204,14 +1212,14 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 2557496775172074213}
+      addedObject: {fileID: 1631044636876282272}
   m_SourcePrefab: {fileID: 100100000, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
 --- !u!1 &3733022667186146450 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
   m_PrefabInstance: {fileID: 4543909405192729027}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &2557496775172074213
+--- !u!114 &1631044636876282272
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1233,9 +1241,9 @@ MonoBehaviour:
   muzzleFlash: {fileID: 0}
   fireSound: {fileID: 0}
   nextFireTime: 0
+  environmentDecalPrefab: {fileID: 1170279627823119884, guid: a5b953f91b3ee49419f26202b3c70e23, type: 3}
+  playerDecalPrefab: {fileID: 1170279627823119884, guid: b3162cde1a70e14449d318181599a8f1, type: 3}
   netPrefab: {fileID: 7205609430714872807, guid: 1d70454db050b2e4686cc7e6e10a194c, type: 3}
-  BulletSpeed: 20
-  lifeTime: 5
 --- !u!4 &4072816447601825320 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
@@ -1300,6 +1308,10 @@ PrefabInstance:
     - target: {fileID: 2264652021529599194, guid: 36c86a11adfdf694abc67eb03e252775, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6864872901391498742, guid: 36c86a11adfdf694abc67eb03e252775, type: 3}
+      propertyPath: m_RenderingLayerMask
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 7951125972602719595, guid: 36c86a11adfdf694abc67eb03e252775, type: 3}
       propertyPath: playOnAwake

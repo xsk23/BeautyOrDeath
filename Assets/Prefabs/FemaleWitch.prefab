@@ -122,7 +122,7 @@ MeshRenderer:
   m_ReflectionProbeUsage: 1
   m_RayTracingMode: 2
   m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
+  m_RenderingLayerMask: 2
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
@@ -222,7 +222,7 @@ MeshRenderer:
   m_ReflectionProbeUsage: 1
   m_RayTracingMode: 2
   m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
+  m_RenderingLayerMask: 2
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -431,7 +431,7 @@ MeshRenderer:
   m_ReflectionProbeUsage: 1
   m_RayTracingMode: 2
   m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
+  m_RenderingLayerMask: 2
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
@@ -538,7 +538,7 @@ MeshRenderer:
   m_ReflectionProbeUsage: 1
   m_RayTracingMode: 2
   m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
+  m_RenderingLayerMask: 2
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: 4eb3c45a5b20e8b4e83ed9eb3e5c1f08, type: 2}
@@ -637,6 +637,7 @@ GameObject:
   - component: {fileID: -923618323626910566}
   - component: {fileID: 4400558386609022622}
   - component: {fileID: -5514747262804474299}
+  - component: {fileID: 6520937827800280098}
   - component: {fileID: 804364898833113665}
   m_Layer: 6
   m_Name: FemaleWitch
@@ -1008,6 +1009,25 @@ MonoBehaviour:
   syncInterval: 0
   recordTimeWindow: 20
   recordInterval: 0.5
+--- !u!114 &6520937827800280098
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7364481315165733279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4006714068a4a146bb07fea13b4f47e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  honeySaturation: 0
+  decayRate: 15
+  stunThreshold: 80
+  stunDuration: 3
 --- !u!114 &804364898833113665
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1162,6 +1182,10 @@ PrefabInstance:
     - target: {fileID: 5866666021909216657, guid: 21f6247204be3dc41a241678434fe698, type: 3}
       propertyPath: m_ApplyRootMotion
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8208985866027114658, guid: 21f6247204be3dc41a241678434fe698, type: 3}
+      propertyPath: m_RenderingLayerMask
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 8208985866027114658, guid: 21f6247204be3dc41a241678434fe698, type: 3}
       propertyPath: m_Materials.Array.data[0]

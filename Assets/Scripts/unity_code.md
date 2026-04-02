@@ -1437,7 +1437,7 @@ def generate_wp_code_markdown(
 # ================= 配置区域 =================
 
 # 输入目录路径
-root_directory = r"E:\UnityProjects\Mirror_Lobby\Assets\Scripts"
+root_directory = r"D:\hwandDoc\BoDGame\BeautyOrDeath\Assets\Scripts"
 
 # 输出文件名与位置: inside(输入目录下) / parent(输入目录上一级)
 output_filename = "unity_code.md"
@@ -4324,7 +4324,7 @@ def generate_wp_code_markdown(
 # ================= 配置区域 =================
 
 # 输入目录路径
-root_directory = r"E:\UnityProjects\Mirror_Lobby\Assets\Scripts"
+root_directory = r"D:\hwandDoc\BoDGame\BeautyOrDeath\Assets\Scripts"
 
 # 输出文件名与位置: inside(输入目录下) / parent(输入目录上一级)
 output_filename = "unity_code.md"
@@ -8377,6 +8377,233 @@ public class GunWeapon : WeaponBase
 
 ```
 
+## Player\HoneyAccumulation.cs
+
+```csharp
+using UnityEngine;
+using Mirror;
+
+public class HoneyAccumulation : NetworkBehaviour
+{
+    [SyncVar] public float honeySaturation = 0f;
+
+    public float decayRate = 15f;      // 每秒自动降低15点
+    public float stunThreshold = 80f;  // 累积到80点定身
+    public float stunDuration = 3.0f;  // 定身3秒
+
+    private WitchPlayer witch;
+
+    private void Awake()
+    {
+        witch = GetComponent<WitchPlayer>();
+    }
+
+    [ServerCallback]
+    private void Update()
+    {
+        if (honeySaturation > 0 && !witch.isStunned)
+        {
+            honeySaturation = Mathf.Max(0, honeySaturation - decayRate * Time.deltaTime);
+        }
+    }
+
+    [Server]
+    public void ServerAddHoney(float amount)
+    {
+        if (witch.isPermanentDead || witch.isInvulnerable || witch.isInSecondChance) return;
+
+        honeySaturation += amount;
+
+        if (honeySaturation >= stunThreshold && !witch.isStunned)
+        {
+            StartCoroutine(HoneyStunRoutine());
+        }
+    }
+
+    private System.Collections.IEnumerator HoneyStunRoutine()
+    {
+        witch.isStunned = true;
+        honeySaturation = 100f; // 表现为“满溢”
+
+        // 播放被黏住的音效
+        GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", witch.transform.position);
+
+        yield return new WaitForSeconds(stunDuration);
+
+        // 如果没有被其他真实的物理陷阱抓到，则解除定身
+        if (!witch.isTrappedByNet)
+        {
+            witch.isStunned = false;
+        }
+
+        honeySaturation = 0f;
+    }
+}
+```
+
+## Player\HoneyBullet.cs
+
+```csharp
+using UnityEngine;
+using Mirror;
+
+public class HoneyBullet : MonoBehaviour
+{
+    [HideInInspector] public GameObject launcherRoot;
+    [HideInInspector] public PlayerRole ownerRole;
+    [HideInInspector] public GameObject honeyPuddlePrefab;
+    [HideInInspector] public float puddleDuration = 8f;
+
+    [ServerCallback]
+    private void OnTriggerEnter(Collider other)
+    {
+        if (launcherRoot != null && (other.gameObject == launcherRoot || other.transform.IsChildOf(launcherRoot.transform)))
+            return;
+
+        if (other.isTrigger) return;
+
+        // 检查是否命中玩家
+        GamePlayer target = other.GetComponent<GamePlayer>() ?? other.GetComponentInParent<GamePlayer>();
+        if (target != null)
+        {
+            // 队友伤害检查
+            if (target.playerRole != ownerRole || GameManager.Instance.FriendlyFire)
+            {
+                if (target is WitchPlayer witch)
+                {
+                    // 【核心修改】增加蜂蜜累积量
+                    HoneyAccumulation acc = witch.GetComponent<HoneyAccumulation>();
+                    if (acc != null) acc.ServerAddHoney(12f); // 命中一发加12点（约7发定身）
+                }
+                Destroy(gameObject);
+            }
+            return;
+        }
+
+        // 命中环境，生成减速水潭
+        RaycastHit hit;
+        Vector3 moveDir = GetComponent<Rigidbody>().velocity.normalized;
+        if (Physics.Raycast(transform.position - moveDir, moveDir, out hit, 2f))
+        {
+            HandlePuddleSpawn(hit.point, null);
+        }
+
+        Destroy(gameObject);
+    }
+
+    [Server]
+    private void HandlePuddleSpawn(Vector3 worldPoint, Transform parent)
+    {
+        if (honeyPuddlePrefab == null) return;
+        GameObject puddle = Instantiate(honeyPuddlePrefab, worldPoint + Vector3.up * 0.05f, honeyPuddlePrefab.transform.rotation);
+        NetworkServer.Spawn(puddle);
+        Destroy(puddle, puddleDuration);
+    }
+}
+```
+
+## Player\HoneyPuddleBehavior.cs
+
+```csharp
+using UnityEngine;
+using Mirror;
+
+public class HoneyPuddleBehavior : NetworkBehaviour
+{
+  public float slowAmount = 0.5f; // 减速到 50%
+
+  [ServerCallback]
+  private void OnTriggerStay(Collider other)
+  {
+    // 只有服务器处理逻辑
+    WitchPlayer witch = other.GetComponent<WitchPlayer>() ?? other.GetComponentInParent<WitchPlayer>();
+
+    if (witch != null && !witch.isPermanentDead && !witch.isInvulnerable)
+    {
+      // 施加减速：持续时间给 0.2 秒，只要站在里面就会一直刷新
+      witch.ServerApplySlow(slowAmount, 0.2f);
+    }
+  }
+}
+```
+
+## Player\HoneyWeapon.cs
+
+```csharp
+using UnityEngine;
+using Mirror;
+
+public class HoneyWeapon : WeaponBase
+{
+    [Header("蜂蜜贴花设置")]
+    public GameObject honeyOnObjectPrefab;
+    private float puddleLifeTime = 8f; // 缩短一点持续时间，防止连发产生太多物体
+
+    [Header("子弹设置")]
+    public GameObject netPrefab;
+    private float BulletSpeed = 35f;
+    private float lifeTime = 3f;
+
+    private void Awake()
+    {
+        weaponName = "HoneyGun";
+        fireRate = 0.15f; // 【修改】0.15秒一发，实现快速连发
+        damage = 1f;      // 【修改】连发武器单发伤害设为极低，主要靠累积效果
+    }
+
+    public override void OnFire(Vector3 origin, Vector3 direction)
+    {
+        nextFireTime = Time.time + fireRate;
+
+        if (isServer)
+        {
+            GamePlayer player = GetComponentInParent<GamePlayer>();
+            if (player == null) return;
+
+            Vector3 referencePoint = player.transform.position + Vector3.up * 1.4f;
+
+            Ray aimRay = new Ray(origin, direction);
+            Vector3 targetPoint;
+            int layerMask = ~LayerMask.GetMask("Bullet", "Ignore Raycast", "Player");
+
+            if (Physics.Raycast(aimRay, out RaycastHit aimHit, 100f, layerMask))
+                targetPoint = aimHit.point;
+            else
+                targetPoint = origin + direction * 100f;
+
+            float forwardOffset = 1.2f;
+            float downwardOffset = 0.4f;
+            Vector3 spawnPos = referencePoint + (direction * forwardOffset) + (Vector3.down * downwardOffset);
+            Vector3 fireDir = (targetPoint - spawnPos).normalized;
+
+            if (Vector3.Dot(fireDir, direction) < 0) fireDir = direction;
+
+            GameObject net = Instantiate(netPrefab, spawnPos, Quaternion.LookRotation(fireDir));
+
+            HoneyBullet bulletScript = net.GetComponent<HoneyBullet>();
+            if (bulletScript != null)
+            {
+                bulletScript.launcherRoot = player.gameObject;
+                bulletScript.ownerRole = player.playerRole;
+                bulletScript.honeyPuddlePrefab = honeyOnObjectPrefab;
+                bulletScript.puddleDuration = puddleLifeTime;
+            }
+
+            Rigidbody rb = net.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.useGravity = true;
+                rb.velocity = fireDir * BulletSpeed;
+                rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+            }
+
+            NetworkServer.Spawn(net);
+            Destroy(net, lifeTime);
+        }
+    }
+}
+```
+
 ## Player\HunterPlayer.cs
 
 ```csharp
@@ -8384,82 +8611,76 @@ using Unity.VisualScripting;
 using UnityEngine;
 using Mirror;
 using System;
-using System.Collections.Generic; // 引用 List
+using System.Collections.Generic;
 using System.Collections;
 
 public class HunterPlayer : GamePlayer
 {
     [Header("Execution Settings")]
-    public float executionRange = 3.0f; // 处决距离
-    public float executionDamage = 40f; // 处决伤害
-    public float executionRecoveryTime = 2.0f; // 猎人硬直时间
-    // 用于冷却UI的辅助变量
+    public float executionRange = 3.0f;
+    public float executionDamage = 40f;
+    public float executionRecoveryTime = 2.0f;
+
     private bool wasCoolingDown = false;
-    //定义事件
     public event Action<int> OnWeaponFired;
-    // 猎人专用武器数组
+
+    [Header("Weapons")]
     public GameObject[] hunterWeapon;
-    // 当前武器索引（同步变量，变化时调用 OnWeaponChanged）
     [SyncVar(hook = nameof(OnWeaponChanged))]
     public int currentWeaponIndex = 0;
-    [Header("Animation")]
-    [SerializeField] private Animator hunterAnimator; // 在 Inspector 中拖入猎人的 Animator
-    // 【新增 1】定义记录上一帧位置的变量
-    private Vector3 lastPosition;
-    private bool nextPunchIsRight = false; // 记录左右交替的状态
-    [Header("Input Buffering")]
-    public float attackBufferTime = 0.2f; // 缓冲窗口大小：冷却结束前 0.2s 内的点击有效
-    private float lastAttackInputTime = -1f; // 上次尝试点击攻击的时间戳
-    [Header("Fist Melee Settings")]
-    public float fistAttackLockDuration = 1f; 
-    private float meleeLockEndTime = 0f; // 记录锁定结束的具体时间点
-    // 定义一个快捷属性判断是否处于锁定状态
-    private bool IsInMeleeLockout => Time.time < meleeLockEndTime;
-    [Header("开枪偏转设置")]
-    private float shootVisualAngle = 20f; // 向右偏转的角度
-    private float returnSmoothTime = 0.3f; // 转回来的平滑时间
-    private Quaternion originalModelRotation; // 记录模型原始旋转
-    private bool hasCapturedRotation = false;
-    [Header("连发增强设置")]
-    private bool isWaitingForMultiShot = false; // 是否处于连发等待状态
-    private float multiShotTimer = 0f;          // 3秒计时器
-    private const float SHOOT_SINGLE_FIRE_TIME = 11f / 32f;    // 第11帧开火
-    private const float SHOOT_SINGLE_PAUSE_TIME = 24f / 32f;   // 第24帧暂停并转换
-    private const float SHOOT_MULTIPLE_TOTAL_TIME = 15f;       // multiple总帧数
 
-    // 【新增】重写父类的起跳许可，出拳硬直期间禁止起跳
+    [Header("Animation")]
+    [SerializeField] private Animator hunterAnimator;
+    private Vector3 lastPosition;
+    private bool nextPunchIsRight = false;
+
+    [Header("Input Buffering")]
+    public float attackBufferTime = 0.2f;
+    private float lastAttackInputTime = -1f;
+
+    [Header("Fist Melee Settings")]
+    public float fistAttackLockDuration = 1f;
+    private float meleeLockEndTime = 0f;
+    private bool IsInMeleeLockout => Time.time < meleeLockEndTime;
+
+    [Header("Visual Effects")]
+    private float shootVisualAngle = 20f;
+    private float returnSmoothTime = 0.3f;
+    private Quaternion originalModelRotation;
+    private bool hasCapturedRotation = false;
+    private bool isRotatedForShooting = false;
+
+    [Header("Standard Gun Multi-Shot Logic")]
+    private bool isWaitingForMultiShot = false;
+    private float multiShotTimer = 0f;
+    private bool isFinishingSingleShot = false;
+    private float currentBaseShootSpeed = 1.0f;
+
     protected override bool CanJump()
     {
-        // 必须满足父类的条件（没被禁锢），且当前没有处于出拳硬直状态
         return base.CanJump() && !IsInMeleeLockout;
     }
-    // 【新增】在初始化时赋值给父类的字段
-    private void Awake()
-    {
-        goalText = "Hunt Down The Witch Until the Time Runs Out!";
-    }
-    // 1. 重写移动逻辑，在硬直期间强制输入为 0
+
     protected override void HandleMovementOverride(Vector2 inputOverride)
     {
         if (IsInMeleeLockout)
         {
             inputOverride = Vector2.zero;
-            velocity.x = 0;
-            velocity.z = 0;
+            velocity.x = 0; velocity.z = 0;
             if (controller.isGrounded) velocity.y = -2f;
         }
         base.HandleMovementOverride(inputOverride);
     }
+
     public override void UpdateCameraView()
     {
-        // 【核心修复】：如果游戏已经结束，绝对不要去动相机，否则会把相机从胜利点抓回来
-        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
-            return;
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
+
         if (isFirstPerson)
         {
             Camera.main.transform.SetParent(transform);
             Camera.main.transform.localPosition = new Vector3(0.01f, 1.12f, 0.59f);
-            Camera.main.transform.localRotation = Quaternion.identity;  
+            Camera.main.transform.localRotation = Quaternion.identity;
         }
         else
         {
@@ -8469,653 +8690,415 @@ public class HunterPlayer : GamePlayer
         }
     }
 
-    // 重写基类的抽象方法
-    protected override void Attack()
-    {
-        // 这里是服务器端运行的代码
-        //改成英文debug
-        // Debug.Log($"<color=green>【猎人】{playerName} 释放了技能：开枪射击！</color>");
-        Debug.Log($"<color=green>[Hunter] {playerName} used skill: Shoot Gun!</color>");
-        // 在这里写具体的射线检测逻辑...
-        // if (Physics.Raycast(...)) { ... }
-    }
     public override void OnStartLocalPlayer()
     {
         base.OnStartLocalPlayer();
-        
-        // 初始锁定鼠标
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
-
-        // 本地玩家也执行一次初始化刷新
         RefreshWeaponVisibility(currentWeaponIndex);
-        
-        // 更新 UI
-        if (sceneScript != null && currentWeaponIndex < hunterWeapon.Length)
-        {
-            var wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
-        }
-
-        // 隐藏女巫 UI
-        if (SceneScript.Instance != null)
-        {
-            if (SceneScript.Instance.itemSlot != null) SceneScript.Instance.itemSlot.gameObject.SetActive(false);
-            if (SceneScript.Instance.morphSlot != null) SceneScript.Instance.morphSlot.gameObject.SetActive(false);
-        }
     }
+
     public override void OnStartClient()
     {
         base.OnStartClient();
-        // 记录出生时的位置，防止 00 第一帧计算出巨大的瞬移距离
         lastPosition = transform.position;
-        // 【关键修复点】：远程玩家模型加载时，根据当前的 SyncVar 强制刷新一次武器
-        // 这解决了“中途加入”或“初始状态不触发 Hook”的问题
         RefreshWeaponVisibility(currentWeaponIndex);
     }
-    public override void OnStartServer()
-    {
-        base.OnStartServer();
 
-        // moveSpeed = 7f;
-        // mouseSensitivity = 2.5f;
-        // manaRegenRate = 8f;
-    }
-    // 当远程玩家连接或 SyncVar 同步时执行
-    public void OnWeaponChanged(int oldWeaponIndex, int newWeaponIndex)
-    {
-        // 核心修复：直接使用最新的 newWeaponIndex 刷新全量状态
-        RefreshWeaponVisibility(newWeaponIndex);
-    }
+    public void OnWeaponChanged(int oldIndex, int newIndex) => RefreshWeaponVisibility(newIndex);
 
-    // 抽象出一个统一的显隐控制方法
     private void RefreshWeaponVisibility(int activeIndex)
     {
         if (hunterWeapon == null || hunterWeapon.Length == 0) return;
-
         for (int i = 0; i < hunterWeapon.Length; i++)
         {
             if (hunterWeapon[i] == null) continue;
-
-            // 只有索引匹配的激活，其余全部隐藏
             bool shouldBeActive = (i == activeIndex);
             hunterWeapon[i].SetActive(shouldBeActive);
-
-            // 如果是当前激活的武器，处理相关的额外逻辑（如动画、特效清空）
             if (shouldBeActive)
             {
-                var weaponBase = hunterWeapon[i].GetComponent<WeaponBase>();
-                
-                // 清理可能残留的粒子
-                if (weaponBase != null && weaponBase.muzzleFlash != null)
-                {
-                    weaponBase.muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-                }
-                bool isRifleStyle = (weaponBase.weaponName == "Gun" || weaponBase.weaponName == "NetLauncher");
+                var wb = hunterWeapon[i].GetComponent<WeaponBase>();
+                bool isRifleStyle = (wb.weaponName == "Gun" || wb.weaponName == "HoneyGun");
                 hunterAnimator.SetBool("isHoldingGun", isRifleStyle);
                 if (isRifleStyle)
                 {
-                    float animSpeed = 1.0f / weaponBase.fireRate;
-                    hunterAnimator.SetFloat("ShootSpeed", animSpeed);
+                    currentBaseShootSpeed = 1.0f / wb.fireRate;
+                    hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
                 }
-                else
-                {
-                    // 【核心修复】如果是拳头，立即强制 GunLayer 回到 Default
-                    // 防止切到拳头时，手臂还维持着持枪姿势
-                    hunterAnimator.Play("Default", 1, 0f);
-                }
+                else hunterAnimator.Play("Default", 1, 0f);
             }
         }
     }
+
     public override void Update()
     {
         base.Update();
-        // 【核心修改】如果游戏结束，不处理切枪、开火和处决逻辑
-        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
-        {
-            lastAttackInputTime = -1f; // 清空可能的输入缓冲
-            return;
-        }
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
+
         if (isLocalPlayer)
         {
-            AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
+            // 1. 处理猎枪（Gun）特有的 hijacks 逻辑
+            HandleStandardGunAnimations();
 
-            // --- 核心监测：Shoot_Single 运行到第 24 帧时劫持动画 ---
-            if (!isWaitingForMultiShot && stateInfo.IsName("Shoot_Single"))
-            {
-                // 24/32 = 0.75。只要进度超过 0.75 且没播完，立刻切换
-                if (stateInfo.normalizedTime >= 0.75f && stateInfo.normalizedTime < 0.95f)
-                {
-                    EnterMultiShotWaitMode();
-                }
-            }
-
-            // --- 连发模式下的逻辑 ---
-            if (isWaitingForMultiShot)
-            {
-                multiShotTimer += Time.deltaTime;
-
-                // 1. 手动开火
-                if (Input.GetMouseButtonDown(0))
-                {
-                    // 只有当动画处于暂停（speed=0）时点击才有效，防止连点导致动作错乱
-                    if (hunterAnimator.speed <= 0.01f) 
-                    {
-                        HandleManualMultiShot();
-                    }
-                }
-
-                // 2. 监测 Shoot_multiple 播完一轮
-                if (stateInfo.IsName("Shoot_multiple"))
-                {
-                    if (stateInfo.normalizedTime >= 0.92f && hunterAnimator.speed > 0)
-                    {
-                        hunterAnimator.Play("Shoot_multiple", 1, 0f);
-                        hunterAnimator.speed = 0;
-                    }
-                }
-
-                // 3. 3秒超时回到 Single 播完结尾
-                if (multiShotTimer >= 3.0f)
-                {
-                    ExitMultiShotWaitMode(false);
-                }
-            }
-            // 同步动画速度：如果处于锁定中，强制发 0
+            // 2. 动画速度同步
             float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);
-            // 切换武器
-            if (Input.GetKeyDown(KeyCode.Alpha1))
-            {
-                ChangeWeapon(0);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha2))
-            {
-                ChangeWeapon(1);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha3))
-            {
-                ChangeWeapon(2);
-            }
-            if (Input.GetAxis("Mouse ScrollWheel") > 0f)
-            {
-                int nextIndex = (currentWeaponIndex + 1) % hunterWeapon.Length;
-                ChangeWeapon(nextIndex);
 
-            }
-            else if (Input.GetAxis("Mouse ScrollWheel") < 0f)
-            {
-                int nextIndex = (currentWeaponIndex - 1 + hunterWeapon.Length) % hunterWeapon.Length;
-                ChangeWeapon(nextIndex);
-            }
-            // 开火
-            // 1. 记录玩家的点击意图
-            if (Input.GetMouseButtonDown(0))
-            {
-                lastAttackInputTime = Time.time;
-            }
+            // 如果玩家移动，自动回正模型
+            if (horizontalSpeed > 0.1f && isRotatedForShooting) StopShootingVisuals(false);
 
-            // 2. 检测是否有“存着”的指令需要触发
-            if (Time.time - lastAttackInputTime <= attackBufferTime)
-            {
-                WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+            // 3. 切换武器输入
+            HandleWeaponSwitchInput();
 
-                if (currentWeapon != null && currentWeapon.CanFire())
+            // 4. --- 攻击输入核心逻辑 ---
+            WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+
+            if (currentWeapon != null)
+            {
+                // 分支 A: 蜂蜜枪 (全自动连发)
+                if (currentWeapon.weaponName == "HoneyGun")
                 {
-                    // --- 【新增】：判断是否处于地面（结合原生判断与射线容错，防止下坡误判） ---
-                    bool isOnGround = controller.isGrounded || Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, (controller.height * 0.5f) + 0.3f, groundLayer);
-                    // 如果武器是拳头且在空中，则拦截攻击
-                    if (currentWeapon.weaponName == "Fist" && !isOnGround)
-                    {
-                        // 仅消耗掉输入缓冲，不执行射击指令（禁止空中出拳）
-                        lastAttackInputTime = -1f;
-                    }
-                    else
-                    {
-                        lastAttackInputTime = -1f; 
-                        currentWeapon.UpdateCooldown(); // 统一消耗冷却
+                    lastAttackInputTime = -1f; // 蜂蜜枪不使用缓冲，确保清空信号
 
-                        // 【核心修改】区分猎枪和其他武器的开火时机
-                        if (currentWeapon.weaponName == "Fist")
+                    if (Input.GetMouseButton(0)) // 按住左键
+                    {
+                        if (currentWeapon.CanFire())
                         {
-                            meleeLockEndTime = Time.time + fistAttackLockDuration;
                             CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
-                            OnWeaponFired?.Invoke(currentWeaponIndex);
+                            // 开启侧身动作
+                            if (!isRotatedForShooting) CmdTriggerGunAnimation();
                         }
-                        // --- 修改这里：将 NetLauncher 加入 Gun 的逻辑 ---
-                        else if (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher")
+                    }
+                    else if (Input.GetMouseButtonUp(0)) // 松开按键
+                    {
+                        if (isRotatedForShooting) StopShootingVisuals(false);
+                    }
+                }
+                // 分支 B: 猎枪 & 拳头 (半自动 + 缓冲)
+                else
+                {
+                    if (Input.GetMouseButtonDown(0)) lastAttackInputTime = Time.time;
+
+                    // 检查缓冲时间
+                    if (lastAttackInputTime > 0 && (Time.time - lastAttackInputTime <= attackBufferTime))
+                    {
+                        if (currentWeapon.CanFire())
                         {
-                            // 统统只触发开火动画，真正的逻辑等待第11帧事件
-                            CmdTriggerGunAnimation();
+                            bool isOnGround = controller.isGrounded || Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 1.3f, groundLayer);
+
+                            if (currentWeapon.weaponName == "Fist" && !isOnGround)
+                            {
+                                lastAttackInputTime = -1f; // 空中禁止出拳
+                            }
+                            else
+                            {
+                                // 【关键修复】执行指令前立即清空缓冲，防止无限射击
+                                lastAttackInputTime = -1f;
+
+                                if (currentWeapon.weaponName == "Gun")
+                                {
+                                    isFinishingSingleShot = false;
+                                    CmdTriggerGunAnimation();
+                                }
+                                else // 拳头逻辑
+                                {
+                                    meleeLockEndTime = Time.time + fistAttackLockDuration;
+                                    CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
+                                }
+                            }
                         }
-                        // --------------------------------------------
-                        else
-                        {
-                            // 这里的 else 现在通常只走没有特殊定义的武器
-                            CmdFireWeapon(Camera.main.transform.position, Camera.main.transform.forward);
-                            OnWeaponFired?.Invoke(currentWeaponIndex);
-                        }
+                    }
+                    else if (lastAttackInputTime > 0 && (Time.time - lastAttackInputTime > attackBufferTime))
+                    {
+                        lastAttackInputTime = -1f; // 缓冲超时清理
                     }
                 }
             }
 
-            // 处理冷却UI
             HandleCooldownUI();
-            // 处决检查
             HandleExecutionCheck(Camera.main.transform.position, Camera.main.transform.forward);
-            // 调试绘制（放在武器切换和开火逻辑之后）
-            #if UNITY_EDITOR
-            if (hunterWeapon != null && currentWeaponIndex < hunterWeapon.Length)
-            {
-                WeaponBase current = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-                if (current != null && current.weaponName == "Gun")
-                {
-                    GunWeapon gun = current as GunWeapon;
-                    if (gun != null)
-                    {
-                        Vector3 start = Camera.main.transform.position + Camera.main.transform.forward * 1.2f; // 必须与服务器偏移一致
-                        Vector3 end = start + Camera.main.transform.forward * gun.range;
-                        Debug.DrawLine(start, end, Color.green, 0f); // 持续到下一帧绘制前
-                    }
-                }
-            }
-            #endif
         }
-        // 2. 所有人（本地和远程）都根据同步的速度值更新 Animator
-        if (hunterAnimator != null)
-        {
-            // 注意：截图里参数名是小写 "speed"
-            hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
-        }
+
+        // 全局同步 Animator speed
+        if (hunterAnimator != null) hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
     }
-    [Command]
-    private void CmdTriggerGunAnimation()
+
+    private void HandleStandardGunAnimations()
     {
-        // 告诉所有客户端播放开枪动画
-        RpcTriggerGunAnimation();
+        AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
+        if (isFinishingSingleShot)
+        {
+            if (stateInfo.IsName("Holding_Idle") || stateInfo.IsName("Default") || (!stateInfo.IsName("shoot_ending") && !stateInfo.IsName("Shoot_multiple")))
+                isFinishingSingleShot = false;
+        }
+        if (!isWaitingForMultiShot && !isFinishingSingleShot && stateInfo.IsName("Shoot_Single"))
+        {
+            if (stateInfo.normalizedTime >= 0.75f && stateInfo.normalizedTime < 0.95f) EnterMultiShotWaitMode();
+        }
+        if (isWaitingForMultiShot)
+        {
+            multiShotTimer += Time.deltaTime;
+            if (Input.GetMouseButtonDown(0) && hunterAnimator.GetFloat("ShootSpeed") <= 0.01f) HandleManualMultiShot();
+            if (stateInfo.IsName("Shoot_multiple") && stateInfo.normalizedTime >= 0.92f && hunterAnimator.GetFloat("ShootSpeed") > 0)
+            {
+                hunterAnimator.Play("Shoot_multiple", 1, 0f);
+                hunterAnimator.SetFloat("ShootSpeed", 0f);
+            }
+            if (multiShotTimer >= 3.0f) ExitMultiShotWaitMode(false);
+        }
     }
+
+    private void StopShootingVisuals(bool snap)
+    {
+        isRotatedForShooting = false;
+        if (hasCapturedRotation)
+        {
+            StopCoroutine("RotateBackRoutine");
+            if (snap) hunterAnimator.transform.localRotation = originalModelRotation;
+            else StartCoroutine("RotateBackRoutine");
+        }
+        CmdResetGunRotation(snap);
+    }
+
+    private void HandleWeaponSwitchInput()
+    {
+        int nextIndex = -1;
+        if (Input.GetKeyDown(KeyCode.Alpha1)) nextIndex = 0;
+        else if (Input.GetKeyDown(KeyCode.Alpha2)) nextIndex = 1;
+        else if (Input.GetKeyDown(KeyCode.Alpha3)) nextIndex = 2;
+
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        if (scroll > 0f) nextIndex = (currentWeaponIndex + 1) % hunterWeapon.Length;
+        else if (scroll < 0f) nextIndex = (currentWeaponIndex - 1 + hunterWeapon.Length) % hunterWeapon.Length;
+
+        if (nextIndex != -1 && nextIndex != currentWeaponIndex) ChangeWeapon(nextIndex);
+    }
+
+    private void ChangeWeapon(int index)
+    {
+        // 1. 清理射击相关状态
+        if (isWaitingForMultiShot) ExitMultiShotWaitMode(true);
+        if (isRotatedForShooting) StopShootingVisuals(true);
+
+        lastAttackInputTime = -1f;
+        isFinishingSingleShot = false;
+
+        // 2. 强制复位状态机层 1，防止动作锁死
+        hunterAnimator.ResetTrigger("Shoot");
+        hunterAnimator.Play("Default", 1, 0f);
+
+        // 3. 执行网络同步切换
+        CmdChangeWeapon(index);
+        if (sceneScript != null)
+        {
+            WeaponBase wb = hunterWeapon[index].GetComponent<WeaponBase>();
+            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
+        }
+    }
+
+    [Command] private void CmdTriggerGunAnimation() => RpcTriggerGunAnimation();
 
     [ClientRpc]
     private void RpcTriggerGunAnimation()
     {
-        if (hunterAnimator != null)
+        if (hunterAnimator == null) return;
+        hunterAnimator.SetTrigger("Shoot");
+        // 只有静止开火时才侧身
+        if (hunterAnimator.GetFloat("speed") < 0.1f)
         {
-            hunterAnimator.SetTrigger("Shoot");
-            // --- 1. 开始转身 ---
-            // 我们旋转的是包含 Animator 的模型物体，这样不会干扰摄像机和射击方向
             Transform modelTrans = hunterAnimator.transform;
-            
-            // 第一次执行时记录原始角度（通常是 0,0,0）
-            if (!hasCapturedRotation)
-            {
-                originalModelRotation = modelTrans.localRotation;
-                hasCapturedRotation = true;
-            }
-
-            // 瞬间偏转或极快偏转到右侧
+            if (!hasCapturedRotation) { originalModelRotation = modelTrans.localRotation; hasCapturedRotation = true; }
             modelTrans.localRotation = originalModelRotation * Quaternion.Euler(0, shootVisualAngle, 0);
+            isRotatedForShooting = true;
         }
     }
-    // ----------------------------------------------------
-    // 4. 【关键接口】供 AnimationEventBridge 在第 11 帧调用
-    // ----------------------------------------------------
+
+    // 猎枪动画事件回调
     public void ExecuteAttackEffect()
     {
-        // --- 逻辑 A：所有客户端都会执行的视觉还原 ---
-        if (hunterAnimator != null && hasCapturedRotation)
+        if (!isLocalPlayer || isFinishingSingleShot) return;
+        WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        // 猎枪在此通过第11帧事件触发真实射击
+        if (currentWeapon != null && currentWeapon.weaponName == "Gun")
         {
-            // 停止之前的协程（防止多次开火冲突）并平滑转回
-            StopCoroutine("RotateBackRoutine"); 
-            StartCoroutine("RotateBackRoutine");
-        }
-        // 只有按下左键的本地玩家，才有资格在第11帧向服务器发送真实的开枪指令
-        // 防止所有客户端上的第11帧都跑去让服务器开火，导致一次开出N枪
-        if (isLocalPlayer)
-        {
-            WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-            
-            // 确保第11帧时，玩家手里拿的还是枪（防止动画期间切枪导致 Bug）
-            if (currentWeapon != null && (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher"))
-            {
-                Vector3 origin = Camera.main.transform.position;
-                Vector3 dir = Camera.main.transform.forward;
-                CmdExecuteRealGunFire(origin, dir);
-                // 如果当前已经在连发模式中，重置3秒计时
-                if (isWaitingForMultiShot)
-                {
-                    multiShotTimer = 0f;
-                }
-            }
+            CmdExecuteRealGunFire(Camera.main.transform.position, Camera.main.transform.forward);
+            if (isWaitingForMultiShot) multiShotTimer = 0f;
         }
     }
-    // 3. 进入等待模式的具体实现
+
     private void EnterMultiShotWaitMode()
     {
-        isWaitingForMultiShot = true;
-        multiShotTimer = 0f;
-
-        // 强制切到连发姿态的起始并暂停
+        isWaitingForMultiShot = true; multiShotTimer = 0f;
+        hunterAnimator.ResetTrigger("Shoot");
         hunterAnimator.Play("Shoot_multiple", 1, 0f);
-        hunterAnimator.speed = 0;
-        
-        Debug.Log("[Gun] Entered Multi-shot mode at Frame 24");
+        hunterAnimator.SetFloat("ShootSpeed", 0f);
     }
 
-    // 4. 手动连发
     private void HandleManualMultiShot()
     {
         multiShotTimer = 0f;
-        hunterAnimator.speed = 1.0f; // 恢复速度，让动画内部的 Event 触发 ExecuteAttackEffect
+        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
         hunterAnimator.Play("Shoot_multiple", 1, 0f);
     }
 
-    // 5. 退出等待模式（恢复到 Single 播完剩下的部分）
     private void ExitMultiShotWaitMode(bool wasInterrupted)
     {
         isWaitingForMultiShot = false;
-        hunterAnimator.speed = 1.0f; // 必须恢复速度，否则状态机永远不动
-
+        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
+        hunterAnimator.ResetTrigger("Shoot");
         if (wasInterrupted)
         {
-            // 【核心修改】强制跳转到第1层的 Default 状态（或你 GunLayer 的起始空状态）
-            // 这样可以彻底清除残留的连发动画
-            hunterAnimator.Play("Default", 1, 0f); 
-            // 也可以顺便重置开枪偏转，防止模型歪着
-            hunterAnimator.transform.localRotation = originalModelRotation;
+            hunterAnimator.Play("Default", 1, 0f);
+            if (isRotatedForShooting) StopShootingVisuals(true);
         }
         else
         {
-            // 正常 3 秒超时：继续播完 Single 的收尾
-            hunterAnimator.Play("Shoot_Single", 1, SHOOT_SINGLE_PAUSE_TIME);
+            isFinishingSingleShot = true;
+            hunterAnimator.Play("shoot_ending", 1, 0f);
+            if (isRotatedForShooting) StopShootingVisuals(false);
         }
     }
-    // 平滑转回来的协程
+
+    [Command] private void CmdResetGunRotation(bool snap) => RpcResetGunRotation(snap);
+    [ClientRpc]
+    private void RpcResetGunRotation(bool snap)
+    {
+        if (isLocalPlayer || hunterAnimator == null || !hasCapturedRotation) return;
+        StopCoroutine("RotateBackRoutine");
+        if (snap) hunterAnimator.transform.localRotation = originalModelRotation;
+        else StartCoroutine("RotateBackRoutine");
+    }
+
     private IEnumerator RotateBackRoutine()
     {
-        Transform modelTrans = hunterAnimator.transform;
         float elapsed = 0f;
-        Quaternion startRot = modelTrans.localRotation;
-
+        Quaternion startRot = hunterAnimator.transform.localRotation;
         while (elapsed < returnSmoothTime)
         {
             elapsed += Time.deltaTime;
-            float t = elapsed / returnSmoothTime;
-            // 使用 Slerp 平滑插值回到原始位置
-            modelTrans.localRotation = Quaternion.Slerp(startRot, originalModelRotation, t);
+            hunterAnimator.transform.localRotation = Quaternion.Slerp(startRot, originalModelRotation, elapsed / returnSmoothTime);
             yield return null;
         }
-        modelTrans.localRotation = originalModelRotation;
+        hunterAnimator.transform.localRotation = originalModelRotation;
     }
+
     [Command]
     private void CmdExecuteRealGunFire(Vector3 origin, Vector3 direction)
     {
-        WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-        if (currentWeapon != null && (currentWeapon.weaponName == "Gun" || currentWeapon.weaponName == "NetLauncher"))
-        {
-            // 1. 服务器执行真正的伤害和射线检测
-            currentWeapon.OnFire(origin, direction);
-            
-            // 2. 告诉所有客户端在此刻播放枪口特效和开火音效
-            RpcFireEffect(currentWeaponIndex);
-        }
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb != null) { wb.OnFire(origin, direction); RpcFireEffect(currentWeaponIndex); }
     }
-    [Command]
-    void CmdChangeWeapon(int weaponIndex)
-    {
-        if (weaponIndex >= 0 && weaponIndex < hunterWeapon.Length)
-        {
-            currentWeaponIndex = weaponIndex;
-        }
-    }
+
+    [Command] void CmdChangeWeapon(int index) => currentWeaponIndex = index;
+
     [Command]
     void CmdFireWeapon(Vector3 origin, Vector3 direction)
     {
-        WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-        if (currentWeapon != null && currentWeapon.CanFire())
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb != null && wb.CanFire())
         {
-            // 服务器更新冷却
-            currentWeapon.UpdateCooldown();
-            // 多态分发具体开火逻辑
-            currentWeapon.OnFire(origin, direction);
-            // 3. 告诉所有客户端同步特效
+            wb.UpdateCooldown();
+            wb.OnFire(origin, direction);
             RpcFireEffect(currentWeaponIndex);
         }
     }
+
     [ClientRpc]
-    void RpcFireEffect(int weaponIndex)
+    void RpcFireEffect(int index)
     {
-        // // ★ 关键细节：如果是本地玩家，刚才在 Update 里已经播过了，就别播第二次了
-        // if (isLocalPlayer) return;
-        // 触发事件
-        WeaponBase currentWeapon = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
-        // 猎枪的声音已在 RpcTriggerGunAnimation 中播放，此处跳过
-        OnWeaponFired?.Invoke(weaponIndex);
-        // --- 新增：触发近战动画逻辑 ---
+        WeaponBase wb = hunterWeapon[index].GetComponent<WeaponBase>();
+        OnWeaponFired?.Invoke(index);
+
         if (hunterAnimator != null)
-        { 
-            if (currentWeapon != null && currentWeapon.weaponName == "Fist") 
+        {
+            // 蜂蜜枪每次开火都重置连发动画第0帧，产生后坐力感
+            if (wb.weaponName == "HoneyGun")
             {
-                // --- 【核心修改：精准音效控制】 ---
-                // 根据即将播放的动画方向，选择对应的音效条目
-                string soundName = nextPunchIsRight ? "Punch_R" : "Punch_L";
-                
-                // 使用 Play3D 播放，这样其他玩家在附近也能听到
-                AudioManager.Instance?.Play3D(soundName, transform.position);
-                // ---------------------------------
-                // 1. 设置布尔值，决定这次走左边还是右边的动画分支
+                hunterAnimator.Play("Shoot_multiple", 1, 0f);
+            }
+            else if (wb.weaponName == "Fist")
+            {
+                string sName = nextPunchIsRight ? "Punch_R" : "Punch_L";
+                AudioManager.Instance?.Play3D(sName, transform.position);
                 hunterAnimator.SetBool("isPunchRight", nextPunchIsRight);
-
-                // 2. 触发攻击 Trigger0
                 hunterAnimator.SetTrigger("Punch");
-
-                // 3. 切换状态：下次攻击换另一只手
                 nextPunchIsRight = !nextPunchIsRight;
-                
-                UnityEngine.Debug.Log($"[Animation] Punching side: {(nextPunchIsRight ? "Left" : "Right")}");
             }
         }
     }
 
     private void HandleCooldownUI()
     {
-        if (sceneScript == null || hunterWeapon.Length == 0) return;
-
-        // 获取当前武器脚本
-        WeaponBase currentWeapon = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-
-        if (currentWeapon != null)
-        {
-            // 利用我们在 WeaponBase 做的修改获取冷却比例
-            float ratio = currentWeapon.CooldownRatio;
-
-            if (ratio > 0)
-            {
-                // 正在冷却中：显示 UI
-                // ratio 从 1 变到 0，代表类似“倒计时”的效果
-                // 颜色设为半透明青色 (Color.cyan) 或者 灰色 (Color.gray)
-                sceneScript.UpdateRevertUI(ratio, true);
-                wasCoolingDown = true;
-            }
-            else
-            {
-                // 冷却结束：隐藏 UI
-                if (wasCoolingDown)
-                {
-                    // 只有刚结束的那一帧调用一次隐藏，避免每帧都调用
-                    sceneScript.UpdateRevertUI(0, false);
-                    wasCoolingDown = false;
-                }
-            }
-        }
-    }
-
-    private void ChangeWeapon(int weaponIndex)
-    {
-        if (isWaitingForMultiShot)
-        {
-            // 如果正在等待时换枪，取消状态并恢复速度
-            ExitMultiShotWaitMode(true);
-        }
-        CmdChangeWeapon(weaponIndex);
         if (sceneScript == null) return;
-
-        string weaponName = "None";
-        if (weaponIndex >= 0 && weaponIndex < hunterWeapon.Length)
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb != null)
         {
-            WeaponBase weaponBase = hunterWeapon[weaponIndex].GetComponent<WeaponBase>();
-            if (weaponBase != null)
-            {
-                weaponName = weaponBase.weaponName;
-            }
+            float ratio = wb.CooldownRatio;
+            if (ratio > 0) { sceneScript.UpdateRevertUI(ratio, true); wasCoolingDown = true; }
+            else if (wasCoolingDown) { sceneScript.UpdateRevertUI(0, false); wasCoolingDown = false; }
         }
-        sceneScript.WeaponText.text = weaponName;
     }
+
     private void HandleExecutionCheck(Vector3 origin, Vector3 direction)
     {
         if (sceneScript == null) return;
         WitchPlayer targetWitch = null;
-        Vector3 startPos = origin + direction * 0.6f;
-        if (Physics.Raycast(startPos, direction, out RaycastHit hit, executionRange))
+        if (Physics.Raycast(origin + direction * 0.6f, direction, out RaycastHit hit, executionRange))
         {
-            GamePlayer target = hit.collider.GetComponent<GamePlayer>();
-            if (target is WitchPlayer witch)
-            {
-                if (witch.currentHealth > 0 && witch.isTrappedByNet)
-                {
-                    targetWitch = witch;
-                }
-            }
+            GamePlayer target = hit.collider.GetComponentInParent<GamePlayer>();
+            if (target is WitchPlayer witch && witch.currentHealth > 0 && witch.isTrappedByNet) targetWitch = witch;
         }
-        // UI 显示与输入处理
         if (targetWitch != null)
         {
             sceneScript.ExecutionText.gameObject.SetActive(true);
-
-            if (Input.GetKeyDown(KeyCode.F))
-            {
-                // 发送处决命令
-                CmdExecuteWitch(targetWitch.netId);
-                // 此时本地立刻隐藏文字
-                sceneScript.ExecutionText.gameObject.SetActive(false);
-            }
+            if (Input.GetKeyDown(KeyCode.F)) { CmdExecuteWitch(targetWitch.netId); sceneScript.ExecutionText.gameObject.SetActive(false); }
         }
-        else
-        {
-            sceneScript.ExecutionText.gameObject.SetActive(false);
-        }
+        else sceneScript.ExecutionText.gameObject.SetActive(false);
     }
 
     [Command]
-    private void CmdExecuteWitch(uint targetNetId)
+    private void CmdExecuteWitch(uint targetId)
     {
-        // 1. 校验：不能在硬直期间再次处决
         if (isStunned) return;
-
-        // 2. 获取目标对象
-        if (NetworkServer.spawned.TryGetValue(targetNetId, out NetworkIdentity identity))
+        if (NetworkServer.spawned.TryGetValue(targetId, out NetworkIdentity id))
         {
-            WitchPlayer witch = identity.GetComponent<WitchPlayer>();
-
-            if (witch != null && witch.isTrappedByNet)
+            WitchPlayer w = id.GetComponent<WitchPlayer>();
+            if (w != null && w.isTrappedByNet && Vector3.Distance(transform.position, w.transform.position) <= executionRange + 1.5f)
             {
-                float dist = Vector3.Distance(transform.position, witch.transform.position);
-                // 允许一点点网络延迟导致的距离误差 (比如 range + 1.0f)
-                if (dist <= executionRange + 1.5f)
-                {
-                    // A. 女巫扣血并释放
-                    witch.ServerGetExecuted(executionDamage);
-
-                    // B. 猎人进入硬直
-                    isStunned = true;
-
-                    // C. 开启协程或计时器，2秒后恢复
-                    StartCoroutine(RecoverFromExecution());
-
-                    Debug.Log($"{playerName} Executed {witch.playerName}!");
-                }
+                w.ServerGetExecuted(executionDamage);
+                isStunned = true; StartCoroutine(RecoverFromExecution());
             }
         }
     }
 
-    // 服务器端恢复协程
-    [Server]
-    private System.Collections.IEnumerator RecoverFromExecution()
-    {
-        yield return new WaitForSeconds(executionRecoveryTime);
-        isStunned = false;
-    }
-    // 致盲效果的 TargetRpc 方法
+    [Server] private IEnumerator RecoverFromExecution() { yield return new WaitForSeconds(executionRecoveryTime); isStunned = false; }
+
     [TargetRpc]
-    public void TargetBlindEffect(NetworkConnection target, float duration)
+    public void TargetBlindEffect(NetworkConnection t, float d)
     {
-        bool wasBlindActive = sceneScript != null && sceneScript.blindPanel != null && sceneScript.blindPanel.activeSelf;
-        if (!wasBlindActive)
-        {
-            AudioManager.Instance?.Play2D("致盲耳鸣音");
-        }
-        // 让猎人中女巫毒雾时，屏幕也产生眩晕扭曲
-        if (CameraDrunkEffect.Instance != null)
-        {
-            // 迷雾的扭曲可以稍微猛一点 (0.1f 强度)
-            CameraDrunkEffect.Instance.PlayDrunkEffect(duration, 0.1f);
-        }
-
-        //StartCoroutine(BlindRoutine(duration));
-        Debug.Log($"[Hunter] {playerName} is Blinded for {duration} seconds.");
+        if (sceneScript?.blindPanel != null && !sceneScript.blindPanel.activeSelf) AudioManager.Instance?.Play2D("致盲耳鸣音");
+        CameraDrunkEffect.Instance?.PlayDrunkEffect(d, 0.1f);
     }
 
-    private System.Collections.IEnumerator BlindRoutine(float duration)
-    {
-        // 假设 SceneScript 里有个全黑的 Image 叫 BlindPanel
-        if (sceneScript != null && sceneScript.blindPanel != null)
-        {
-            sceneScript.blindPanel.SetActive(true);
-            yield return new WaitForSeconds(duration);
-            sceneScript.blindPanel.SetActive(false);
-        }
-    }
-    // ----------------------------------------------------
-    // 跳跃动画触发
-    // ----------------------------------------------------
-
-    // 重写基类的跳跃钩子
     protected override void OnJumpTriggered()
     {
-        // 增加严格的落地判断：只有 CharacterController 认为在地面上，才发送跳跃指令
-        if (isLocalPlayer)
-        {
-            CmdTriggerJumpAnimation();
-        }
+        if (isLocalPlayer) CmdTriggerJumpAnimation();
     }
 
-    [Command]
-    void CmdTriggerJumpAnimation()
-    {
-        // 1. 在服务器端生成随机数 (0 或 1)
-        // 使用 Random.Range(0, 2) 会得到 0 或 1
-        int randomIndex = UnityEngine.Random.Range(0, 2);
-
-        // 2. 将随机索引传给 Rpc
-        RpcOnJump(randomIndex);
-    }
+    [Command] void CmdTriggerJumpAnimation() => RpcOnJump(UnityEngine.Random.Range(0, 2));
 
     [ClientRpc]
-    void RpcOnJump(int index)
+    void RpcOnJump(int i)
     {
         if (hunterAnimator != null)
         {
-            // 【关键修复】跳跃前强制把模型子物体的局部旋转归零
-            // 防止由于开火导致的偏转还没转回来就直接进入了跳跃动画
-            hunterAnimator.transform.localRotation = Quaternion.identity; 
-            // 3. 先设置随机索引，再触发 Trigger
-            hunterAnimator.SetInteger("JumpIndex", index);
-            hunterAnimator.SetTrigger("isJump");
+            hunterAnimator.transform.localRotation = Quaternion.identity;
+            hunterAnimator.SetInteger("JumpIndex", i); hunterAnimator.SetTrigger("isJump");
             AudioManager.Instance?.Play2D("jump_sound");
-            
-            // 调试打印，方便你查看触发了哪一个
-            // Debug.Log($"[Jump] Triggered animation index: {index}");
         }
     }
+
+    protected override void Attack() { }
 }
 ```
 
@@ -9261,182 +9244,6 @@ public class MagicBroom : WitchItemBase
     }
     public override void OnActivate()
     {
-    }
-}
-```
-
-## Player\NetBullet.cs
-
-```csharp
-using UnityEngine;
-using Mirror;
-
-public class NetBullet : MonoBehaviour
-{
-    [HideInInspector] public GameObject launcherRoot; 
-    [HideInInspector] public PlayerRole ownerRole;
-    [HideInInspector] public GameObject honeyPuddlePrefab;
-    [HideInInspector] public float puddleDuration = 12f;
-
-    [ServerCallback]
-    private void OnTriggerEnter(Collider other)
-    {
-        // 1. 彻底忽略发射者及其子物体
-        if (launcherRoot != null && (other.gameObject == launcherRoot || other.transform.IsChildOf(launcherRoot.transform)))
-            return;
-
-        // 2. 忽略所有触发器 (Trigger)
-        if (other.isTrigger) return;
-
-        Rigidbody rb = GetComponent<Rigidbody>();
-        Vector3 moveDirection = rb != null ? rb.velocity.normalized : transform.forward;
-
-        // 3. 检查玩家
-        GamePlayer target = other.GetComponent<GamePlayer>() ?? other.GetComponentInParent<GamePlayer>();
-        if (target != null)
-        {
-            if (target.playerRole != ownerRole || GameManager.Instance.FriendlyFire)
-            {
-                target.ServerGetTrapped();
-                // 修复点 1：第二个参数传入 target.transform 而不是 Vector3
-                HandlePuddleSpawn(target.transform.position, target.transform);
-                Destroy(gameObject);
-            }
-            return;
-        }
-
-        // 4. 环境碰撞处理
-        RaycastHit hit;
-        if (Physics.Raycast(transform.position - moveDirection * 0.5f, moveDirection, out hit, 2f))
-        {
-            // 修复点 2：第二个参数传入 null（或 hit.collider.transform 如果你想让它随地板移动）
-            HandlePuddleSpawn(hit.point, null);
-        }
-        else
-        {
-            // 修复点 3：兜底逻辑，第二个参数传入 null
-            HandlePuddleSpawn(transform.position, null);
-        }
-        Destroy(gameObject);
-    }
-
-    [Server]
-    private void HandlePuddleSpawn(Vector3 worldPoint, Transform parent)
-    {
-        if (honeyPuddlePrefab == null) return;
-
-        // 使用 Prefab 默认旋转
-        Quaternion spawnRot = honeyPuddlePrefab.transform.rotation;
-
-        GameObject puddle = Instantiate(honeyPuddlePrefab, worldPoint, spawnRot);
-
-        // 如果传入了父物体（说明命中了玩家）
-        if (parent != null)
-        {
-            puddle.transform.SetParent(parent);
-            // 设为父物体局部坐标的中心，并稍微抬高一点防止穿模
-            puddle.transform.localPosition = new Vector3(0, 0.05f, 0); 
-        }
-
-        // 全网同步生成
-        NetworkServer.Spawn(puddle);
-
-        // 自动销毁
-        Destroy(puddle, puddleDuration);
-    }
-}
-```
-
-## Player\NetLauncherWeapon.cs
-
-```csharp
-using UnityEngine;
-using Mirror;
-
-public class NetLauncherWeapon : WeaponBase
-{
-    [Header("蜂蜜贴花设置")]
-    public GameObject honeyOnObjectPrefab; 
-    private float puddleLifeTime = 12f;     
-
-    [Header("子弹设置")]
-    public GameObject netPrefab; 
-    private float BulletSpeed = 30f; 
-    private float lifeTime = 5f; 
-
-    private void Awake()
-    {
-        weaponName = "NetLauncher";
-    }
-
-  public override void OnFire(Vector3 origin, Vector3 direction)
-    {
-        nextFireTime = Time.time + fireRate;
-
-        if (isServer)
-        {
-            GamePlayer player = GetComponentInParent<GamePlayer>();
-            if (player == null) return;
-
-            // --- 1. 确定“参考起点” (设为玩家约胸口/脖子的高度) ---
-            Vector3 referencePoint = player.transform.position + Vector3.up * 1.4f;
-
-            // --- 2. 确定“目标落点” (从相机投射射线，保证指哪打哪) ---
-            Ray aimRay = new Ray(origin, direction);
-            Vector3 targetPoint;
-            int layerMask = ~LayerMask.GetMask("Bullet", "Ignore Raycast", "Player"); 
-            
-            if (Physics.Raycast(aimRay, out RaycastHit aimHit, 100f, layerMask))
-            {
-                targetPoint = aimHit.point;
-            }
-            else
-            {
-                targetPoint = origin + direction * 100f;
-            }
-
-            // --- 3. 【核心修改：确定生成起点】 ---
-            // forwardOffset: 往前推的距离，防止撞到自己，也符合武器伸出去的长度
-            // downwardOffset: 往下压的距离，让子弹看起来从腰部或手部位置射出
-            float forwardOffset = 1.5f; 
-            float downwardOffset = 0.6f; 
-
-            Vector3 spawnPos = referencePoint + (direction * forwardOffset) + (Vector3.down * downwardOffset);
-
-            // --- 4. 计算最终飞行方向 ---
-            // 关键：方向必须是从这个“偏低”的起点指向“准星”的目标点
-            Vector3 fireDir = (targetPoint - spawnPos).normalized;
-            
-            // 安全修正
-            if (Vector3.Dot(fireDir, direction) < 0)
-            {
-                fireDir = direction;
-            }
-
-            // --- 5. 生成与初始化 ---
-            GameObject net = Instantiate(netPrefab, spawnPos, Quaternion.LookRotation(fireDir));
-            
-            // ... 后续逻辑（NetBullet设置、Rigidbody速度设置、NetworkServer.Spawn等）保持不变
-            NetBullet bulletScript = net.GetComponent<NetBullet>();
-            if (bulletScript != null)
-            {
-                bulletScript.launcherRoot = player.gameObject; 
-                bulletScript.ownerRole = player.playerRole;
-                bulletScript.honeyPuddlePrefab = honeyOnObjectPrefab;
-                bulletScript.puddleDuration = puddleLifeTime;
-            }
-
-            Rigidbody rb = net.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.useGravity = true; 
-                rb.velocity = fireDir * BulletSpeed; 
-                rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-            }
-
-            NetworkServer.Spawn(net);
-            Destroy(net, lifeTime);
-        }
     }
 }
 ```
