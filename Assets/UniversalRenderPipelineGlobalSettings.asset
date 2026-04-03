@@ -18,7 +18,8 @@ MonoBehaviour:
   - Player
   - Prop
   - Ground
-  m_ValidRenderingLayers: 15
+  - Witch
+  m_ValidRenderingLayers: 31
   lightLayerName0: 
   lightLayerName1: 
   lightLayerName2: 

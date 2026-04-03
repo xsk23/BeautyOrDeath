@@ -6777,14 +6777,14 @@ public class PropTarget : NetworkBehaviour
         if (outlineInstance == null) return;
 
         Color finalColor = Color.yellow;
-        float zTestMode = 8f; // 默认为 Always (穿透)
+        float zTestMode = 4f; // 默认为 Always (穿透)
         float outlineWidth = 0.03f; // 默认宽度（对应你Shader里的默认值）
 
         if (isAncientTree)
         {
             // ================= 古树逻辑 =================
             finalColor = Color.green;
-            zTestMode = 8f; // 常驻穿透，方便女巫远距离看到目标
+            zTestMode = 4f; // 常驻穿透，方便女巫远距离看到目标
             outlineWidth = 0.05f;  // 古树可以稍微加粗，显示重要性
         }
         else
@@ -6794,7 +6794,7 @@ public class PropTarget : NetworkBehaviour
             {
                 // 正在被检视，但还没完成
                 finalColor = Color.yellow;
-                zTestMode = 8f; // 检视时穿透，方便看清轮廓
+                zTestMode = 4f; // 检视时穿透，方便看清轮廓
                 outlineWidth = 0.03f;
             }
             else if (isScouted)
@@ -8382,20 +8382,27 @@ public class GunWeapon : WeaponBase
 ```csharp
 using UnityEngine;
 using Mirror;
+using System.Collections;
 
 public class HoneyAccumulation : NetworkBehaviour
 {
-    [SyncVar] public float honeySaturation = 0f;
+    [SyncVar(hook = nameof(OnSaturationChanged))]
+    public float honeySaturation = 0f;
 
-    public float decayRate = 15f;      // 每秒自动降低15点
-    public float stunThreshold = 80f;  // 累积到80点定身
-    public float stunDuration = 3.0f;  // 定身3秒
+    [SyncVar] public bool hasVisibleDecal = false; // 标记身上是否有贴花
+
+    public float decayRate = 12f;
+    public float stunThreshold = 80f;
+    public float stunDuration = 3.5f;
 
     private WitchPlayer witch;
+    private Renderer[] witchRenderers;
+    private static readonly int BaseColorID = Shader.PropertyToID("_BaseColor");
 
     private void Awake()
     {
         witch = GetComponent<WitchPlayer>();
+        witchRenderers = GetComponentsInChildren<Renderer>(true);
     }
 
     [ServerCallback]
@@ -8408,11 +8415,18 @@ public class HoneyAccumulation : NetworkBehaviour
     }
 
     [Server]
-    public void ServerAddHoney(float amount)
+    public void ServerAddHoney(float amount, float decalDuration)
     {
         if (witch.isPermanentDead || witch.isInvulnerable || witch.isInSecondChance) return;
 
-        honeySaturation += amount;
+        honeySaturation = Mathf.Min(100f, honeySaturation + amount);
+
+        // 如果身上没有贴花，则允许子弹生成贴花，并开启倒计时重置标记
+        if (!hasVisibleDecal)
+        {
+            hasVisibleDecal = true;
+            StartCoroutine(ResetDecalFlag(decalDuration));
+        }
 
         if (honeySaturation >= stunThreshold && !witch.isStunned)
         {
@@ -8420,23 +8434,33 @@ public class HoneyAccumulation : NetworkBehaviour
         }
     }
 
-    private System.Collections.IEnumerator HoneyStunRoutine()
+    private IEnumerator ResetDecalFlag(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        hasVisibleDecal = false;
+    }
+
+    private IEnumerator HoneyStunRoutine()
     {
         witch.isStunned = true;
-        honeySaturation = 100f; // 表现为“满溢”
-
-        // 播放被黏住的音效
         GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", witch.transform.position);
-
         yield return new WaitForSeconds(stunDuration);
-
-        // 如果没有被其他真实的物理陷阱抓到，则解除定身
-        if (!witch.isTrappedByNet)
-        {
-            witch.isStunned = false;
-        }
-
+        if (!witch.isTrappedByNet) witch.isStunned = false;
         honeySaturation = 0f;
+    }
+
+    void OnSaturationChanged(float oldVal, float newVal)
+    {
+        float t = newVal / stunThreshold;
+        Color targetTint = Color.Lerp(Color.white, new Color(1f, 0.7f, 0f), t);
+        foreach (var r in witchRenderers)
+        {
+            if (r == null || r is ParticleSystemRenderer) continue;
+            MaterialPropertyBlock mpb = new MaterialPropertyBlock();
+            r.GetPropertyBlock(mpb);
+            mpb.SetColor(BaseColorID, targetTint);
+            r.SetPropertyBlock(mpb);
+        }
     }
 }
 ```
@@ -8451,53 +8475,105 @@ public class HoneyBullet : MonoBehaviour
 {
     [HideInInspector] public GameObject launcherRoot;
     [HideInInspector] public PlayerRole ownerRole;
-    [HideInInspector] public GameObject honeyPuddlePrefab;
-    [HideInInspector] public float puddleDuration = 8f;
+    [HideInInspector] public GameObject environmentDecalPrefab;
+    [HideInInspector] public GameObject playerDecalPrefab;
+
+    public float decalDuration = 8f;
+    private bool hasHit = false;
 
     [ServerCallback]
     private void OnTriggerEnter(Collider other)
     {
+        if (hasHit) return;
+
+        // 1. 忽略发射者及其子物体
         if (launcherRoot != null && (other.gameObject == launcherRoot || other.transform.IsChildOf(launcherRoot.transform)))
             return;
 
-        if (other.isTrigger) return;
-
-        // 检查是否命中玩家
+        // 2. 尝试获取玩家组件（处理 CharacterController 碰撞）
         GamePlayer target = other.GetComponent<GamePlayer>() ?? other.GetComponentInParent<GamePlayer>();
+
         if (target != null)
         {
-            // 队友伤害检查
             if (target.playerRole != ownerRole || GameManager.Instance.FriendlyFire)
             {
                 if (target is WitchPlayer witch)
                 {
-                    // 【核心修改】增加蜂蜜累积量
+                    hasHit = true;
                     HoneyAccumulation acc = witch.GetComponent<HoneyAccumulation>();
-                    if (acc != null) acc.ServerAddHoney(12f); // 命中一发加12点（约7发定身）
+                    if (acc != null)
+                    {
+                        bool canSpawn = !acc.hasVisibleDecal;
+                        acc.ServerAddHoney(12f, decalDuration);
+
+                        if (canSpawn) SpawnDecalAttachedToPlayer(witch);
+                    }
                 }
                 Destroy(gameObject);
             }
             return;
         }
 
-        // 命中环境，生成减速水潭
-        RaycastHit hit;
-        Vector3 moveDir = GetComponent<Rigidbody>().velocity.normalized;
-        if (Physics.Raycast(transform.position - moveDir, moveDir, out hit, 2f))
+        // 3. 命中环境逻辑
+        if (!other.isTrigger)
         {
-            HandlePuddleSpawn(hit.point, null);
+            hasHit = true;
+            SpawnDecalOnEnvironment();
+            Destroy(gameObject);
         }
-
-        Destroy(gameObject);
     }
 
     [Server]
-    private void HandlePuddleSpawn(Vector3 worldPoint, Transform parent)
+    private void SpawnDecalAttachedToPlayer(WitchPlayer witch)
     {
-        if (honeyPuddlePrefab == null) return;
-        GameObject puddle = Instantiate(honeyPuddlePrefab, worldPoint + Vector3.up * 0.05f, honeyPuddlePrefab.transform.rotation);
-        NetworkServer.Spawn(puddle);
-        Destroy(puddle, puddleDuration);
+        if (playerDecalPrefab == null) return;
+
+        // 【关键修复】：直接在女巫位置生成
+        // 投影方向旋转：X轴90度代表向下投影
+        Quaternion verticalRot = Quaternion.Euler(90f, 0f, 0f);
+
+        // 1. 实例化
+        GameObject decal = Instantiate(playerDecalPrefab);
+
+        // 2. 建立父子关系
+        decal.transform.SetParent(witch.transform);
+
+        // 3. 重置本地坐标（重要：不再使用世界坐标 hit.point）
+        // 设在女巫中心高度(1.0f)，确保向下投影能完全覆盖模型
+        decal.transform.localPosition = new Vector3(0, 1.0f, 0);
+        decal.transform.localRotation = verticalRot;
+
+        // 4. 强制缩放为 1 (防止女巫变身后贴花变扁)
+        decal.transform.localScale = Vector3.one;
+
+        // 5. 广播到所有客户端
+        NetworkServer.Spawn(decal);
+
+        // 6. 销毁逻辑
+        Destroy(decal, decalDuration);
+    }
+
+    [Server]
+    private void SpawnDecalOnEnvironment()
+    {
+        if (environmentDecalPrefab == null) return;
+
+        Vector3 moveDir = GetComponent<Rigidbody>().velocity.normalized;
+        if (moveDir == Vector3.zero) moveDir = transform.forward;
+
+        RaycastHit hit;
+        // 针对环境，依然使用射线来寻找地表精准位置
+        if (Physics.Raycast(transform.position - moveDir, moveDir, out hit, 5f, ~LayerMask.GetMask("Bullet", "Player")))
+        {
+            Quaternion verticalRot = Quaternion.Euler(90f, 0f, 0f);
+
+            // 在撞击点上方 0.3 米生成，垂直向下照
+            Vector3 spawnPos = hit.point + Vector3.up * 0.3f;
+
+            GameObject decal = Instantiate(environmentDecalPrefab, spawnPos, verticalRot);
+            NetworkServer.Spawn(decal);
+            Destroy(decal, decalDuration);
+        }
     }
 }
 ```
@@ -8535,58 +8611,54 @@ using Mirror;
 
 public class HoneyWeapon : WeaponBase
 {
-    [Header("蜂蜜贴花设置")]
-    public GameObject honeyOnObjectPrefab;
-    private float puddleLifeTime = 8f; // 缩短一点持续时间，防止连发产生太多物体
+    [Header("贴花预制体")]
+    public GameObject environmentDecalPrefab;
+    public GameObject playerDecalPrefab;
+
+    [Header("弹药设置")]
+    public int maxAmmo = 120;
+    [SyncVar] public int currentAmmo = 120;
 
     [Header("子弹设置")]
     public GameObject netPrefab;
     private float BulletSpeed = 35f;
-    private float lifeTime = 3f;
 
     private void Awake()
     {
         weaponName = "HoneyGun";
-        fireRate = 0.15f; // 【修改】0.15秒一发，实现快速连发
-        damage = 1f;      // 【修改】连发武器单发伤害设为极低，主要靠累积效果
+        fireRate = 0.15f;
+        damage = 1f;
+        currentAmmo = maxAmmo;
     }
 
     public override void OnFire(Vector3 origin, Vector3 direction)
     {
+        if (currentAmmo <= 0) return;
+
+        if (isServer) currentAmmo--;
+
         nextFireTime = Time.time + fireRate;
 
         if (isServer)
         {
             GamePlayer player = GetComponentInParent<GamePlayer>();
-            if (player == null) return;
-
             Vector3 referencePoint = player.transform.position + Vector3.up * 1.4f;
 
             Ray aimRay = new Ray(origin, direction);
-            Vector3 targetPoint;
-            int layerMask = ~LayerMask.GetMask("Bullet", "Ignore Raycast", "Player");
+            Vector3 targetPoint = (Physics.Raycast(aimRay, out RaycastHit aimHit, 100f, ~LayerMask.GetMask("Bullet", "Ignore Raycast")))
+                                  ? aimHit.point : origin + direction * 100f;
 
-            if (Physics.Raycast(aimRay, out RaycastHit aimHit, 100f, layerMask))
-                targetPoint = aimHit.point;
-            else
-                targetPoint = origin + direction * 100f;
-
-            float forwardOffset = 1.2f;
-            float downwardOffset = 0.4f;
-            Vector3 spawnPos = referencePoint + (direction * forwardOffset) + (Vector3.down * downwardOffset);
+            Vector3 spawnPos = referencePoint + (direction * 1.2f) + (Vector3.down * 0.4f);
             Vector3 fireDir = (targetPoint - spawnPos).normalized;
 
-            if (Vector3.Dot(fireDir, direction) < 0) fireDir = direction;
-
             GameObject net = Instantiate(netPrefab, spawnPos, Quaternion.LookRotation(fireDir));
-
             HoneyBullet bulletScript = net.GetComponent<HoneyBullet>();
             if (bulletScript != null)
             {
                 bulletScript.launcherRoot = player.gameObject;
                 bulletScript.ownerRole = player.playerRole;
-                bulletScript.honeyPuddlePrefab = honeyOnObjectPrefab;
-                bulletScript.puddleDuration = puddleLifeTime;
+                bulletScript.environmentDecalPrefab = environmentDecalPrefab;
+                bulletScript.playerDecalPrefab = playerDecalPrefab;
             }
 
             Rigidbody rb = net.GetComponent<Rigidbody>();
@@ -8594,12 +8666,17 @@ public class HoneyWeapon : WeaponBase
             {
                 rb.useGravity = true;
                 rb.velocity = fireDir * BulletSpeed;
-                rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
             }
 
             NetworkServer.Spawn(net);
-            Destroy(net, lifeTime);
+            Destroy(net, 3f);
         }
+    }
+
+    [Server]
+    public void ServerRefill()
+    {
+        currentAmmo = maxAmmo;
     }
 }
 ```
@@ -8616,6 +8693,11 @@ using System.Collections;
 
 public class HunterPlayer : GamePlayer
 {
+    [Header("Honey Supply Settings")]
+    public float refillTime = 2.0f;
+    public float maxRefillDistance = 2.5f; // 【关键修复】限制补给距离
+    private float refillTimer = 0f;
+    public LayerMask supplyLayer;
     [Header("Execution Settings")]
     public float executionRange = 3.0f;
     public float executionDamage = 40f;
@@ -8739,7 +8821,8 @@ public class HunterPlayer : GamePlayer
         {
             // 1. 处理猎枪（Gun）特有的 hijacks 逻辑
             HandleStandardGunAnimations();
-
+            UpdateHoneyGunUI();
+            HandleHoneyRefill();
             // 2. 动画速度同步
             float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);
@@ -8822,7 +8905,84 @@ public class HunterPlayer : GamePlayer
         // 全局同步 Animator speed
         if (hunterAnimator != null) hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
     }
+    private void UpdateHoneyGunUI()
+    {
+        if (sceneScript == null || sceneScript.WeaponText == null) return;
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb != null && wb.weaponName == "HoneyGun")
+        {
+            HoneyWeapon hw = (HoneyWeapon)wb;
+            // 实时显示弹药量
+            sceneScript.WeaponText.text = $"HoneyGun <color=yellow>[{hw.currentAmmo}/{hw.maxAmmo}]</color>";
+        }
+    }
 
+    private void HandleHoneyRefill()
+    {
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb == null || wb.weaponName != "HoneyGun") return;
+
+        HoneyWeapon hw = (HoneyWeapon)wb;
+        if (hw.currentAmmo >= hw.maxAmmo)
+        {
+            ResetRefill();
+            return;
+        }
+
+        // 1. 发射射线检测蜂蜜罐
+        Ray ray = Camera.main.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        if (Physics.Raycast(ray, out RaycastHit hit, maxRefillDistance, supplyLayer))
+        {
+            // 2. 检查 Tag 和【额外物理距离】
+            float actualDist = Vector3.Distance(transform.position, hit.point);
+            if (hit.collider.CompareTag("HoneySupply") && actualDist <= maxRefillDistance)
+            {
+                if (Input.GetMouseButton(1)) // 按住右键
+                {
+                    refillTimer += Time.deltaTime;
+                    float progress = Mathf.Clamp01(refillTimer / refillTime);
+                    if (sceneScript != null) sceneScript.UpdateRevertUI(progress, true);
+
+                    if (refillTimer >= refillTime)
+                    {
+                        CmdRefillHoneyGun();
+                        refillTimer = 0;
+                        AudioManager.Instance?.Play2D("UI点击（木头）");
+                    }
+                    return;
+                }
+            }
+        }
+
+        // 如果松开右键、没指着罐子、或者走远了，重置进度条
+        if (Input.GetMouseButtonUp(1) || refillTimer > 0)
+        {
+            ResetRefill();
+        }
+    }
+
+    private void ResetRefill()
+    {
+        refillTimer = 0;
+        if (sceneScript != null) sceneScript.UpdateRevertUI(0, false);
+    }
+
+    [Command]
+    private void CmdRefillHoneyGun()
+    {
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb != null && wb.weaponName == "HoneyGun")
+        {
+            // 距离二次校验（服务器端防止作弊）
+            // 查找最近的供应点
+            Collider[] pots = Physics.OverlapSphere(transform.position, maxRefillDistance + 1f, supplyLayer);
+            if (pots.Length > 0)
+            {
+                ((HoneyWeapon)wb).ServerRefill();
+                Debug.Log($"[Server] {playerName} refilled at pot.");
+            }
+        }
+    }
     private void HandleStandardGunAnimations()
     {
         AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
@@ -9143,7 +9303,7 @@ public class InvisibilityCloak : WitchItemBase
         UpdateCooldown();
         Debug.Log($"{player.playerName} activated Invisibility Cloak on server.");
         StartCoroutine(CloakRoutine(player));
-        RpcPlayScream(player.transform.position);
+        CmdTaunt(player.transform);
     }
 
     [Server]
@@ -9171,11 +9331,22 @@ public class InvisibilityCloak : WitchItemBase
         }
     }
 
-    [ClientRpc]
-    private void RpcPlayScream(Vector3 pos)
+
+    [Command]
+    private void CmdTaunt(Transform playerTransform)
     {
-        if (witchScreamSound != null)
-            AudioSource.PlayClipAtPoint(witchScreamSound, pos, 1.0f);
+        // 根据男女播放不同的嘲讽声音
+        Gender mygender = GetComponentInParent<WitchPlayer>().myGender;
+        string tauntSound = (mygender == Gender.Male) ? "WitchTaunt_Male" : "WitchTaunt_Female";
+        RpcTaunt(tauntSound, playerTransform.position);
+        
+    }
+
+    [ClientRpc]
+    void RpcTaunt(string tauntSound, Vector3 position)
+    {
+        
+            GameManager.Instance?.ServerPlay3DAt(tauntSound, position);
     }
 }
 ```
@@ -9272,12 +9443,12 @@ public class OnFireEffect : MonoBehaviour
 
     void OnDisable()
     {
-        // ★ 记得取消订阅，防止内存泄漏
+        // 取消订阅，防止内存泄漏
         if (hunterPlayer)
             hunterPlayer.OnWeaponFired -= PlayEffects;
     }
 
-    // 真正的特效逻辑写在这里
+    // 特效逻辑写在这里
     void PlayEffects(int weaponIndex)
     {
         if (weaponIndex < 0 || weaponIndex >= hunterPlayer.hunterWeapon.Length) return;
@@ -9982,6 +10153,11 @@ public class WitchPlayer : GamePlayer
     private float scoutTimer = 0f;
     public const float SCOUT_TIME_THRESHOLD = 0.5f;
 
+
+    [Header("脚步声设置")]
+    public float baseFootstepInterval = 0.5f; // 基础脚步间隔
+    protected float footstepTimer = 0f;
+
     // ========================================================================
     // 【新增】多人共乘（抢方向盘）核心变量
     // ========================================================================
@@ -10188,6 +10364,23 @@ public class WitchPlayer : GamePlayer
             {
                 moveSpeed = targetSpeed; // 本地先变，保证手感
                 CmdUpdateMoveSpeed(targetSpeed); // 通知服务器变
+                
+                if (possessedTreeNetId != 0)
+                {
+                    footstepTimer -= Time.deltaTime;
+                    if (footstepTimer <= 0f)
+                    {
+                        AudioManager.Instance?.Play3D("AncientTree_footstep", transform.position);
+                        // 根据当前速度动态调整下一次脚步的间隔 (走得越快脚步越密)
+                        float speedRatio = Mathf.Clamp(syncedSpeed / moveSpeed, 0.5f, 1.5f);
+                        footstepTimer = baseFootstepInterval / speedRatio;
+                    }
+                }
+                else
+                {
+                    // 停下时重置，保证下次一迈步就有声音
+                    footstepTimer = 0f; 
+                }
             }
         }
 
@@ -10251,6 +10444,10 @@ public class WitchPlayer : GamePlayer
 
         // 如果正在聊天或暂停，不处理交互
         if (isChatting || Cursor.lockState != CursorLockMode.Locked) return;
+        
+
+
+
 
         HandleInteraction(); // 只有非乘客才进行射线检测
         HandleMorphInput();  // 处理变身/还原输入
@@ -10881,8 +11078,16 @@ public class WitchPlayer : GamePlayer
                 if (isLocalPlayer) SetLocalVisibility(true); // 让自己可见
             }
         }
+
+        if (possessedTreeNetId != 0)
+        {
+            GameManager.Instance?.ServerPlay3DAt("古树变身", transform.position);
+        }
+        else
+        {
+            GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
+        }
         
-        GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
 
         // 确保这段代码在 UpdateCollider 之后执行
         
@@ -12151,6 +12356,32 @@ public class WitchPlayer : GamePlayer
         isSlowed = false;
         activeSlowRoutine = null;
     }
+
+    // 重写基类的跳跃方法，增加跳跃音效
+    protected override void OnJumpTriggered()
+    {
+        if (isLocalPlayer)
+        {
+            CmdTriggerWitchJump();
+        }
+    }
+
+    [Command]
+    void CmdTriggerWitchJump()
+    {
+        // 这里你可以在 AudioManager 里配一个 "WitchJump"
+        RpcOnJump();
+
+    }
+
+    [ClientRpc]
+    void RpcOnJump()
+    {
+        AudioManager.Instance?.Play2D("WitchJump");
+    }
+
+
+   
 }
 ```
 
@@ -13792,8 +14023,17 @@ public class TrapBehavior : NetworkBehaviour
 
             // --- 物理层面移动方案 ---
             Vector3 targetPos = witch.transform.position;
-            GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", targetPos);
-
+            
+            // 音效
+            if (witch.myGender == Gender.Male)
+            {
+                GameManager.Instance?.ServerPlay3DAt("TrapCaught_Male", targetPos);
+            }
+            else
+            {
+                GameManager.Instance?.ServerPlay3DAt("TrapCaught_Female", targetPos);
+            }
+            
             // 1. 先把刚体设为 Kinematic，这样它就不会被物理引擎推走或卡住
             rb.isKinematic = true; 
             
@@ -14656,30 +14896,51 @@ public class CameraData : ScriptableObject
 using UnityEngine;
 using System.Collections;
 
-[RequireComponent(typeof(Camera))]
-[ExecuteInEditMode] // 允许在编辑模式下运行，实时预览
 public class CameraDrunkEffect : MonoBehaviour
 {
     public static CameraDrunkEffect Instance;
 
-    [Header("眩晕材质 (拖入使用了 DrunkRipple Shader 的 Material)")]
+    [Header("URP 眩晕材质 (拖入 Mat_DrunkEffect)")]
     public Material effectMaterial;
 
-    [Header("Editor 预览测试 (仅在不播放技能时有效)")]
+    [Header("Editor 预览测试")]
     [Range(0f, 0.5f)] 
     public float previewIntensity = 0f;
     
     private float currentIntensity = 0f;
     private Coroutine activeRoutine;
 
+    private static readonly int StrengthProp = Shader.PropertyToID("_DistortionStrength");
+
     private void Awake()
     {
         Instance = this;
+        // 每次这个脚本醒来（进入游戏对局），强制清零
+        ResetEffect();
     }
 
-    /// <summary>
-    /// 触发屏幕眩晕效果 (游戏运行时调用)
-    /// </summary>
+    // 【新增】无论是因为死亡、切场景还是关游戏，只要脚本被禁用，必须清零！
+    private void OnDisable()
+    {
+        ResetEffect();
+    }
+
+    private void OnApplicationQuit()
+    {
+        ResetEffect();
+    }
+
+    // 统一的清零方法
+    private void ResetEffect()
+    {
+        currentIntensity = 0f;
+        previewIntensity = 0f;
+        if (effectMaterial != null) 
+        {
+            effectMaterial.SetFloat(StrengthProp, 0f);
+        }
+    }
+
     public void PlayDrunkEffect(float duration, float maxIntensity = 0.08f)
     {
         if (activeRoutine != null) StopCoroutine(activeRoutine);
@@ -14692,7 +14953,6 @@ public class CameraDrunkEffect : MonoBehaviour
         while (timer < duration)
         {
             timer += Time.deltaTime;
-            // 效果随时间逐渐减弱
             currentIntensity = Mathf.Lerp(maxIntensity, 0f, timer / duration);
             yield return null;
         }
@@ -14700,26 +14960,12 @@ public class CameraDrunkEffect : MonoBehaviour
         activeRoutine = null;
     }
 
-    // 屏幕后处理魔法函数
-    private void OnRenderImage(RenderTexture src, RenderTexture dest)
+    private void Update()
     {
-        if (effectMaterial != null)
-        {
-            // 如果技能正在播放(currentIntensity > 0)，就用技能的强度
-            // 否则，使用你在 Inspector 里拖动的预览强度(previewIntensity)
-            float finalIntensity = (currentIntensity > 0.001f) ? currentIntensity : previewIntensity;
+        if (effectMaterial == null) return;
 
-            if (finalIntensity > 0.001f)
-            {
-                // 将最终强度传递给 Shader 的 _DistortionStrength 属性
-                effectMaterial.SetFloat("_DistortionStrength", finalIntensity);
-                Graphics.Blit(src, dest, effectMaterial);
-                return;
-            }
-        }
-        
-        // 没扭曲时原画输出
-        Graphics.Blit(src, dest);
+        float finalIntensity = (currentIntensity > 0.001f) ? currentIntensity : previewIntensity;
+        effectMaterial.SetFloat(StrengthProp, finalIntensity);
     }
 }
 ```
@@ -17560,8 +17806,8 @@ public class RandomAnimationPlayer : MonoBehaviour
 from PIL import Image
 from rembg import remove
 
-input_path = r"Assets/Image/honey_ground/splash_normal.png"
-output_path = "Assets/Image/honey_ground/splash_normal_trans.png"
+input_path = r"D:\Program Files\Downloads\dece603b3c41d6ab5d8ac1184d6ef16f.png"
+output_path = "D:\Program Files\Downloads\dece603b3c41d6ab5d8ac1184d6ef16f_trans.png"
 
 # 打开图片
 input_image = Image.open(input_path)

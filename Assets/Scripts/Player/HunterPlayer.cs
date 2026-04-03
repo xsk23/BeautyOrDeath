@@ -7,6 +7,11 @@ using System.Collections;
 
 public class HunterPlayer : GamePlayer
 {
+    [Header("Honey Supply Settings")]
+    public float refillTime = 2.0f;
+    public float maxRefillDistance = 2.5f; // 【关键修复】限制补给距离
+    private float refillTimer = 0f;
+    public LayerMask supplyLayer;
     [Header("Execution Settings")]
     public float executionRange = 3.0f;
     public float executionDamage = 40f;
@@ -96,8 +101,18 @@ public class HunterPlayer : GamePlayer
         RefreshWeaponVisibility(currentWeaponIndex);
     }
 
-    public void OnWeaponChanged(int oldIndex, int newIndex) => RefreshWeaponVisibility(newIndex);
+    public void OnWeaponChanged(int oldIndex, int newIndex)
+    {
+        // 1. 刷新手里的武器模型
+        RefreshWeaponVisibility(newIndex);
 
+        // 2. 【核心修复】当且仅当网络同步确认、模型切换完毕时，再更新UI文字，防止被旧的 Update 覆盖
+        if (isLocalPlayer && sceneScript != null && sceneScript.WeaponText != null)
+        {
+            WeaponBase wb = hunterWeapon[newIndex].GetComponent<WeaponBase>();
+            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
+        }
+    }
     private void RefreshWeaponVisibility(int activeIndex)
     {
         if (hunterWeapon == null || hunterWeapon.Length == 0) return;
@@ -130,7 +145,8 @@ public class HunterPlayer : GamePlayer
         {
             // 1. 处理猎枪（Gun）特有的 hijacks 逻辑
             HandleStandardGunAnimations();
-
+            UpdateHoneyGunUI();
+            HandleHoneyRefill();
             // 2. 动画速度同步
             float horizontalSpeed = IsInMeleeLockout ? 0f : new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
             CmdUpdateAnimationSpeed(horizontalSpeed);
@@ -213,7 +229,84 @@ public class HunterPlayer : GamePlayer
         // 全局同步 Animator speed
         if (hunterAnimator != null) hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
     }
+    private void UpdateHoneyGunUI()
+    {
+        if (sceneScript == null || sceneScript.WeaponText == null) return;
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb != null && wb.weaponName == "HoneyGun")
+        {
+            HoneyWeapon hw = (HoneyWeapon)wb;
+            // 实时显示弹药量
+            sceneScript.WeaponText.text = $"HoneyGun <color=yellow>[{hw.currentAmmo}/{hw.maxAmmo}]</color>";
+        }
+    }
 
+    private void HandleHoneyRefill()
+    {
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb == null || wb.weaponName != "HoneyGun") return;
+
+        HoneyWeapon hw = (HoneyWeapon)wb;
+        if (hw.currentAmmo >= hw.maxAmmo)
+        {
+            ResetRefill();
+            return;
+        }
+
+        // 1. 发射射线检测蜂蜜罐
+        Ray ray = Camera.main.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        if (Physics.Raycast(ray, out RaycastHit hit, maxRefillDistance, supplyLayer))
+        {
+            // 2. 检查 Tag 和【额外物理距离】
+            float actualDist = Vector3.Distance(transform.position, hit.point);
+            if (hit.collider.CompareTag("HoneySupply") && actualDist <= maxRefillDistance)
+            {
+                if (Input.GetMouseButton(1)) // 按住右键
+                {
+                    refillTimer += Time.deltaTime;
+                    float progress = Mathf.Clamp01(refillTimer / refillTime);
+                    if (sceneScript != null) sceneScript.UpdateRevertUI(progress, true);
+
+                    if (refillTimer >= refillTime)
+                    {
+                        CmdRefillHoneyGun();
+                        refillTimer = 0;
+                        AudioManager.Instance?.Play2D("UI点击（木头）");
+                    }
+                    return;
+                }
+            }
+        }
+
+        // 如果松开右键、没指着罐子、或者走远了，重置进度条
+        if (Input.GetMouseButtonUp(1) || refillTimer > 0)
+        {
+            ResetRefill();
+        }
+    }
+
+    private void ResetRefill()
+    {
+        refillTimer = 0;
+        if (sceneScript != null) sceneScript.UpdateRevertUI(0, false);
+    }
+
+    [Command]
+    private void CmdRefillHoneyGun()
+    {
+        WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (wb != null && wb.weaponName == "HoneyGun")
+        {
+            // 距离二次校验（服务器端防止作弊）
+            // 查找最近的供应点
+            Collider[] pots = Physics.OverlapSphere(transform.position, maxRefillDistance + 1f, supplyLayer);
+            if (pots.Length > 0)
+            {
+                ((HoneyWeapon)wb).ServerRefill();
+                Debug.Log($"[Server] {playerName} refilled at pot.");
+            }
+        }
+    }
     private void HandleStandardGunAnimations()
     {
         AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
@@ -280,11 +373,6 @@ public class HunterPlayer : GamePlayer
 
         // 3. 执行网络同步切换
         CmdChangeWeapon(index);
-        if (sceneScript != null)
-        {
-            WeaponBase wb = hunterWeapon[index].GetComponent<WeaponBase>();
-            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
-        }
     }
 
     [Command] private void CmdTriggerGunAnimation() => RpcTriggerGunAnimation();

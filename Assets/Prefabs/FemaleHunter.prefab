@@ -25,7 +25,7 @@ Transform:
   m_GameObject: {fileID: 35618637952527346}
   serializedVersion: 2
   m_LocalRotation: {x: -0.7071069, y: -0.00000004470348, z: -0.00000017508863, w: 0.7071067}
-  m_LocalPosition: {x: 0.036, y: 0.588, z: 0.067}
+  m_LocalPosition: {x: 0.063, y: 0.648, z: 0.052}
   m_LocalScale: {x: 0.25063443, y: 0.28021324, z: 1.1903819}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -405,6 +405,11 @@ MonoBehaviour:
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
   sphereRadius: 20
+  refillTime: 2
+  maxRefillDistance: 2.5
+  supplyLayer:
+    serializedVersion: 2
+    m_Bits: 4096
   executionRange: 3
   executionDamage: 40
   executionRecoveryTime: 2
@@ -1243,6 +1248,8 @@ MonoBehaviour:
   nextFireTime: 0
   environmentDecalPrefab: {fileID: 1170279627823119884, guid: a5b953f91b3ee49419f26202b3c70e23, type: 3}
   playerDecalPrefab: {fileID: 1170279627823119884, guid: b3162cde1a70e14449d318181599a8f1, type: 3}
+  maxAmmo: 120
+  currentAmmo: 120
   netPrefab: {fileID: 7205609430714872807, guid: 1d70454db050b2e4686cc7e6e10a194c, type: 3}
 --- !u!4 &4072816447601825320 stripped
 Transform:
