@@ -19,12 +19,12 @@ public class OnFireEffect : MonoBehaviour
 
     void OnDisable()
     {
-        // ★ 记得取消订阅，防止内存泄漏
+        // 取消订阅，防止内存泄漏
         if (hunterPlayer)
             hunterPlayer.OnWeaponFired -= PlayEffects;
     }
 
-    // 真正的特效逻辑写在这里
+    // 特效逻辑写在这里
     void PlayEffects(int weaponIndex)
     {
         if (weaponIndex < 0 || weaponIndex >= hunterPlayer.hunterWeapon.Length) return;

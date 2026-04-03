@@ -61,6 +61,11 @@ public class WitchPlayer : GamePlayer
     private float scoutTimer = 0f;
     public const float SCOUT_TIME_THRESHOLD = 0.5f;
 
+
+    [Header("脚步声设置")]
+    public float baseFootstepInterval = 0.5f; // 基础脚步间隔
+    protected float footstepTimer = 0f;
+
     // ========================================================================
     // 【新增】多人共乘（抢方向盘）核心变量
     // ========================================================================
@@ -267,6 +272,23 @@ public class WitchPlayer : GamePlayer
             {
                 moveSpeed = targetSpeed; // 本地先变，保证手感
                 CmdUpdateMoveSpeed(targetSpeed); // 通知服务器变
+                
+                if (possessedTreeNetId != 0)
+                {
+                    footstepTimer -= Time.deltaTime;
+                    if (footstepTimer <= 0f)
+                    {
+                        AudioManager.Instance?.Play3D("AncientTree_footstep", transform.position);
+                        // 根据当前速度动态调整下一次脚步的间隔 (走得越快脚步越密)
+                        float speedRatio = Mathf.Clamp(syncedSpeed / moveSpeed, 0.5f, 1.5f);
+                        footstepTimer = baseFootstepInterval / speedRatio;
+                    }
+                }
+                else
+                {
+                    // 停下时重置，保证下次一迈步就有声音
+                    footstepTimer = 0f; 
+                }
             }
         }
 
@@ -330,6 +352,10 @@ public class WitchPlayer : GamePlayer
 
         // 如果正在聊天或暂停，不处理交互
         if (isChatting || Cursor.lockState != CursorLockMode.Locked) return;
+        
+
+
+
 
         HandleInteraction(); // 只有非乘客才进行射线检测
         HandleMorphInput();  // 处理变身/还原输入
@@ -960,8 +986,16 @@ public class WitchPlayer : GamePlayer
                 if (isLocalPlayer) SetLocalVisibility(true); // 让自己可见
             }
         }
+
+        if (possessedTreeNetId != 0)
+        {
+            GameManager.Instance?.ServerPlay3DAt("古树变身", transform.position);
+        }
+        else
+        {
+            GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
+        }
         
-        GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
 
         // 确保这段代码在 UpdateCollider 之后执行
         
@@ -2230,4 +2264,30 @@ public class WitchPlayer : GamePlayer
         isSlowed = false;
         activeSlowRoutine = null;
     }
+
+    // 重写基类的跳跃方法，增加跳跃音效
+    protected override void OnJumpTriggered()
+    {
+        if (isLocalPlayer)
+        {
+            CmdTriggerWitchJump();
+        }
+    }
+
+    [Command]
+    void CmdTriggerWitchJump()
+    {
+        // 这里你可以在 AudioManager 里配一个 "WitchJump"
+        RpcOnJump();
+
+    }
+
+    [ClientRpc]
+    void RpcOnJump()
+    {
+        AudioManager.Instance?.Play2D("WitchJump");
+    }
+
+
+   
 }

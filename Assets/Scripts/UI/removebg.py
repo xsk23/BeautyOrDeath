@@ -1,8 +1,8 @@
 from PIL import Image
 from rembg import remove
 
-input_path = r"Assets/Image/honey_ground/splash_normal.png"
-output_path = "Assets/Image/honey_ground/splash_normal_trans.png"
+input_path = r"D:\Program Files\Downloads\dece603b3c41d6ab5d8ac1184d6ef16f.png"
+output_path = "D:\Program Files\Downloads\dece603b3c41d6ab5d8ac1184d6ef16f_trans.png"
 
 # 打开图片
 input_image = Image.open(input_path)

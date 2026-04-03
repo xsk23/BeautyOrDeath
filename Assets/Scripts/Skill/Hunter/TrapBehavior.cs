@@ -108,8 +108,17 @@ public class TrapBehavior : NetworkBehaviour
 
             // --- 物理层面移动方案 ---
             Vector3 targetPos = witch.transform.position;
-            GameManager.Instance?.ServerPlay3DAt("机械click音陷阱用", targetPos);
-
+            
+            // 音效
+            if (witch.myGender == Gender.Male)
+            {
+                GameManager.Instance?.ServerPlay3DAt("TrapCaught_Male", targetPos);
+            }
+            else
+            {
+                GameManager.Instance?.ServerPlay3DAt("TrapCaught_Female", targetPos);
+            }
+            
             // 1. 先把刚体设为 Kinematic，这样它就不会被物理引擎推走或卡住
             rb.isKinematic = true; 
             

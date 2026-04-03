@@ -36,7 +36,7 @@ public class InvisibilityCloak : WitchItemBase
         UpdateCooldown();
         Debug.Log($"{player.playerName} activated Invisibility Cloak on server.");
         StartCoroutine(CloakRoutine(player));
-        RpcPlayScream(player.transform.position);
+        CmdTaunt(player.transform);
     }
 
     [Server]
@@ -64,10 +64,21 @@ public class InvisibilityCloak : WitchItemBase
         }
     }
 
-    [ClientRpc]
-    private void RpcPlayScream(Vector3 pos)
+
+    [Command]
+    private void CmdTaunt(Transform playerTransform)
     {
-        if (witchScreamSound != null)
-            AudioSource.PlayClipAtPoint(witchScreamSound, pos, 1.0f);
+        // 根据男女播放不同的嘲讽声音
+        Gender mygender = GetComponentInParent<WitchPlayer>().myGender;
+        string tauntSound = (mygender == Gender.Male) ? "WitchTaunt_Male" : "WitchTaunt_Female";
+        RpcTaunt(tauntSound, playerTransform.position);
+        
+    }
+
+    [ClientRpc]
+    void RpcTaunt(string tauntSound, Vector3 position)
+    {
+        
+            GameManager.Instance?.ServerPlay3DAt(tauntSound, position);
     }
 }
