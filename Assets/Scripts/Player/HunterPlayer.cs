@@ -46,10 +46,48 @@ public class HunterPlayer : GamePlayer
     private float multiShotTimer = 0f;
     private bool isFinishingSingleShot = false;
     private float currentBaseShootSpeed = 1.0f;
+    [Header("FPS Weapon Aiming")]
+    [Tooltip("调整此偏移量直到第一人称下枪口朝前 (通常 Y 或 Z 选一个设为 90 或 180)")]
+    public Vector3 fpWeaponRotationOffset = new Vector3(-92.22f, 0, -180); 
+    // 【新增】移动持枪时的目标局部坐标
+    public Vector3 weaponMoveHoldPos = new Vector3(-0.116f, -0.031f, 0.142f);
+    // 【新增】用于存储每把武器初始的局部旋转（相对于手部的坐标）
+    private Quaternion[] originalLocalRotations;
+    // 【新增】用于存储每把武器初始的局部坐标
+    private Vector3[] originalLocalPositions;
+    private bool rotationsCaptured = false;
+    // 用于平滑位置切换的权重
+    private float weaponOffsetWeight = 0f;
+    [Header("Network Sync - Aiming")]
+    [SyncVar] 
+    private float syncedPitch; // 同步的上下仰角
 
+    [Command(channel = 1)] // 使用不可靠信道提高频率
+    private void CmdSyncPitch(float pitch)
+    {
+        syncedPitch = pitch;
+    }
     protected override bool CanJump()
     {
         return base.CanJump() && !IsInMeleeLockout;
+    }
+    // 【核心逻辑：记录初始旋转】
+    private void CaptureWeaponRotations()
+    {
+        if (rotationsCaptured || hunterWeapon == null) return;
+        
+        originalLocalRotations = new Quaternion[hunterWeapon.Length];
+        originalLocalPositions = new Vector3[hunterWeapon.Length]; // 初始化位置数组
+
+        for (int i = 0; i < hunterWeapon.Length; i++)
+        {
+            if (hunterWeapon[i] != null)
+            {
+                originalLocalRotations[i] = hunterWeapon[i].transform.localRotation;
+                originalLocalPositions[i] = hunterWeapon[i].transform.localPosition; // 记录初始位置
+            }
+        }
+        rotationsCaptured = true;
     }
 
     protected override void HandleMovementOverride(Vector2 inputOverride)
@@ -93,6 +131,8 @@ public class HunterPlayer : GamePlayer
     {
         base.OnStartClient();
         lastPosition = transform.position;
+        // 客户端启动时记录一次初始旋转
+        CaptureWeaponRotations();
         RefreshWeaponVisibility(currentWeaponIndex);
     }
 
@@ -120,14 +160,39 @@ public class HunterPlayer : GamePlayer
             }
         }
     }
+    // ==========================================
+    // 新增：用于多段射击动画强制跳转的网络同步
+    // ==========================================
+    [Command]
+    private void CmdSyncGunAnimationState(string stateName, float shootSpeed)
+    {
+        RpcSyncGunAnimationState(stateName, shootSpeed);
+    }
 
-    public override void Update()
+    [ClientRpc]
+    private void RpcSyncGunAnimationState(string stateName, float shootSpeed)
+    {
+        // 如果是本地玩家自己，直接跳过（因为本地为了手感无延迟，已经提前执行过 Play 了，重播会导致抽搐）
+        if (isLocalPlayer) return; 
+        
+        if (hunterAnimator == null) return;
+
+        hunterAnimator.ResetTrigger("Shoot");
+        hunterAnimator.SetFloat("ShootSpeed", shootSpeed);
+        hunterAnimator.Play(stateName, 1, 0f);
+    }
+    public new void Update()
     {
         base.Update();
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
 
         if (isLocalPlayer)
         {
+            // --- 新增：同步仰角给服务器 ---
+            if (Mathf.Abs(syncedPitch - xRotation) > 0.1f) 
+            {
+                CmdSyncPitch(xRotation);
+            }
             // 1. 处理猎枪（Gun）特有的 hijacks 逻辑
             HandleStandardGunAnimations();
 
@@ -163,6 +228,8 @@ public class HunterPlayer : GamePlayer
                     else if (Input.GetMouseButtonUp(0)) // 松开按键
                     {
                         if (isRotatedForShooting) StopShootingVisuals(false);
+                        // 【关键修改】松开鼠标时，向服务器请求触发结束动画信号
+                        CmdTriggerHoneyGunEnd(); 
                     }
                 }
                 // 分支 B: 猎枪 & 拳头 (半自动 + 缓冲)
@@ -213,7 +280,76 @@ public class HunterPlayer : GamePlayer
         // 全局同步 Animator speed
         if (hunterAnimator != null) hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
     }
+    [Command]
+    private void CmdTriggerHoneyGunEnd()
+    {
+        RpcTriggerHoneyGunEnd();
+    }
 
+    [ClientRpc]
+    private void RpcTriggerHoneyGunEnd()
+    {
+        if (hunterAnimator != null)
+        {
+            // 1. 触发结束信号
+            hunterAnimator.SetTrigger("HoneyGunEnd");
+
+            // 2. 【核心修复】强制清理可能残留的 Shoot 触发器，防止回位后自动跳到 Shoot_Single
+            hunterAnimator.ResetTrigger("Shoot");
+        }
+    }
+    private void LateUpdate()
+    {
+        // 1. 基础检查
+        if (hunterWeapon == null || currentWeaponIndex < 0 || currentWeaponIndex >= hunterWeapon.Length) return;
+        GameObject weaponObj = hunterWeapon[currentWeaponIndex];
+        if (weaponObj == null || !rotationsCaptured) return;
+
+        WeaponBase wb = weaponObj.GetComponent<WeaponBase>();
+        bool isLongGun = wb != null && (wb.weaponName == "Gun" || wb.weaponName == "HoneyGun");
+        if (!isLongGun) return;
+
+        // 2. 判定行为（这部分本地和远程都可以判定，因为 syncedSpeed 是同步的，状态机通常也是同步的）
+        AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
+        bool isShooting = stateInfo.IsName("Shoot_Single") || stateInfo.IsName("Shoot_multiple") || stateInfo.IsName("shoot_ending");
+        bool isMoving = syncedSpeed > 0.1f;
+        
+        // 只有 移动 + 开火 时才位移坐标
+        bool shouldOffset = isShooting && isMoving;
+        weaponOffsetWeight = Mathf.Lerp(weaponOffsetWeight, shouldOffset ? 1f : 0f, Time.deltaTime * 10f);
+
+        // 3. 应用位置位移 (所有客户端都会为该猎人执行 Lerp)
+        weaponObj.transform.localPosition = Vector3.Lerp(
+            originalLocalPositions[currentWeaponIndex], 
+            weaponMoveHoldPos, 
+            weaponOffsetWeight
+        );
+
+        // 4. 应用旋转覆盖
+        if (isShooting && (GameManager.Instance == null || GameManager.Instance.CurrentState != GameManager.GameState.GameOver))
+        {
+            if (isLocalPlayer)
+            {
+                // 本地玩家：依然使用真实 Camera 旋转，保证绝对精准
+                if (Camera.main != null)
+                {
+                    weaponObj.transform.rotation = Camera.main.transform.rotation * Quaternion.Euler(fpWeaponRotationOffset);
+                }
+            }
+            else
+            {
+                // 远程玩家：利用同步的俯仰角和自身的偏航角合成旋转
+                // 我们需要模拟猎人头部的旋转方向
+                Quaternion lookRotation = Quaternion.Euler(syncedPitch, transform.eulerAngles.y, 0);
+                weaponObj.transform.rotation = lookRotation * Quaternion.Euler(fpWeaponRotationOffset);
+            }
+        }
+        else
+        {
+            // 没在开火时，将旋转权还给骨骼动画
+            weaponObj.transform.localRotation = originalLocalRotations[currentWeaponIndex];
+        }
+    }
     private void HandleStandardGunAnimations()
     {
         AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
@@ -234,6 +370,8 @@ public class HunterPlayer : GamePlayer
             {
                 hunterAnimator.Play("Shoot_multiple", 1, 0f);
                 hunterAnimator.SetFloat("ShootSpeed", 0f);
+                // 【新增】打完一发后再次进入等待状态，需要同步给别人
+                CmdSyncGunAnimationState("Shoot_multiple", 0f); 
             }
             if (multiShotTimer >= 3.0f) ExitMultiShotWaitMode(false);
         }
@@ -267,6 +405,8 @@ public class HunterPlayer : GamePlayer
 
     private void ChangeWeapon(int index)
     {
+        // 1. 复位当前武器旋转
+        ResetCurrentWeaponRotation();
         // 1. 清理射击相关状态
         if (isWaitingForMultiShot) ExitMultiShotWaitMode(true);
         if (isRotatedForShooting) StopShootingVisuals(true);
@@ -286,14 +426,33 @@ public class HunterPlayer : GamePlayer
             sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
         }
     }
-
+    // 【新增：复位旋转的工具方法】
+    private void ResetCurrentWeaponRotation()
+    {
+        if (!rotationsCaptured || hunterWeapon == null) return;
+        
+        GameObject weaponObj = hunterWeapon[currentWeaponIndex];
+        if (weaponObj != null)
+        {
+            // 还原旋转
+            weaponObj.transform.localRotation = originalLocalRotations[currentWeaponIndex];
+            // 还原位置
+            weaponObj.transform.localPosition = originalLocalPositions[currentWeaponIndex];
+        }
+    }
     [Command] private void CmdTriggerGunAnimation() => RpcTriggerGunAnimation();
 
     [ClientRpc]
     private void RpcTriggerGunAnimation()
     {
         if (hunterAnimator == null) return;
-        hunterAnimator.SetTrigger("Shoot");
+        // --- 新增：判断武器类型 ---
+        WeaponBase currentWp = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (currentWp != null && currentWp.weaponName == "Gun")
+        {
+            // 只有普通猎枪才触发 Shoot (进入 Shoot_Single)
+            hunterAnimator.SetTrigger("Shoot");
+        }
         // 只有静止开火时才侧身
         if (hunterAnimator.GetFloat("speed") < 0.1f)
         {
@@ -323,6 +482,8 @@ public class HunterPlayer : GamePlayer
         hunterAnimator.ResetTrigger("Shoot");
         hunterAnimator.Play("Shoot_multiple", 1, 0f);
         hunterAnimator.SetFloat("ShootSpeed", 0f);
+        // 【新增】告诉其他客户端：进入持枪等待状态
+        CmdSyncGunAnimationState("Shoot_multiple", 0f); 
     }
 
     private void HandleManualMultiShot()
@@ -330,6 +491,8 @@ public class HunterPlayer : GamePlayer
         multiShotTimer = 0f;
         hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
         hunterAnimator.Play("Shoot_multiple", 1, 0f);
+        // 【新增】告诉其他客户端：再次开火
+        CmdSyncGunAnimationState("Shoot_multiple", currentBaseShootSpeed); 
     }
 
     private void ExitMultiShotWaitMode(bool wasInterrupted)
@@ -341,12 +504,16 @@ public class HunterPlayer : GamePlayer
         {
             hunterAnimator.Play("Default", 1, 0f);
             if (isRotatedForShooting) StopShootingVisuals(true);
+            // 【新增】被打断回默认
+            CmdSyncGunAnimationState("Default", currentBaseShootSpeed);
         }
         else
         {
             isFinishingSingleShot = true;
             hunterAnimator.Play("shoot_ending", 1, 0f);
             if (isRotatedForShooting) StopShootingVisuals(false);
+            // 【新增】正常收枪
+            CmdSyncGunAnimationState("shoot_ending", currentBaseShootSpeed);
         }
     }
 

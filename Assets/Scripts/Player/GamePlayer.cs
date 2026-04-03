@@ -85,7 +85,7 @@ public abstract class GamePlayer : NetworkBehaviour
     public float airControl = 2.0f;
     [Header("Mouse Look")]
     public float mouseSensitivity = 2f;
-    float xRotation = 0f;
+    protected float xRotation = 0f;
 
     public GameObject crosshairUI;
     protected Vector3 velocity;

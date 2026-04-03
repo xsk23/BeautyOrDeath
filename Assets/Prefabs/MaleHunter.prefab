@@ -495,6 +495,9 @@ MonoBehaviour:
   hunterAnimator: {fileID: 4229076215460148434}
   attackBufferTime: 0.2
   fistAttackLockDuration: 0.6
+  fpWeaponRotationOffset: {x: -92.22, y: 0, z: -180}
+  rForearmBone: {fileID: 798770345609875838}
+  forearmRotateOffset: {x: 0, y: 15, z: 0}
 --- !u!114 &2353516808386118448
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1388,6 +1391,11 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 3204358501041126956}
   m_SourcePrefab: {fileID: 100100000, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
+--- !u!4 &798770345609875838 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 6976052342319732797, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
+  m_PrefabInstance: {fileID: 7771567815610239299}
+  m_PrefabAsset: {fileID: 0}
 --- !u!95 &4229076215460148434 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
