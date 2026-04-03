@@ -4,7 +4,7 @@ using TMPro;
 using Mirror;
 using System.Collections;
 using kcp2k;
-
+using System.Collections.Generic; // <--- 添加这一行
 public class ConnectUIManager : MonoBehaviour
 {
     [Header("主界面")]
@@ -47,6 +47,10 @@ public class ConnectUIManager : MonoBehaviour
     public bool autoRefresh = true;
     public float refreshInterval = 2f; // 每2秒更新一次
     private Coroutine autoRefreshCoroutine;
+    private Dictionary<int, RoomItemUI> spawnedRoomUI = new Dictionary<int, RoomItemUI>();
+    private RoomItemUI currentSelectedUI = null; // 记录当前选中的 UI 脚本实例
+    [Header("Background Reference")]
+    public Button backgroundClickBtn; // 在 Inspector 中拖入列表背景的大按钮
 
     void Start()
     {
@@ -130,6 +134,10 @@ public class ConnectUIManager : MonoBehaviour
             // 或者简单地依靠 StartMenu 里的 OnButtonJoin。
         }
         CheckForPendingErrors();
+        if (backgroundClickBtn != null)
+        {
+            backgroundClickBtn.onClick.AddListener(DeselectRoom);
+        }
     }
     private void CheckForPendingErrors()
     {
@@ -333,43 +341,125 @@ public class ConnectUIManager : MonoBehaviour
         }
     }
 
-    // --- 网络回调：刷新列表 UI ---
+    // --- 修改：增量更新房间列表 ---
     void OnRoomListRes(RoomListRes msg)
     {
-        // 1. 清空 Content 下的所有旧条目
-        foreach (Transform child in listContent) Destroy(child.gameObject);
+        // 1. 创建一个集合，记录本次从服务器传过来的所有房间 ID
+        HashSet<int> incomingRoomIds = new HashSet<int>();
 
-        // 2. 生成新条目
+        // 2. 遍历服务器发来的房间列表
         foreach (var info in msg.rooms)
         {
-            GameObject item = Instantiate(roomItemPrefab, listContent);
-            Debug.Log($"[RoomList] RoomId={info.roomId}, Name='{info.roomName}', HasPwd={info.hasPassword}, Players={info.currentPlayers}/{info.maxPlayers}");
-            // 获取并初始化 RoomItemUI 脚本
-            var script = item.GetComponent<RoomItemUI>();
-            if (script != null)
-            {
-                script.Setup(info, this);
-            }
-        }  
-    }
+            incomingRoomIds.Add(info.roomId);
 
+            // 情况 A：如果该房间已经在显示了，只更新它的数据（如人数）
+            if (spawnedRoomUI.TryGetValue(info.roomId, out RoomItemUI existingUI))
+            {
+                existingUI.Setup(info, this);
+                // 如果该房间刚好是玩家当前选中的那个，可能需要刷新 Manager 里的缓存信息
+                if (selectedRoomId == info.roomId)
+                {
+                    selectedRoomCurrentPlayers = info.currentPlayers;
+                    selectedRoomMaxPlayers = info.maxPlayers;
+                }
+            }
+            // 情况 B：如果是新房间，实例化它
+            else
+            {
+                GameObject itemObj = Instantiate(roomItemPrefab, listContent);
+                RoomItemUI script = itemObj.GetComponent<RoomItemUI>();
+                if (script != null)
+                {
+                    script.Setup(info, this);
+                    spawnedRoomUI.Add(info.roomId, script);
+                }
+            }
+        }
+
+        // 3. 处理“消失”的房间：遍历字典，如果 ID 不在本次传来的列表中，则删除该 UI
+        List<int> idsToRemove = new List<int>();
+        foreach (var kvp in spawnedRoomUI)
+        {
+            if (!incomingRoomIds.Contains(kvp.Key))
+            {
+                idsToRemove.Add(kvp.Key);
+            }
+        }
+
+        foreach (int id in idsToRemove)
+        {
+            // 如果被销毁的房间正是当前选中的房间，重置选中状态
+            if (selectedRoomId == id)
+            {
+                selectedRoomId = -1;
+                if (joinButton) joinButton.interactable = false;
+            }
+
+            // 销毁物体并从字典移除
+            if (spawnedRoomUI.TryGetValue(id, out RoomItemUI uiToDestroy))
+            {
+                Destroy(uiToDestroy.gameObject);
+                spawnedRoomUI.Remove(id);
+            }
+        }
+
+        // 4. (可选) 排序：如果需要严格按照服务器传回的顺序排列
+        for (int i = 0; i < msg.rooms.Length; i++)
+        {
+            int roomId = msg.rooms[i].roomId;
+            if (spawnedRoomUI.TryGetValue(roomId, out RoomItemUI uiScript))
+            {
+                // SetSiblingIndex 可以强制控制 UI 在布局组中的位置
+                uiScript.transform.SetSiblingIndex(i);
+            }
+        }
+        // 刷新结束后，检查之前选中的 ID 是否还在列表中
+        bool stillExists = false;
+        foreach(var info in msg.rooms) {
+            if(info.roomId == selectedRoomId) { stillExists = true; break; }
+        }
+        
+        if (!stillExists) {
+            DeselectRoom(); // 房间没了，自动取消选择
+        }
+    }
     // 1. 修改 SelectRoom 方法，增加人数参数
-    public void SelectRoom(int id, bool hasPwd, int current, int max)
+    public void SelectRoom(RoomItemUI itemUI, int id, bool hasPwd, int current, int max)
     {
-        // 记录数据
+        // 1. 取消上一个选择的高亮
+        if (currentSelectedUI != null)
+        {
+            currentSelectedUI.SetHighlight(false);
+        }
+
+        // 2. 更新当前选择
+        currentSelectedUI = itemUI;
         selectedRoomId = id;
         selectedRoomHasPwd = hasPwd;
         selectedRoomCurrentPlayers = current;
         selectedRoomMaxPlayers = max;
-        // 选中新房间时，隐藏之前的警告文字
+
+        // 3. 开启新的高亮
+        if (currentSelectedUI != null)
+        {
+            currentSelectedUI.SetHighlight(true);
+        }
+
         if (joinWarningText != null) joinWarningText.gameObject.SetActive(false);
-
-        // 激活 Join 按钮
         if (joinButton) joinButton.interactable = true;
-
-        Debug.Log($"已选中房间: {id}, 有密码: {hasPwd}");
     }
-
+    // 【新增】取消选择的方法
+    public void DeselectRoom()
+    {
+        if (currentSelectedUI != null)
+        {
+            currentSelectedUI.SetHighlight(false);
+        }
+        currentSelectedUI = null;
+        selectedRoomId = -1;
+        if (joinButton) joinButton.interactable = false;
+        Debug.Log("[UI] Selection Cleared.");
+    }
     // --- UI 逻辑: 点击 Join 按钮 ---
     void OnClickJoin()
     {
