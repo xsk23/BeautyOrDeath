@@ -26,6 +26,11 @@ public class StartMenu : MonoBehaviour
     public GameObject reconnectPanel;      // 对应你截图里的 ReconnectImage
     public TextMeshProUGUI errorText;      // 对应面板里的 Text (TMP)
     public Button okButton;                // 对应面板里的 Button
+    [Header("Help Panel Animation")]
+    public GameObject helpPanel;       // 拖入 HelpPanel
+    public float animDuration = 0.2f;  // 动画持续时间
+    private Coroutine activeAnim;      // 记录当前正在运行的动画
+    public float helpTargetScale = 1.3f; // 新增：设置目标缩放值
     private void Start()
     {
         if (manager == null)
@@ -78,6 +83,59 @@ public class StartMenu : MonoBehaviour
 
         // 【核心逻辑】检查是否有待显示的断线错误
         CheckForPendingDisconnect();
+        // --- 【新增代码】 ---
+        // 如果不在编辑器中运行（即打包出来的游戏），隐藏切换选项
+        #if !UNITY_EDITOR
+        if (networkDropdown != null)
+        {
+            networkDropdown.gameObject.SetActive(false);
+        }
+        #endif
+        // -------------------
+        if (helpPanel != null) {
+            helpPanel.transform.localScale = Vector3.zero;
+            helpPanel.SetActive(false);
+        }
+    }
+    // 供 Keyboard 按钮调用
+    public void OnButtonKeyboardOpen()
+    {
+        if (activeAnim != null) StopCoroutine(activeAnim);
+        AudioManager.Instance?.Play2D("UI选择"); // 播放你现有的音效
+        activeAnim = StartCoroutine(AnimatePanel(true));
+    }
+    // 供右上角 X 按钮调用
+    public void OnButtonKeyboardClose()
+    {
+        if (activeAnim != null) StopCoroutine(activeAnim);
+        AudioManager.Instance?.Play2D("UI点击（木头）"); 
+        activeAnim = StartCoroutine(AnimatePanel(false));
+    }
+    private IEnumerator AnimatePanel(bool show)
+    {
+        if (show) helpPanel.SetActive(true);
+
+        Vector3 fullScale = new Vector3(helpTargetScale, helpTargetScale, helpTargetScale);
+        Vector3 startScale = show ? Vector3.zero : fullScale;
+        Vector3 endScale = show ? fullScale : Vector3.zero;
+        float elapsed = 0f;
+
+        while (elapsed < animDuration)
+        {
+            elapsed += Time.deltaTime;
+            float percent = elapsed / animDuration;
+            
+            // 使用 SmoothStep 让动画有加速减速感，比线性更平滑
+            float curvePercent = Mathf.SmoothStep(0, 1, percent);
+            
+            helpPanel.transform.localScale = Vector3.Lerp(startScale, endScale, curvePercent);
+            yield return null;
+        }
+
+        helpPanel.transform.localScale = endScale;
+        if (!show) helpPanel.SetActive(false);
+        
+        activeAnim = null;
     }
     private void CheckForPendingDisconnect()
     {
@@ -248,18 +306,25 @@ public class StartMenu : MonoBehaviour
         // }
         // --- 2. 设置 IP 地址 ---
         // 0: Localhost, 1: Server (根据你在 Inspector 里 Dropdown 选项的顺序)
-        if (networkDropdown.value == 0)
-        {
-            // 选项 0: Localhost
-            manager.networkAddress = "localhost";
-            Debug.Log($"[Connect] Mode: Localhost ({manager.networkAddress})");
-        }
-        else
-        {
-            // 选项 1: Server
+        // --- 【修改这部分逻辑】 ---
+        #if UNITY_EDITOR
+            // 如果在编辑器中，根据 Dropdown 选择
+            if (networkDropdown.value == 0)
+            {
+                manager.networkAddress = "localhost";
+                Debug.Log($"[Connect] Editor Mode: Localhost");
+            }
+            else
+            {
+                manager.networkAddress = REMOTE_SERVER_IP;
+                Debug.Log($"[Connect] Editor Mode: Remote Server ({REMOTE_SERVER_IP})");
+            }
+        #else
+            // 如果是打包后的游戏，强制固定为服务器 IP
             manager.networkAddress = REMOTE_SERVER_IP;
-            Debug.Log($"[Connect] Mode: Remote Server ({manager.networkAddress})");
-        }
+            Debug.Log($"[Connect] Build Mode: Fixed Remote Server");
+        #endif
+        // ------------------------
 
         Debug.Log($"嘗試連線到 {manager.networkAddress}，名字：{name}");
 

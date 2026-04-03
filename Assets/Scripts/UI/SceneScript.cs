@@ -46,6 +46,11 @@ public class SceneScript : MonoBehaviour
     public VideoPlayer victoryVideoPlayer; // 在 Inspector 中拖入 VideoPlayer 组件
     public RawImage videoDisplay;         // 拖入用于显示视频的 RawImage
     public float videoFadeSpeed = 1.5f;    // 音频淡入淡出速度
+    [Header("Help Panel Animation")]
+    public GameObject helpPanel;          // 拖入 InGameCanvas 下的 HelpPanel
+    public float helpAnimDuration = 0.2f; // 动画时长
+    private Coroutine helpAnimCoroutine;
+    public float targetScale = 1.3f; // 新增：设置目标缩放值
     private void Awake()
     {
         // 1. 单例赋值
@@ -100,7 +105,54 @@ public class SceneScript : MonoBehaviour
             // 假设变身对应左键或右键，这里写 "LMB" 或 "Morph"
             morphSlot.Setup(morphIcon, "LMB"); 
         }
+        if (helpPanel != null)
+        {
+            helpPanel.transform.localScale = Vector3.zero;
+            helpPanel.SetActive(false);
+        }
+    }
+    // --- 新增方法供按钮调用 ---
 
+    public void ButtonOpenHelp()
+    {
+        if (helpAnimCoroutine != null) StopCoroutine(helpAnimCoroutine);
+        AudioManager.Instance?.Play2D("UI选择");
+        helpAnimCoroutine = StartCoroutine(AnimateHelpPanel(true));
+    }
+
+    public void ButtonCloseHelp()
+    {
+        if (helpAnimCoroutine != null) StopCoroutine(helpAnimCoroutine);
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+        helpAnimCoroutine = StartCoroutine(AnimateHelpPanel(false));
+    }
+
+    private IEnumerator AnimateHelpPanel(bool show)
+    {
+        if (show) helpPanel.SetActive(true);
+
+        // 修改这里：将 Vector3.one 替换为目标缩放值
+        Vector3 fullScale = new Vector3(targetScale, targetScale, targetScale);
+        Vector3 startScale = show ? Vector3.zero : fullScale;
+        Vector3 endScale = show ? fullScale : Vector3.zero;
+        float elapsed = 0f;
+
+        while (elapsed < helpAnimDuration)
+        {
+            elapsed += Time.deltaTime;
+            float percent = elapsed / helpAnimDuration;
+            
+            // 使用 SmoothStep 让缩放更有弹性感
+            float curvePercent = Mathf.SmoothStep(0, 1, percent);
+            
+            helpPanel.transform.localScale = Vector3.Lerp(startScale, endScale, curvePercent);
+            yield return null;
+        }
+
+        helpPanel.transform.localScale = endScale;
+        if (!show) helpPanel.SetActive(false);
+        
+        helpAnimCoroutine = null;
     }
     public void HideHUDForVictory()
     {
