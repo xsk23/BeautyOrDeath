@@ -8,7 +8,10 @@ public class RoomItemUI : MonoBehaviour
     public TextMeshProUGUI roomNameText;
     public GameObject lockIcon;
     public TextMeshProUGUI roomIdText;
-
+    [Header("Visual Selection")]
+    public Image backgroundImage; // 拖入条目的背景图组件
+    public Color normalColor = new Color(1,1,1,0); // 透明或默认色
+    public Color selectedColor = new Color(1, 0.9f, 0, 0.5f); // 选中的颜色（如淡金色）
     private int myRoomId;
     private bool hasPassword;
     private ConnectUIManager manager;
@@ -34,10 +37,20 @@ public class RoomItemUI : MonoBehaviour
 
         myButton.onClick.RemoveAllListeners();
         myButton.onClick.AddListener(OnItemClicked);
+        // 初始化视觉状态
+        SetHighlight(false);
     }
-
+    public void SetHighlight(bool active)
+    {
+        if (backgroundImage != null)
+        {
+            backgroundImage.color = active ? selectedColor : normalColor;
+        }
+    }
     void OnItemClicked()
     {
-        manager.SelectRoom(myRoomId, hasPassword, cachedInfo.currentPlayers, cachedInfo.maxPlayers); // 点击时传递人数信息
+        // 播放音效
+        AudioManager.Instance?.Play2D("UI选择");
+        manager.SelectRoom(this, myRoomId, hasPassword, cachedInfo.currentPlayers, cachedInfo.maxPlayers);
     }
 }

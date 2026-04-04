@@ -224,6 +224,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1584692650}
   - component: {fileID: 1584692649}
+  - component: {fileID: 1584692651}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -308,6 +309,29 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+--- !u!114 &1584692651
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1584692648}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Version: 3
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_LightLayerMask: 1
+  m_RenderingLayers: 1
+  m_CustomShadowLayers: 0
+  m_ShadowLayerMask: 1
+  m_ShadowRenderingLayers: 1
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
 --- !u!1 &1981398949
 GameObject:
   m_ObjectHideFlags: 0
@@ -398,7 +422,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2271102628899807786, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: sceneId
-      value: 2385160338
+      value: 1814263226
       objectReference: {fileID: 0}
     - target: {fileID: 4027211545326174645, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_SizeDelta.x
@@ -406,7 +430,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4027211545326174645, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: 0.000030517578
+      value: 0.000061035156
       objectReference: {fileID: 0}
     - target: {fileID: 4136929243209880768, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_Pivot.x
@@ -491,26 +515,6 @@ PrefabInstance:
     - target: {fileID: 5362426431042445234, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
       propertyPath: m_Name
       value: ConnectRoomCanvas
-      objectReference: {fileID: 0}
-    - target: {fileID: 5362426431042445234, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
-      propertyPath: m_IsActive
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7066374418056098918, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
-      propertyPath: m_AnchorMax.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7405946172218956704, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
-      propertyPath: m_Size
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7405946172218956704, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
-      propertyPath: m_Value
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 8078173929150796833, guid: 02afeaf04aaf0694e8986d67beebe3cc, type: 3}
-      propertyPath: m_AnchorMax.y
-      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
