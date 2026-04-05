@@ -11,6 +11,7 @@ public class HunterPlayer : GamePlayer
     public float refillTime = 2.0f;
     public float maxRefillDistance = 2.5f; // 【关键修复】限制补给距离
     private float refillTimer = 0f;
+    private HoneySupplyStation currentFocusStation; // 【新增】当前视线聚焦的蜂蜜罐
     public LayerMask supplyLayer;
     [Header("Execution Settings")]
     public float executionRange = 3.0f;
@@ -326,47 +327,101 @@ public class HunterPlayer : GamePlayer
     private void HandleHoneyRefill()
     {
         WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
-        if (wb == null || wb.weaponName != "HoneyGun") return;
+        // 如果手里拿的不是蜂蜜枪，清除高亮并返回
+        if (wb == null || wb.weaponName != "HoneyGun")
+        {
+            ClearStationFocus();
+            ResetRefill();
+            return;
+        }
 
         HoneyWeapon hw = (HoneyWeapon)wb;
+        // 如果子弹是满的，清除高亮并返回
         if (hw.currentAmmo >= hw.maxAmmo)
         {
+            ClearStationFocus();
             ResetRefill();
             return;
         }
 
         // 1. 发射射线检测蜂蜜罐
         Ray ray = Camera.main.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        HoneySupplyStation hitStation = null;
+
         if (Physics.Raycast(ray, out RaycastHit hit, maxRefillDistance, supplyLayer))
         {
-            // 2. 检查 Tag 和【额外物理距离】
             float actualDist = Vector3.Distance(transform.position, hit.point);
             if (hit.collider.CompareTag("HoneySupply") && actualDist <= maxRefillDistance)
             {
-                if (Input.GetMouseButton(1)) // 按住右键
-                {
-                    refillTimer += Time.deltaTime;
-                    float progress = Mathf.Clamp01(refillTimer / refillTime);
-                    if (sceneScript != null) sceneScript.UpdateRevertUI(progress, true);
+                // 获取蜂蜜罐专有脚本
+                hitStation = hit.collider.GetComponentInParent<HoneySupplyStation>();
 
-                    if (refillTimer >= refillTime)
-                    {
-                        CmdRefillHoneyGun();
-                        refillTimer = 0;
-                        AudioManager.Instance?.Play2D("UI点击（木头）");
-                    }
-                    return;
+                // 如果罐子已经是空的了，当作没看见（不准交互也不高亮）
+                if (hitStation != null && hitStation.isEmpty)
+                {
+                    hitStation = null;
                 }
             }
         }
 
-        // 如果松开右键、没指着罐子、或者走远了，重置进度条
+        // 2. 状态切换逻辑：处理高亮的开启与关闭
+        if (hitStation != currentFocusStation)
+        {
+            // 取消旧物体的高亮
+            if (currentFocusStation != null)
+            {
+                currentFocusStation.SetHighlight(false);
+            }
+
+            // 赋值新物体
+            currentFocusStation = hitStation;
+
+            // 开启新物体的高亮
+            if (currentFocusStation != null)
+            {
+                currentFocusStation.SetHighlight(true);
+            }
+        }
+
+        // 3. 处理按键补给逻辑
+        if (currentFocusStation != null)
+        {
+            if (Input.GetMouseButton(1)) // 按住右键
+            {
+                refillTimer += Time.deltaTime;
+                float progress = Mathf.Clamp01(refillTimer / refillTime);
+                if (sceneScript != null) sceneScript.UpdateRevertUI(progress, true);
+
+                if (refillTimer >= refillTime)
+                {
+                    // 【核心修改】将准星对准的具体罐子ID发给服务器
+                    CmdRefillHoneyGun(currentFocusStation.netId);
+                    refillTimer = 0;
+                    AudioManager.Instance?.Play2D("UI点击（木头）");
+
+                    // 吸完之后，因为罐子变空了，立刻清除本地的高亮焦点
+                    ClearStationFocus();
+                }
+                return;
+            }
+        }
+
+        // 如果松开右键、没指着满罐子、或者走远了，重置进度条
         if (Input.GetMouseButtonUp(1) || refillTimer > 0)
         {
             ResetRefill();
         }
     }
 
+    // 【新增】辅助方法：清除当前视线焦点和高亮
+    private void ClearStationFocus()
+    {
+        if (currentFocusStation != null)
+        {
+            currentFocusStation.SetHighlight(false);
+            currentFocusStation = null;
+        }
+    }
     private void ResetRefill()
     {
         refillTimer = 0;
@@ -374,18 +429,31 @@ public class HunterPlayer : GamePlayer
     }
 
     [Command]
-    private void CmdRefillHoneyGun()
+    private void CmdRefillHoneyGun(uint stationNetId)
     {
         WeaponBase wb = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
         if (wb != null && wb.weaponName == "HoneyGun")
         {
-            // 距离二次校验（服务器端防止作弊）
-            // 查找最近的供应点
-            Collider[] pots = Physics.OverlapSphere(transform.position, maxRefillDistance + 1f, supplyLayer);
-            if (pots.Length > 0)
+            // 在服务器上找到客户端请求的那个蜂蜜罐
+            if (NetworkServer.spawned.TryGetValue(stationNetId, out NetworkIdentity stationIdentity))
             {
-                ((HoneyWeapon)wb).ServerRefill();
-                Debug.Log($"[Server] {playerName} refilled at pot.");
+                HoneySupplyStation station = stationIdentity.GetComponent<HoneySupplyStation>();
+
+                // 确保罐子存在且没有被别人抢先吸干
+                if (station != null && !station.isEmpty)
+                {
+                    // 距离二次校验（服务器端防止作弊）
+                    float dist = Vector3.Distance(transform.position, station.transform.position);
+                    if (dist <= maxRefillDistance + 1.5f) // 留一点网络延迟的容差
+                    {
+                        ((HoneyWeapon)wb).ServerRefill();
+
+                        // 【核心修改】让蜂蜜罐执行消耗逻辑（变空并开启恢复倒计时）
+                        station.ServerConsume();
+
+                        Debug.Log($"[Server] {playerName} refilled at pot {stationNetId}.");
+                    }
+                }
             }
         }
     }
