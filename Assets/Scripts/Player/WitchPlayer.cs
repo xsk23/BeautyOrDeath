@@ -98,7 +98,7 @@ public class WitchPlayer : GamePlayer
     private BoxCollider humanBoxCollider; // 人形时的 BoxCollider
 
     [Header("Camera Smoothing")]
-    private Vector3 targetCamPos = new Vector3(0, 1.055f, 0.278f); 
+    private Vector3 targetCamPos = new Vector3(0, 1.055f, 0.278f);
     private bool isCamInitialized = false; // 用于初始化第一帧位置
     [Header("Morph Cooldown")]
     public float morphCooldown = 1.0f; // 1秒冷却
@@ -106,7 +106,7 @@ public class WitchPlayer : GamePlayer
     [Header("Reward Settings")]
     public int treesPerReward = 20; // 每检视20棵树获得一次奖励
     [SyncVar] public int pendingRewards = 0; // 待领取的奖励次数
-    [SyncVar] public int scoutedCount = 0; 
+    [SyncVar] public int scoutedCount = 0;
     // 增加一个列表，专门让服务器记住发给客户端的是哪三个奖励
     private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
@@ -129,7 +129,7 @@ public class WitchPlayer : GamePlayer
                 sceneScript.RunText.gameObject.SetActive(true);
                 sceneScript.RunText.text = "<color=cyan>GHOST MODE: WALLPASS ACTIVE</color>";
             }
-            else if (!isInSecondChance && !isPermanentDead) 
+            else if (!isInSecondChance && !isPermanentDead)
             {
                 sceneScript.RunText.gameObject.SetActive(false);
             }
@@ -139,24 +139,92 @@ public class WitchPlayer : GamePlayer
     // 统管玩家物理 Layer 层级 (封装以防止状态冲突)
     public void UpdatePlayerLayer()
     {
-        if (isPermanentDead) {
-            gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
-            return;
+        int rootLayer = 0;
+        int renderLayer = 0;
+
+        // 1. 确定物理交互用的“根物体”层级 (CharacterController/MeshCollider 所在层)
+        if (isPermanentDead)
+        {
+            rootLayer = LayerMask.NameToLayer("Ignore Raycast");
         }
-        if (isGhosted) {
-            int ghostLayer = LayerMask.NameToLayer("Ghost");
-            if (ghostLayer != -1) gameObject.layer = ghostLayer;
-            return;
+        else if (isGhosted)
+        {
+            rootLayer = LayerMask.NameToLayer("Ghost");
+            if (rootLayer == -1) rootLayer = gameObject.layer;
         }
-        if (isMorphed) {
-            gameObject.layer = LayerMask.NameToLayer("Prop");
-            return;
+        else if (isMorphed)
+        {
+            rootLayer = LayerMask.NameToLayer("Prop"); // 保证队友依然可以附身交互
+            if (rootLayer == -1) rootLayer = 0;
         }
-        
-        int playerLayer = LayerMask.NameToLayer("Player");
-        gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
+        else
+        {
+            rootLayer = LayerMask.NameToLayer("Player");
+            if (rootLayer == -1) rootLayer = 0;
+        }
+
+        gameObject.layer = rootLayer;
+
+        // 2. 确定我们要赋予的贴花目标层级 (Witch)
+        renderLayer = LayerMask.NameToLayer("Witch");
+        if (renderLayer == -1) renderLayer = LayerMask.NameToLayer("Player");
+        if (renderLayer == -1) renderLayer = 0;
+
+        // 如果处于特殊死亡或穿墙状态，需要重写视觉层级
+        if (isPermanentDead)
+        {
+            renderLayer = LayerMask.NameToLayer("Ignore Raycast");
+        }
+        else if (isGhosted && LayerMask.NameToLayer("Ghost") != -1)
+        {
+            renderLayer = LayerMask.NameToLayer("Ghost");
+        }
+
+        // ======================================================================
+        // 3. 【核心修改】按照要求：找到 PropContainer，遍历其子物体并修改 Layer
+        // ======================================================================
+        if (isMorphed && propContainer != null)
+        {
+            // 提取原生女巫的 Rendering Layer Mask（防 URP 贴花不显示的兜底保险）
+            uint targetRenderingLayerMask = 1;
+            if (myRenderer != null) targetRenderingLayerMask = myRenderer.renderingLayerMask;
+
+            // 遍历 PropContainer 下的所有子物体，寻找所有类型的 Renderer (MeshRenderer 等)
+            Renderer[] propRenderers = propContainer.GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer r in propRenderers)
+            {
+                // 将拥有 MeshRenderer 的 GameObject 的 Layer 设置为 "Witch"
+                r.gameObject.layer = renderLayer;
+
+                // 将 URP 的渲染遮罩与原生女巫同步，确保蜂蜜贴花能完美附着
+                r.renderingLayerMask = targetRenderingLayerMask;
+            }
+        }
+        else if (!isMorphed && humanModelGroup != null)
+        {
+            // 如果是人类形态，恢复人类的层级
+            SetRendererLayerRecursively(humanModelGroup, renderLayer);
+        }
     }
 
+    private void SetRendererLayerRecursively(GameObject obj, int newLayer, uint renderingLayerMask = 1)
+    {
+        if (obj == null) return;
+
+        obj.layer = newLayer;
+
+        // 【核心修改】：不光改 GameObject 的 Layer，同时改 Renderer 的 Rendering Layer Mask
+        Renderer r = obj.GetComponent<Renderer>();
+        if (r != null)
+        {
+            r.renderingLayerMask = renderingLayerMask;
+        }
+
+        foreach (Transform child in obj.transform)
+        {
+            SetRendererLayerRecursively(child.gameObject, newLayer, renderingLayerMask);
+        }
+    }
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
     {
@@ -232,7 +300,7 @@ public class WitchPlayer : GamePlayer
         {
             // 如果是本地玩家，确保清理掉可能存在的进度条 UI
             if (isLocalPlayer && sceneScript != null) sceneScript.UpdateRevertUI(0, false);
-            
+
             // 仍然允许执行基类的 Update 以保持重力/位置同步（如果没切换相机的话）
             // 但根据你的 RpcNotifyVictorySequence，主相机会断开父子关系，所以这里直接返回即可
             if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
@@ -272,7 +340,7 @@ public class WitchPlayer : GamePlayer
             {
                 moveSpeed = targetSpeed; // 本地先变，保证手感
                 CmdUpdateMoveSpeed(targetSpeed); // 通知服务器变
-                
+
                 if (possessedTreeNetId != 0)
                 {
                     footstepTimer -= Time.deltaTime;
@@ -287,7 +355,7 @@ public class WitchPlayer : GamePlayer
                 else
                 {
                     // 停下时重置，保证下次一迈步就有声音
-                    footstepTimer = 0f; 
+                    footstepTimer = 0f;
                 }
             }
         }
@@ -352,7 +420,7 @@ public class WitchPlayer : GamePlayer
 
         // 如果正在聊天或暂停，不处理交互
         if (isChatting || Cursor.lockState != CursorLockMode.Locked) return;
-        
+
 
 
 
@@ -366,8 +434,8 @@ public class WitchPlayer : GamePlayer
         if (isLocalPlayer && Camera.main != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
         {
             Camera.main.transform.localPosition = Vector3.Lerp(
-                Camera.main.transform.localPosition, 
-                targetCamPos, 
+                Camera.main.transform.localPosition,
+                targetCamPos,
                 Time.deltaTime * 5f
             );
         }
@@ -527,8 +595,8 @@ public class WitchPlayer : GamePlayer
     }
     // 处理射线检测和高亮
     private void HandleInteraction()
-    {   
-        if (isGhosted) 
+    {
+        if (isGhosted)
         {
             if (currentFocusProp != null) { currentFocusProp.SetHighlight(false); currentFocusProp = null; }
             return;
@@ -567,7 +635,7 @@ public class WitchPlayer : GamePlayer
                         CmdSetTreeScouted(hitProp.netId);
                         scoutTimer = 0f; // 触发后重置
                     }
-                }       
+                }
             }
             else
             {
@@ -603,7 +671,7 @@ public class WitchPlayer : GamePlayer
     private void HandleMorphInput()
     {
         // 【新增】幽灵态禁止变身和下车
-        if (isGhosted) return; 
+        if (isGhosted) return;
 
         if (isInSecondChance) return; // 复活赛期间锁死形态，不能通过长按左键恢复
         // --- 新增：检查冷却 ---
@@ -615,11 +683,11 @@ public class WitchPlayer : GamePlayer
         if (Input.GetMouseButton(0))
         {
             // 如果在冷却中，直接跳过
-            if (isCoolingDown) 
+            if (isCoolingDown)
             {
                 UnityEngine.Debug.Log("Morph is on cooldown...");
                 lmbHoldTimer = 0f;
-                return; 
+                return;
             }
             lmbHoldTimer += Time.deltaTime;
             // 【修改】如果是 变身状态(Host) 或者 乘客状态(Passenger)，都显示进度条
@@ -674,11 +742,11 @@ public class WitchPlayer : GamePlayer
             if (!isPassenger && lmbHoldTimer > 0.01f && lmbHoldTimer < 0.3f && !isMorphed && currentFocusProp != null)
             {
                 // 如果在冷却中，直接跳过
-                if (isCoolingDown) 
+                if (isCoolingDown)
                 {
                     UnityEngine.Debug.Log("Morph is on cooldown...");
                     lmbHoldTimer = 0f;
-                    return; 
+                    return;
                 }
                 // 【修改】使用 GetComponentInParent，因为脚本在父物体上
                 WitchPlayer otherWitch = currentFocusProp.GetComponentInParent<WitchPlayer>();
@@ -801,7 +869,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdMorph(int propID)
     {
-        
+
         // // 1. 先在服务器修改同步变量
         isMorphed = true;
         // // 2. 广播 Rpc 处理视觉
@@ -940,7 +1008,7 @@ public class WitchPlayer : GamePlayer
             }
             // 7. 刷新轮廓 (修改此段)
             var outline = GetComponent<PlayerOutline>();
-            if (outline != null && currentVisualProp != null) 
+            if (outline != null && currentVisualProp != null)
             {
                 // 【核心修复】：健壮的 Renderer 查找逻辑
                 Renderer[] allRenderers = currentVisualProp.GetComponentsInChildren<Renderer>();
@@ -963,20 +1031,20 @@ public class WitchPlayer : GamePlayer
                         break;
                     }
                 }
-                
-                if (targetR != null) 
+
+                if (targetR != null)
                 {
-                    outline.RefreshRenderer(targetR); 
+                    outline.RefreshRenderer(targetR);
                 }
             }
-            
+
             // 8. 【新增】启用我的 PropTarget，允许别人瞄准我变身后的模型
             myPropTarget.enabled = true;
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
             myPropTarget.ManualInit(propID, currentVisualProp);
             //gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
             UpdatePlayerLayer();
-            
+
             if (isStealthed)
             {
                 Renderer[] newRenderers = currentVisualProp.GetComponentsInChildren<Renderer>(true);
@@ -995,14 +1063,14 @@ public class WitchPlayer : GamePlayer
         {
             GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
         }
-        
+
 
         // 确保这段代码在 UpdateCollider 之后执行
-        
+
         if (isLocalPlayer)
         {
             // 强制刷新一次目标位置
-            UpdateCameraView(); 
+            UpdateCameraView();
         }
     }
 
@@ -1270,7 +1338,7 @@ public class WitchPlayer : GamePlayer
 
         // 1. 获取一个安全弹开的方向
         // 如果是刚从古树变回来，我们往后方和上方弹得更远一些
-        Vector3 escapeDir = -transform.forward; 
+        Vector3 escapeDir = -transform.forward;
         if (possessedTreeNetId != 0)
         {
             // 如果是古树，弹开距离要大于树的半径（假设树半径1.5米，我们弹开2米）
@@ -1296,7 +1364,8 @@ public class WitchPlayer : GamePlayer
         // 如果是从很矮的物体恢复，这个位移是必须的
         transform.position += Vector3.up * (originalCCHeight * 0.5f);
         // 3. 检查头顶是否有东西，如果有，尝试向后退一点
-        if (Physics.Raycast(transform.position, Vector3.up, out RaycastHit headHit, originalCCHeight)) {
+        if (Physics.Raycast(transform.position, Vector3.up, out RaycastHit headHit, originalCCHeight))
+        {
             // 如果头顶有树枝等碰撞体，将人稍微推离
             transform.position -= transform.forward * 0.5f;
         }
@@ -1315,7 +1384,7 @@ public class WitchPlayer : GamePlayer
             humanModelGroup.SetActive(true);
             Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
             foreach (var r in humanRenderers) r.enabled = true;
-            
+
             // 【核心修复】：重新从人类模型组里提取主渲染器
             // 巫师模型通常由 SkinnedMeshRenderer 组成
             foreach (var r in humanRenderers)
@@ -1360,14 +1429,16 @@ public class WitchPlayer : GamePlayer
         if (outline != null && myRenderer != null)
         {
             // 确保 outline 脚本指向新的（恢复的）人类渲染器
-            outline.RefreshRenderer(myRenderer); 
+            outline.RefreshRenderer(myRenderer);
         }
 
         // 强制刷新本地所有玩家的视觉状态
-        if (isLocalPlayer) {
+        if (isLocalPlayer)
+        {
             GetComponent<TeamVision>()?.ForceUpdateVisuals();
         }
-        else {
+        else
+        {
             // 如果是远程玩家，本地控制权在 NetworkClient.localPlayer 身上
             NetworkClient.localPlayer?.GetComponent<TeamVision>()?.ForceUpdateVisuals();
         }
@@ -1601,7 +1672,7 @@ public class WitchPlayer : GamePlayer
 
         // 稍微收缩半径，防止变身后变成“推土机”
         // 【修改】如果是古树（通过 possessedTreeNetId 判断），允许更大的半径
-        float maxR = (possessedTreeNetId != 0) ? 2.5f : 0.6f; 
+        float maxR = (possessedTreeNetId != 0) ? 2.5f : 0.6f;
         float newRadius = Mathf.Clamp(meshWidth * 0.35f, 0.15f, maxR);
         float newHeight = meshHeight;
 
@@ -1618,7 +1689,7 @@ public class WitchPlayer : GamePlayer
         cc.enabled = true;
 
         // 强制刷新物理状态
-        cc.Move(Vector3.down * 0.01f); 
+        cc.Move(Vector3.down * 0.01f);
     }
 
     /// 检测变身后是否与环境重叠，并将其强制弹开
@@ -1635,7 +1706,7 @@ public class WitchPlayer : GamePlayer
             // 方案：直接向玩家当前的后方弹开 0.8米，并向上微调 0.2米防止陷入地表
             // 这样可以有效跳出树叶的覆盖范围
             Vector3 escapeVector = (-transform.forward * 0.8f) + (Vector3.up * 0.2f);
-            
+
             // 检查后方是否有空间，如果后方也是死路（比如背靠墙），则只往上弹
             if (Physics.Raycast(transform.position + Vector3.up * 0.5f, -transform.forward, 1.0f, propLayer | groundLayer))
             {
@@ -1861,10 +1932,10 @@ public class WitchPlayer : GamePlayer
         if (myRenderer != null) myRenderer.enabled = false;
         // 隐藏名字
         // 只有在非结算状态下才隐藏名字，结算时（VictoryZone）名字必须留着
-        if (nameText != null) 
+        if (nameText != null)
         {
             bool isVictorySequence = GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver;
-            nameText.gameObject.SetActive(isVictorySequence); 
+            nameText.gameObject.SetActive(isVictorySequence);
         }
 
         // 2. 禁用交互：修改物理层级
@@ -1914,15 +1985,15 @@ public class WitchPlayer : GamePlayer
                 float targetY = controller.height * 0.9f;
                 // Z轴：半径距离（设为负数即在身后）。
                 // 建议 * 2.5f 以防相机卡在模型内部，如果你严格想要 "radius" 距离，去掉 "* 2.5f" 即可
-                float targetZ = controller.radius * 2.5f; 
-                targetCamPos = new Vector3(0, targetY, targetZ);   
+                float targetZ = controller.radius * 2.5f;
+                targetCamPos = new Vector3(0, targetY, targetZ);
             }
             else
             {
                 float targetY = controller.height * 1.3f;
-                float targetZ = -controller.radius * 6f; 
-                targetCamPos = new Vector3(0, targetY, targetZ);   
-            } 
+                float targetZ = -controller.radius * 6f;
+                targetCamPos = new Vector3(0, targetY, targetZ);
+            }
         }
         else
         {
@@ -1950,11 +2021,11 @@ public class WitchPlayer : GamePlayer
             {
                 prop.isScouted = true;
                 scoutedCount++;
-                
+
                 if (scoutedCount % treesPerReward == 0)
                 {
                     pendingRewards++;
-                    
+
                     // --- 【核心修改：在服务器生成奖励】 ---
                     serverRewardPool.Clear();
                     serverRewardPool.Add(CreateAttributeReward());
@@ -1977,7 +2048,7 @@ public class WitchPlayer : GamePlayer
         AudioManager.Instance?.Play2D("叮");
         // 客户端存一份，用于 UI 显示
         currentRewardPool = new List<RewardOption>(options);
-        
+
         // 显示 UI
         RewardUI.Instance.Show(options);
     }
@@ -1988,12 +2059,13 @@ public class WitchPlayer : GamePlayer
         string[] titles = { "Healing", "Vitality", "Mana Soul", "Arcane Flow", "Celerity" };
         string[] keys = { "AddHP", "MaxHP", "AddMana", "MaxMana", "MoveSpeed" };
         float[] values = { 30f, 50f, 40f, 50f, 1.5f };
-        
-        return new RewardOption { 
-            title = titles[rand], 
-            description = $"Permanent {keys[rand]} +{values[rand]}", 
-            category = RewardCategory.Attribute, 
-            rewardKey = keys[rand], 
+
+        return new RewardOption
+        {
+            title = titles[rand],
+            description = $"Permanent {keys[rand]} +{values[rand]}",
+            category = RewardCategory.Attribute,
+            rewardKey = keys[rand],
             value = values[rand],
             id = 0 // UI索引
         };
@@ -2004,67 +2076,73 @@ public class WitchPlayer : GamePlayer
         List<RewardOption> validOptions = new List<RewardOption>();
 
         // 辅助函数：检查某个类名是否在玩家选中的两个技能之中
-        System.Func<string, bool> isSkillEquipped = (className) => {
+        System.Func<string, bool> isSkillEquipped = (className) =>
+        {
             return syncedSkill1Name == className || syncedSkill2Name == className;
         };
 
         // 1. 检查迷雾 (Mist)
         if (isSkillEquipped("WitchSkill_Mist"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Abyssal Fog", 
-                description = "Mist radius doubled (2x size)", 
-                category = RewardCategory.Skill, 
-                rewardKey = "MistRadius", 
-                value = 2.0f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Abyssal Fog",
+                description = "Mist radius doubled (2x size)",
+                category = RewardCategory.Skill,
+                rewardKey = "MistRadius",
+                value = 2.0f
             });
         }
 
         // 2. 检查诅咒 (Curse)
         if (isSkillEquipped("WitchSkill_Curse"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Extended Hex", 
-                description = "Curse casting range +10m", 
-                category = RewardCategory.Skill, 
-                rewardKey = "CurseRange", 
-                value = 10f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Extended Hex",
+                description = "Curse casting range +10m",
+                category = RewardCategory.Skill,
+                rewardKey = "CurseRange",
+                value = 10f
             });
         }
 
         // 3. 检查分身 (Decoy)
         if (isSkillEquipped("WitchSkill_Decoy"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Triple Illusion", 
-                description = "Decoy spawns 3 clones per use", 
-                category = RewardCategory.Skill, 
-                rewardKey = "DecoyCount", 
-                value = 3f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Triple Illusion",
+                description = "Decoy spawns 3 clones per use",
+                category = RewardCategory.Skill,
+                rewardKey = "DecoyCount",
+                value = 3f
             });
         }
 
         // 4. 检查混沌 (Chaos)
         if (isSkillEquipped("WitchSkill_Chaos"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Chaos Mastery", 
-                description = "Chaos disturbance radius +5m", 
-                category = RewardCategory.Skill, 
-                rewardKey = "ChaosRadius", 
-                value = 5f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Chaos Mastery",
+                description = "Chaos disturbance radius +5m",
+                category = RewardCategory.Skill,
+                rewardKey = "ChaosRadius",
+                value = 5f
             });
         }
 
         // 兜底逻辑：如果什么都没带（或是同步还没完成），给一个法力值相关的奖励
         if (validOptions.Count == 0)
         {
-            return new RewardOption { 
-                title = "Arcane Surge", 
-                description = "Recover 50 Mana immediately", 
-                category = RewardCategory.Attribute, 
-                rewardKey = "AddMana", 
-                value = 50f 
+            return new RewardOption
+            {
+                title = "Arcane Surge",
+                description = "Recover 50 Mana immediately",
+                category = RewardCategory.Attribute,
+                rewardKey = "AddMana",
+                value = 50f
             };
         }
 
@@ -2085,14 +2163,14 @@ public class WitchPlayer : GamePlayer
     {
         // 使用服务器自己的 serverRewardPool 进行校验
         if (pendingRewards <= 0 || index >= serverRewardPool.Count) return;
-        
+
         pendingRewards--;
-        
+
         var choice = serverRewardPool[index];
         ApplyRewardEffect(choice.rewardKey, choice.value);
-        
+
         // 选完后清空服务器缓存
-        serverRewardPool.Clear(); 
+        serverRewardPool.Clear();
     }
 
     [Server]
@@ -2120,7 +2198,7 @@ public class WitchPlayer : GamePlayer
                 if (!isMorphed) moveSpeed = originalHumanSpeed;
                 break;
 
-        // ======= 迷雾增强 =======
+            // ======= 迷雾增强 =======
             case "MistRadius":
                 var mistSkill = GetComponent<WitchSkill_Mist>();
                 if (mistSkill) mistSkill.mistScale = val; // 将倍率设为 2.0
@@ -2128,9 +2206,9 @@ public class WitchPlayer : GamePlayer
 
             // ======= 诅咒增强 =======
             case "CurseRange":
-                // var curseSkill = GetComponent<WitchSkill_Curse>();
-                // if (curseSkill) curseSkill.range += val; // 增加射程
-                // break;
+            // var curseSkill = GetComponent<WitchSkill_Curse>();
+            // if (curseSkill) curseSkill.range += val; // 增加射程
+            // break;
 
             // ======= 原有的技能增强 =======
             case "DecoyCount":
@@ -2166,7 +2244,7 @@ public class WitchPlayer : GamePlayer
         // 获取场景中所有的 PropTarget
         PropTarget[] all = Object.FindObjectsOfType<PropTarget>();
         List<PropTarget> ancients = new List<PropTarget>();
-        
+
         foreach (var p in all)
         {
             // 找到古树且当前没被发现的
@@ -2176,18 +2254,18 @@ public class WitchPlayer : GamePlayer
                 p.isLocalTempRevealed = true; // 修改本地临时变量
             }
         }
-        
+
         // 【关键】手动通知本地的 TeamVision 刷新一次视觉
         GetComponent<TeamVision>()?.ForceUpdateVisuals();
-        
+
         yield return new WaitForSeconds(duration);
-        
+
         // 恢复
-        foreach (var p in ancients) 
+        foreach (var p in ancients)
         {
             if (p != null) p.isLocalTempRevealed = false;
         }
-        
+
         // 【关键】再次刷新视觉
         GetComponent<TeamVision>()?.ForceUpdateVisuals();
     }
@@ -2226,12 +2304,12 @@ public class WitchPlayer : GamePlayer
     public void ServerForceRevert()
     {
         if (!isMorphed) return;
-        
+
         // 强制种下手中的古树（如果有的话）
         ServerReleaseTreeAtCurrentPosition();
         // 踢下所有的乘客
         ServerKickAllPassengers();
-        
+
         isMorphed = false;
         morphedPropID = -1;
         // 服务器端也执行物理恢复
@@ -2248,7 +2326,7 @@ public class WitchPlayer : GamePlayer
         activeSlowRoutine = StartCoroutine(SafeSlowRoutine(multiplier, duration));
     }
 
-     [Server]
+    [Server]
     private IEnumerator SafeSlowRoutine(float multiplier, float duration)
     {
         isSlowed = true; // 锁死客户端的速度申请
@@ -2289,5 +2367,5 @@ public class WitchPlayer : GamePlayer
     }
 
 
-   
+
 }

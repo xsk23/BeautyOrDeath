@@ -7466,7 +7466,7 @@ public abstract class GamePlayer : NetworkBehaviour
     public float airControl = 2.0f;
     [Header("Mouse Look")]
     public float mouseSensitivity = 2f;
-    float xRotation = 0f;
+    protected float xRotation = 0f;
 
     public GameObject crosshairUI;
     protected Vector3 velocity;
@@ -8434,6 +8434,36 @@ public class HoneyAccumulation : NetworkBehaviour
         }
     }
 
+    // =================================================================
+    // 【核心新增】由服务器通知所有客户端：将刚生成的贴花绑定到女巫身上
+    // =================================================================
+    [ClientRpc]
+    public void RpcAttachDecal(NetworkIdentity decalIdentity)
+    {
+        if (decalIdentity == null || decalIdentity.gameObject == null) return;
+
+        Transform decalTransform = decalIdentity.transform;
+
+        // 1. 建立父子关系
+        decalTransform.SetParent(this.transform);
+
+        // 2. 强行修正相对位置、旋转和缩放 (向下投影覆盖女巫)
+        decalTransform.localPosition = new Vector3(0, 1.0f, 0);
+        decalTransform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        decalTransform.localScale = Vector3.one;
+
+        // 3. 【关键防御】如果预制体带了位置同步脚本，在成为子物体后必须禁用它
+        // 否则 Mirror 的网络同步会把客户端的贴花坐标不断扯回旧的世界坐标系
+        MonoBehaviour[] scripts = decalIdentity.GetComponents<MonoBehaviour>();
+        foreach (var s in scripts)
+        {
+            if (s.GetType().Name.Contains("NetworkTransform"))
+            {
+                s.enabled = false;
+            }
+        }
+    }
+
     private IEnumerator ResetDecalFlag(float delay)
     {
         yield return new WaitForSeconds(delay);
@@ -8523,33 +8553,37 @@ public class HoneyBullet : MonoBehaviour
         }
     }
 
+    // =================================================================
+    // 【核心修复】修改贴花的生成方式与同步逻辑
+    // =================================================================
     [Server]
     private void SpawnDecalAttachedToPlayer(WitchPlayer witch)
     {
         if (playerDecalPrefab == null) return;
 
-        // 【关键修复】：直接在女巫位置生成
-        // 投影方向旋转：X轴90度代表向下投影
-        Quaternion verticalRot = Quaternion.Euler(90f, 0f, 0f);
+        // 1. 首先在世界坐标系下实例化它（为了能正确的被 Spawn 广播）
+        GameObject decal = Instantiate(playerDecalPrefab, witch.transform.position, Quaternion.Euler(90f, 0f, 0f));
 
-        // 1. 实例化
-        GameObject decal = Instantiate(playerDecalPrefab);
-
-        // 2. 建立父子关系
-        decal.transform.SetParent(witch.transform);
-
-        // 3. 重置本地坐标（重要：不再使用世界坐标 hit.point）
-        // 设在女巫中心高度(1.0f)，确保向下投影能完全覆盖模型
-        decal.transform.localPosition = new Vector3(0, 1.0f, 0);
-        decal.transform.localRotation = verticalRot;
-
-        // 4. 强制缩放为 1 (防止女巫变身后贴花变扁)
-        decal.transform.localScale = Vector3.one;
-
-        // 5. 广播到所有客户端
+        // 2. 将物体广播到所有的客户端
         NetworkServer.Spawn(decal);
 
-        // 6. 销毁逻辑
+        // 3. 获取刚刚生成的贴花网路标识
+        NetworkIdentity decalNetId = decal.GetComponent<NetworkIdentity>();
+
+        // 4. 让被命中的女巫组件发起 RPC：告诉所有客户端，“把那个贴花拽过来当我儿子”
+        HoneyAccumulation acc = witch.GetComponent<HoneyAccumulation>();
+        if (acc != null && decalNetId != null)
+        {
+            acc.RpcAttachDecal(decalNetId);
+        }
+
+        // 5. 在服务器端也强行建立一下父子关系，保证逻辑严谨
+        decal.transform.SetParent(witch.transform);
+        decal.transform.localPosition = new Vector3(0, 1.0f, 0);
+        decal.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        decal.transform.localScale = Vector3.one;
+
+        // 6. 销毁定时器
         Destroy(decal, decalDuration);
     }
 
@@ -8648,7 +8682,7 @@ public class HoneyWeapon : WeaponBase
             Vector3 targetPoint = (Physics.Raycast(aimRay, out RaycastHit aimHit, 100f, ~LayerMask.GetMask("Bullet", "Ignore Raycast")))
                                   ? aimHit.point : origin + direction * 100f;
 
-            Vector3 spawnPos = referencePoint + (direction * 1.2f) + (Vector3.down * 0.4f);
+            Vector3 spawnPos = referencePoint + (direction * 1.5f) + (Vector3.down * 0.6f);
             Vector3 fireDir = (targetPoint - spawnPos).normalized;
 
             GameObject net = Instantiate(netPrefab, spawnPos, Quaternion.LookRotation(fireDir));
@@ -8737,10 +8771,51 @@ public class HunterPlayer : GamePlayer
     private float multiShotTimer = 0f;
     private bool isFinishingSingleShot = false;
     private float currentBaseShootSpeed = 1.0f;
+    [Header("FPS Weapon Aiming")]
+    [Tooltip("调整此偏移量直到第一人称下枪口朝前 (通常 Y 或 Z 选一个设为 90 或 180)")]
+    public Vector3 fpWeaponRotationOffset = new Vector3(-92.22f, 0, -180);
+    // 【新增】移动持枪时的目标局部坐标
+    public Vector3 weaponMoveHoldPos = new Vector3(-0.116f, -0.031f, 0.142f);
+    // 【新增】用于存储每把武器初始的局部旋转（相对于手部的坐标）
+    private Quaternion[] originalLocalRotations;
+    // 【新增】用于存储每把武器初始的局部坐标
+    private Vector3[] originalLocalPositions;
+    private bool rotationsCaptured = false;
+    // 用于平滑位置切换的权重
+    private float weaponOffsetWeight = 0f;
+    private float rotationLerpWeight = 0f; // 0 为完全跟随动画，1 为完全对准准星
+    [Tooltip("旋转平滑速度")]
+    public float rotationSmoothSpeed = 15f;
+    [Header("Network Sync - Aiming")]
+    [SyncVar]
+    private float syncedPitch; // 同步的上下仰角
 
+    [Command(channel = 1)] // 使用不可靠信道提高频率
+    private void CmdSyncPitch(float pitch)
+    {
+        syncedPitch = pitch;
+    }
     protected override bool CanJump()
     {
         return base.CanJump() && !IsInMeleeLockout;
+    }
+    // 【核心逻辑：记录初始旋转】
+    private void CaptureWeaponRotations()
+    {
+        if (rotationsCaptured || hunterWeapon == null) return;
+
+        originalLocalRotations = new Quaternion[hunterWeapon.Length];
+        originalLocalPositions = new Vector3[hunterWeapon.Length]; // 初始化位置数组
+
+        for (int i = 0; i < hunterWeapon.Length; i++)
+        {
+            if (hunterWeapon[i] != null)
+            {
+                originalLocalRotations[i] = hunterWeapon[i].transform.localRotation;
+                originalLocalPositions[i] = hunterWeapon[i].transform.localPosition; // 记录初始位置
+            }
+        }
+        rotationsCaptured = true;
     }
 
     protected override void HandleMovementOverride(Vector2 inputOverride)
@@ -8784,11 +8859,23 @@ public class HunterPlayer : GamePlayer
     {
         base.OnStartClient();
         lastPosition = transform.position;
+        // 客户端启动时记录一次初始旋转
+        CaptureWeaponRotations();
         RefreshWeaponVisibility(currentWeaponIndex);
     }
 
-    public void OnWeaponChanged(int oldIndex, int newIndex) => RefreshWeaponVisibility(newIndex);
+    public void OnWeaponChanged(int oldIndex, int newIndex)
+    {
+        // 1. 刷新手里的武器模型
+        RefreshWeaponVisibility(newIndex);
 
+        // 2. 【核心修复】当且仅当网络同步确认、模型切换完毕时，再更新UI文字，防止被旧的 Update 覆盖
+        if (isLocalPlayer && sceneScript != null && sceneScript.WeaponText != null)
+        {
+            WeaponBase wb = hunterWeapon[newIndex].GetComponent<WeaponBase>();
+            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
+        }
+    }
     private void RefreshWeaponVisibility(int activeIndex)
     {
         if (hunterWeapon == null || hunterWeapon.Length == 0) return;
@@ -8811,14 +8898,39 @@ public class HunterPlayer : GamePlayer
             }
         }
     }
+    // ==========================================
+    // 新增：用于多段射击动画强制跳转的网络同步
+    // ==========================================
+    [Command]
+    private void CmdSyncGunAnimationState(string stateName, float shootSpeed)
+    {
+        RpcSyncGunAnimationState(stateName, shootSpeed);
+    }
 
-    public override void Update()
+    [ClientRpc]
+    private void RpcSyncGunAnimationState(string stateName, float shootSpeed)
+    {
+        // 如果是本地玩家自己，直接跳过（因为本地为了手感无延迟，已经提前执行过 Play 了，重播会导致抽搐）
+        if (isLocalPlayer) return;
+
+        if (hunterAnimator == null) return;
+
+        hunterAnimator.ResetTrigger("Shoot");
+        hunterAnimator.SetFloat("ShootSpeed", shootSpeed);
+        hunterAnimator.Play(stateName, 1, 0f);
+    }
+    public new void Update()
     {
         base.Update();
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
 
         if (isLocalPlayer)
         {
+            // --- 新增：同步仰角给服务器 ---
+            if (Mathf.Abs(syncedPitch - xRotation) > 0.1f)
+            {
+                CmdSyncPitch(xRotation);
+            }
             // 1. 处理猎枪（Gun）特有的 hijacks 逻辑
             HandleStandardGunAnimations();
             UpdateHoneyGunUI();
@@ -8855,6 +8967,8 @@ public class HunterPlayer : GamePlayer
                     else if (Input.GetMouseButtonUp(0)) // 松开按键
                     {
                         if (isRotatedForShooting) StopShootingVisuals(false);
+                        // 【关键修改】松开鼠标时，向服务器请求触发结束动画信号
+                        CmdTriggerHoneyGunEnd();
                     }
                 }
                 // 分支 B: 猎枪 & 拳头 (半自动 + 缓冲)
@@ -8880,8 +8994,20 @@ public class HunterPlayer : GamePlayer
 
                                 if (currentWeapon.weaponName == "Gun")
                                 {
-                                    isFinishingSingleShot = false;
-                                    CmdTriggerGunAnimation();
+                                    // 猎枪开火判定
+                                    if (isWaitingForMultiShot)
+                                    {
+                                        // 已经在等待状态下，直接重播动作无需等待 Trigger
+                                        HandleManualMultiShot();
+                                    }
+                                    else
+                                    {
+                                        // 【关键修复 1】：既然能走到这里，说明是新的一轮射击，强制解除收枪拦截状态！
+                                        isFinishingSingleShot = false;
+
+                                        // 首次开火，走标准 Trigger 进入 Shoot_multiple
+                                        CmdTriggerGunAnimation();
+                                    }
                                 }
                                 else // 拳头逻辑
                                 {
@@ -8983,28 +9109,120 @@ public class HunterPlayer : GamePlayer
             }
         }
     }
+    [Command]
+    private void CmdTriggerHoneyGunEnd()
+    {
+        RpcTriggerHoneyGunEnd();
+    }
+
+    [ClientRpc]
+    private void RpcTriggerHoneyGunEnd()
+    {
+        if (hunterAnimator != null)
+        {
+            // 1. 触发结束信号
+            hunterAnimator.SetTrigger("HoneyGunEnd");
+
+            // 2. 【核心修复】强制清理可能残留的 Shoot 触发器，防止回位后自动跳到 Shoot_Single
+            hunterAnimator.ResetTrigger("Shoot");
+        }
+    }
+    private void LateUpdate()
+    {
+        // 1. 基础检查
+        if (hunterWeapon == null || currentWeaponIndex < 0 || currentWeaponIndex >= hunterWeapon.Length) return;
+        GameObject weaponObj = hunterWeapon[currentWeaponIndex];
+        if (weaponObj == null || !rotationsCaptured) return;
+
+        WeaponBase wb = weaponObj.GetComponent<WeaponBase>();
+        bool isLongGun = wb != null && (wb.weaponName == "Gun" || wb.weaponName == "HoneyGun");
+        if (!isLongGun) return;
+
+        // 2. 判定行为（这部分本地和远程都可以判定，因为 syncedSpeed 是同步的，状态机通常也是同步的）
+        AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
+        // bool isShootingRotate = stateInfo.IsName("Shoot_Single") || stateInfo.IsName("Shoot_multiple");
+        bool isShooting = stateInfo.IsName("Shoot_multiple");
+        bool isMoving = syncedSpeed > 0.1f;
+
+        // 只有 移动 + 开火 时才位移坐标
+        // bool shouldOffset = isShooting && isMoving;
+        bool shouldOffset = isShooting;
+        weaponOffsetWeight = Mathf.Lerp(weaponOffsetWeight, shouldOffset ? 1f : 0f, Time.deltaTime * 30f);
+
+        // 3. 应用位置位移 (所有客户端都会为该猎人执行 Lerp)
+        weaponObj.transform.localPosition = Vector3.Lerp(
+            originalLocalPositions[currentWeaponIndex],
+            weaponMoveHoldPos,
+            weaponOffsetWeight
+        );
+
+        // 1. 确定目标权重：正在射击或准备射击时为 1，否则为 0
+        float targetWeight = (isShooting && (GameManager.Instance == null || GameManager.Instance.CurrentState != GameManager.GameState.GameOver)) ? 1f : 0f;
+
+        // 2. 平滑更新权重
+        rotationLerpWeight = Mathf.Lerp(rotationLerpWeight, targetWeight, Time.deltaTime * rotationSmoothSpeed);
+
+        if (rotationLerpWeight > 0.001f)
+        {
+            // 计算目标瞄准旋转（世界空间）
+            Quaternion targetWorldRotation;
+            if (isLocalPlayer)
+            {
+                targetWorldRotation = Camera.main.transform.rotation * Quaternion.Euler(fpWeaponRotationOffset);
+            }
+            else
+            {
+                targetWorldRotation = Quaternion.Euler(syncedPitch, transform.eulerAngles.y, 0) * Quaternion.Euler(fpWeaponRotationOffset);
+            }
+
+            // 获取默认的局部旋转（从数组中取）并转为世界空间
+            // 或者直接用 weaponObj.transform.parent.rotation * originalLocalRotations[...]
+            Quaternion defaultWorldRotation = weaponObj.transform.parent.rotation * originalLocalRotations[currentWeaponIndex];
+
+            // 使用 Slerp 在“默认姿态”和“瞄准姿态”之间插值
+            // 注意：这里我们直接操作 transform.rotation 以保证对准精准
+            weaponObj.transform.rotation = Quaternion.Slerp(defaultWorldRotation, targetWorldRotation, rotationLerpWeight);
+        }
+        else
+        {
+            // 权重极低时，完全回归动画控制
+            weaponObj.transform.localRotation = originalLocalRotations[currentWeaponIndex];
+        }
+    }
+    // ==========================================
+    // 新版 3秒等待收枪逻辑
+    // ==========================================
     private void HandleStandardGunAnimations()
     {
         AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
+
+        // 1. 清理收枪状态：只要回到默认或保持，就标志结束完毕
         if (isFinishingSingleShot)
         {
-            if (stateInfo.IsName("Holding_Idle") || stateInfo.IsName("Default") || (!stateInfo.IsName("shoot_ending") && !stateInfo.IsName("Shoot_multiple")))
+            if (stateInfo.IsName("Holding_Idle") || stateInfo.IsName("Default"))
                 isFinishingSingleShot = false;
         }
-        if (!isWaitingForMultiShot && !isFinishingSingleShot && stateInfo.IsName("Shoot_Single"))
+
+        // 2. 捕捉开火动画的末尾：当 Shoot_multiple 播放到最后时，冻结动画并进入等待
+        if (!isWaitingForMultiShot && !isFinishingSingleShot && stateInfo.IsName("Shoot_multiple"))
         {
-            if (stateInfo.normalizedTime >= 0.75f && stateInfo.normalizedTime < 0.95f) EnterMultiShotWaitMode();
+            // 注意：如果你的动画师设定里设置了退出时间(Exit Time)，这个判定最好在其之前触发
+            if (stateInfo.normalizedTime >= 0.90f && hunterAnimator.GetFloat("ShootSpeed") > 0.01f)
+            {
+                EnterMultiShotWaitMode();
+            }
         }
+
+        // 3. 处理 3 秒等待倒计时
         if (isWaitingForMultiShot)
         {
             multiShotTimer += Time.deltaTime;
-            if (Input.GetMouseButtonDown(0) && hunterAnimator.GetFloat("ShootSpeed") <= 0.01f) HandleManualMultiShot();
-            if (stateInfo.IsName("Shoot_multiple") && stateInfo.normalizedTime >= 0.92f && hunterAnimator.GetFloat("ShootSpeed") > 0)
+
+            // 3秒未开枪 -> 强制进入 shoot_ending
+            if (multiShotTimer >= 3.0f)
             {
-                hunterAnimator.Play("Shoot_multiple", 1, 0f);
-                hunterAnimator.SetFloat("ShootSpeed", 0f);
+                ExitMultiShotWaitMode(false);
             }
-            if (multiShotTimer >= 3.0f) ExitMultiShotWaitMode(false);
         }
     }
 
@@ -9036,6 +9254,8 @@ public class HunterPlayer : GamePlayer
 
     private void ChangeWeapon(int index)
     {
+        // 1. 复位当前武器旋转
+        ResetCurrentWeaponRotation();
         // 1. 清理射击相关状态
         if (isWaitingForMultiShot) ExitMultiShotWaitMode(true);
         if (isRotatedForShooting) StopShootingVisuals(true);
@@ -9049,20 +9269,33 @@ public class HunterPlayer : GamePlayer
 
         // 3. 执行网络同步切换
         CmdChangeWeapon(index);
-        if (sceneScript != null)
+    }
+    // 【新增：复位旋转的工具方法】
+    private void ResetCurrentWeaponRotation()
+    {
+        if (!rotationsCaptured || hunterWeapon == null) return;
+
+        GameObject weaponObj = hunterWeapon[currentWeaponIndex];
+        if (weaponObj != null)
         {
-            WeaponBase wb = hunterWeapon[index].GetComponent<WeaponBase>();
-            sceneScript.WeaponText.text = wb != null ? wb.weaponName : "None";
+            // 还原旋转
+            weaponObj.transform.localRotation = originalLocalRotations[currentWeaponIndex];
+            // 还原位置
+            weaponObj.transform.localPosition = originalLocalPositions[currentWeaponIndex];
         }
     }
-
     [Command] private void CmdTriggerGunAnimation() => RpcTriggerGunAnimation();
 
     [ClientRpc]
     private void RpcTriggerGunAnimation()
     {
         if (hunterAnimator == null) return;
-        hunterAnimator.SetTrigger("Shoot");
+        // --- 新增：判断武器类型 ---
+        WeaponBase currentWp = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (currentWp != null && currentWp.weaponName == "Gun")
+        {
+            hunterAnimator.SetTrigger("Shoot");
+        }
         // 只有静止开火时才侧身
         if (hunterAnimator.GetFloat("speed") < 0.1f)
         {
@@ -9082,42 +9315,50 @@ public class HunterPlayer : GamePlayer
         if (currentWeapon != null && currentWeapon.weaponName == "Gun")
         {
             CmdExecuteRealGunFire(Camera.main.transform.position, Camera.main.transform.forward);
-            if (isWaitingForMultiShot) multiShotTimer = 0f;
         }
     }
 
     private void EnterMultiShotWaitMode()
     {
-        isWaitingForMultiShot = true; multiShotTimer = 0f;
-        hunterAnimator.ResetTrigger("Shoot");
-        hunterAnimator.Play("Shoot_multiple", 1, 0f);
-        hunterAnimator.SetFloat("ShootSpeed", 0f);
+        isWaitingForMultiShot = true;
+        multiShotTimer = 0f;
+        hunterAnimator.ResetTrigger("Shoot"); // 清空残留Trigger
+        hunterAnimator.SetFloat("ShootSpeed", 0f); // 冻结动画，停留在举枪姿势
+        CmdSyncGunAnimationState("Shoot_multiple", 0f);
     }
-
     private void HandleManualMultiShot()
     {
-        multiShotTimer = 0f;
-        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
-        hunterAnimator.Play("Shoot_multiple", 1, 0f);
+        // 确保连发状态下也不会被错误的收枪状态拦截
+        isFinishingSingleShot = false;
+        multiShotTimer = 0f; // 重置计时器
+        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed); // 恢复速度
+        hunterAnimator.Play("Shoot_multiple", 1, 0f); // 从第0帧重播开火
+        CmdSyncGunAnimationState("Shoot_multiple", currentBaseShootSpeed);
     }
 
     private void ExitMultiShotWaitMode(bool wasInterrupted)
     {
         isWaitingForMultiShot = false;
-        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed);
+        hunterAnimator.SetFloat("ShootSpeed", currentBaseShootSpeed); // 恢复速度
         hunterAnimator.ResetTrigger("Shoot");
+
         if (wasInterrupted)
         {
+            // 如果是因为跑动等被打断，直接回默认
             hunterAnimator.Play("Default", 1, 0f);
             if (isRotatedForShooting) StopShootingVisuals(true);
+            CmdSyncGunAnimationState("Default", currentBaseShootSpeed);
         }
         else
         {
+            // 正常超时收枪：播放 shoot_ending，之后 Animator 自动连线到 Holding_Idle
             isFinishingSingleShot = true;
             hunterAnimator.Play("shoot_ending", 1, 0f);
-            if (isRotatedForShooting) StopShootingVisuals(false);
+            if (isRotatedForShooting) StopShootingVisuals(false); // 平滑回正视角
+            CmdSyncGunAnimationState("shoot_ending", currentBaseShootSpeed);
         }
     }
+    // ==========================================
 
     [Command] private void CmdResetGunRotation(bool snap) => RpcResetGunRotation(snap);
     [ClientRpc]
@@ -10190,7 +10431,7 @@ public class WitchPlayer : GamePlayer
     private BoxCollider humanBoxCollider; // 人形时的 BoxCollider
 
     [Header("Camera Smoothing")]
-    private Vector3 targetCamPos = new Vector3(0, 1.055f, 0.278f); 
+    private Vector3 targetCamPos = new Vector3(0, 1.055f, 0.278f);
     private bool isCamInitialized = false; // 用于初始化第一帧位置
     [Header("Morph Cooldown")]
     public float morphCooldown = 1.0f; // 1秒冷却
@@ -10198,7 +10439,7 @@ public class WitchPlayer : GamePlayer
     [Header("Reward Settings")]
     public int treesPerReward = 20; // 每检视20棵树获得一次奖励
     [SyncVar] public int pendingRewards = 0; // 待领取的奖励次数
-    [SyncVar] public int scoutedCount = 0; 
+    [SyncVar] public int scoutedCount = 0;
     // 增加一个列表，专门让服务器记住发给客户端的是哪三个奖励
     private List<RewardOption> serverRewardPool = new List<RewardOption>();
     // ========================================================================
@@ -10221,7 +10462,7 @@ public class WitchPlayer : GamePlayer
                 sceneScript.RunText.gameObject.SetActive(true);
                 sceneScript.RunText.text = "<color=cyan>GHOST MODE: WALLPASS ACTIVE</color>";
             }
-            else if (!isInSecondChance && !isPermanentDead) 
+            else if (!isInSecondChance && !isPermanentDead)
             {
                 sceneScript.RunText.gameObject.SetActive(false);
             }
@@ -10231,24 +10472,92 @@ public class WitchPlayer : GamePlayer
     // 统管玩家物理 Layer 层级 (封装以防止状态冲突)
     public void UpdatePlayerLayer()
     {
-        if (isPermanentDead) {
-            gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
-            return;
+        int rootLayer = 0;
+        int renderLayer = 0;
+
+        // 1. 确定物理交互用的“根物体”层级 (CharacterController/MeshCollider 所在层)
+        if (isPermanentDead)
+        {
+            rootLayer = LayerMask.NameToLayer("Ignore Raycast");
         }
-        if (isGhosted) {
-            int ghostLayer = LayerMask.NameToLayer("Ghost");
-            if (ghostLayer != -1) gameObject.layer = ghostLayer;
-            return;
+        else if (isGhosted)
+        {
+            rootLayer = LayerMask.NameToLayer("Ghost");
+            if (rootLayer == -1) rootLayer = gameObject.layer;
         }
-        if (isMorphed) {
-            gameObject.layer = LayerMask.NameToLayer("Prop");
-            return;
+        else if (isMorphed)
+        {
+            rootLayer = LayerMask.NameToLayer("Prop"); // 保证队友依然可以附身交互
+            if (rootLayer == -1) rootLayer = 0;
         }
-        
-        int playerLayer = LayerMask.NameToLayer("Player");
-        gameObject.layer = (playerLayer == -1) ? 0 : playerLayer;
+        else
+        {
+            rootLayer = LayerMask.NameToLayer("Player");
+            if (rootLayer == -1) rootLayer = 0;
+        }
+
+        gameObject.layer = rootLayer;
+
+        // 2. 确定我们要赋予的贴花目标层级 (Witch)
+        renderLayer = LayerMask.NameToLayer("Witch");
+        if (renderLayer == -1) renderLayer = LayerMask.NameToLayer("Player");
+        if (renderLayer == -1) renderLayer = 0;
+
+        // 如果处于特殊死亡或穿墙状态，需要重写视觉层级
+        if (isPermanentDead)
+        {
+            renderLayer = LayerMask.NameToLayer("Ignore Raycast");
+        }
+        else if (isGhosted && LayerMask.NameToLayer("Ghost") != -1)
+        {
+            renderLayer = LayerMask.NameToLayer("Ghost");
+        }
+
+        // ======================================================================
+        // 3. 【核心修改】按照要求：找到 PropContainer，遍历其子物体并修改 Layer
+        // ======================================================================
+        if (isMorphed && propContainer != null)
+        {
+            // 提取原生女巫的 Rendering Layer Mask（防 URP 贴花不显示的兜底保险）
+            uint targetRenderingLayerMask = 1;
+            if (myRenderer != null) targetRenderingLayerMask = myRenderer.renderingLayerMask;
+
+            // 遍历 PropContainer 下的所有子物体，寻找所有类型的 Renderer (MeshRenderer 等)
+            Renderer[] propRenderers = propContainer.GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer r in propRenderers)
+            {
+                // 将拥有 MeshRenderer 的 GameObject 的 Layer 设置为 "Witch"
+                r.gameObject.layer = renderLayer;
+
+                // 将 URP 的渲染遮罩与原生女巫同步，确保蜂蜜贴花能完美附着
+                r.renderingLayerMask = targetRenderingLayerMask;
+            }
+        }
+        else if (!isMorphed && humanModelGroup != null)
+        {
+            // 如果是人类形态，恢复人类的层级
+            SetRendererLayerRecursively(humanModelGroup, renderLayer);
+        }
     }
 
+    private void SetRendererLayerRecursively(GameObject obj, int newLayer, uint renderingLayerMask = 1)
+    {
+        if (obj == null) return;
+
+        obj.layer = newLayer;
+
+        // 【核心修改】：不光改 GameObject 的 Layer，同时改 Renderer 的 Rendering Layer Mask
+        Renderer r = obj.GetComponent<Renderer>();
+        if (r != null)
+        {
+            r.renderingLayerMask = renderingLayerMask;
+        }
+
+        foreach (Transform child in obj.transform)
+        {
+            SetRendererLayerRecursively(child.gameObject, newLayer, renderingLayerMask);
+        }
+    }
     // 计算当前的冷却百分比 (1为刚开始冷却，0为就绪)
     public float MorphCooldownRatio
     {
@@ -10324,7 +10633,7 @@ public class WitchPlayer : GamePlayer
         {
             // 如果是本地玩家，确保清理掉可能存在的进度条 UI
             if (isLocalPlayer && sceneScript != null) sceneScript.UpdateRevertUI(0, false);
-            
+
             // 仍然允许执行基类的 Update 以保持重力/位置同步（如果没切换相机的话）
             // 但根据你的 RpcNotifyVictorySequence，主相机会断开父子关系，所以这里直接返回即可
             if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
@@ -10364,7 +10673,7 @@ public class WitchPlayer : GamePlayer
             {
                 moveSpeed = targetSpeed; // 本地先变，保证手感
                 CmdUpdateMoveSpeed(targetSpeed); // 通知服务器变
-                
+
                 if (possessedTreeNetId != 0)
                 {
                     footstepTimer -= Time.deltaTime;
@@ -10379,7 +10688,7 @@ public class WitchPlayer : GamePlayer
                 else
                 {
                     // 停下时重置，保证下次一迈步就有声音
-                    footstepTimer = 0f; 
+                    footstepTimer = 0f;
                 }
             }
         }
@@ -10444,7 +10753,7 @@ public class WitchPlayer : GamePlayer
 
         // 如果正在聊天或暂停，不处理交互
         if (isChatting || Cursor.lockState != CursorLockMode.Locked) return;
-        
+
 
 
 
@@ -10458,8 +10767,8 @@ public class WitchPlayer : GamePlayer
         if (isLocalPlayer && Camera.main != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
         {
             Camera.main.transform.localPosition = Vector3.Lerp(
-                Camera.main.transform.localPosition, 
-                targetCamPos, 
+                Camera.main.transform.localPosition,
+                targetCamPos,
                 Time.deltaTime * 5f
             );
         }
@@ -10619,8 +10928,8 @@ public class WitchPlayer : GamePlayer
     }
     // 处理射线检测和高亮
     private void HandleInteraction()
-    {   
-        if (isGhosted) 
+    {
+        if (isGhosted)
         {
             if (currentFocusProp != null) { currentFocusProp.SetHighlight(false); currentFocusProp = null; }
             return;
@@ -10659,7 +10968,7 @@ public class WitchPlayer : GamePlayer
                         CmdSetTreeScouted(hitProp.netId);
                         scoutTimer = 0f; // 触发后重置
                     }
-                }       
+                }
             }
             else
             {
@@ -10695,7 +11004,7 @@ public class WitchPlayer : GamePlayer
     private void HandleMorphInput()
     {
         // 【新增】幽灵态禁止变身和下车
-        if (isGhosted) return; 
+        if (isGhosted) return;
 
         if (isInSecondChance) return; // 复活赛期间锁死形态，不能通过长按左键恢复
         // --- 新增：检查冷却 ---
@@ -10707,11 +11016,11 @@ public class WitchPlayer : GamePlayer
         if (Input.GetMouseButton(0))
         {
             // 如果在冷却中，直接跳过
-            if (isCoolingDown) 
+            if (isCoolingDown)
             {
                 UnityEngine.Debug.Log("Morph is on cooldown...");
                 lmbHoldTimer = 0f;
-                return; 
+                return;
             }
             lmbHoldTimer += Time.deltaTime;
             // 【修改】如果是 变身状态(Host) 或者 乘客状态(Passenger)，都显示进度条
@@ -10766,11 +11075,11 @@ public class WitchPlayer : GamePlayer
             if (!isPassenger && lmbHoldTimer > 0.01f && lmbHoldTimer < 0.3f && !isMorphed && currentFocusProp != null)
             {
                 // 如果在冷却中，直接跳过
-                if (isCoolingDown) 
+                if (isCoolingDown)
                 {
                     UnityEngine.Debug.Log("Morph is on cooldown...");
                     lmbHoldTimer = 0f;
-                    return; 
+                    return;
                 }
                 // 【修改】使用 GetComponentInParent，因为脚本在父物体上
                 WitchPlayer otherWitch = currentFocusProp.GetComponentInParent<WitchPlayer>();
@@ -10893,7 +11202,7 @@ public class WitchPlayer : GamePlayer
     [Command]
     private void CmdMorph(int propID)
     {
-        
+
         // // 1. 先在服务器修改同步变量
         isMorphed = true;
         // // 2. 广播 Rpc 处理视觉
@@ -11032,7 +11341,7 @@ public class WitchPlayer : GamePlayer
             }
             // 7. 刷新轮廓 (修改此段)
             var outline = GetComponent<PlayerOutline>();
-            if (outline != null && currentVisualProp != null) 
+            if (outline != null && currentVisualProp != null)
             {
                 // 【核心修复】：健壮的 Renderer 查找逻辑
                 Renderer[] allRenderers = currentVisualProp.GetComponentsInChildren<Renderer>();
@@ -11055,20 +11364,20 @@ public class WitchPlayer : GamePlayer
                         break;
                     }
                 }
-                
-                if (targetR != null) 
+
+                if (targetR != null)
                 {
-                    outline.RefreshRenderer(targetR); 
+                    outline.RefreshRenderer(targetR);
                 }
             }
-            
+
             // 8. 【新增】启用我的 PropTarget，允许别人瞄准我变身后的模型
             myPropTarget.enabled = true;
             // 修改这一行调用：传入整个 GameObject 而不是单个 Renderer
             myPropTarget.ManualInit(propID, currentVisualProp);
             //gameObject.layer = LayerMask.NameToLayer("Prop"); // 确保层级能被射线打到
             UpdatePlayerLayer();
-            
+
             if (isStealthed)
             {
                 Renderer[] newRenderers = currentVisualProp.GetComponentsInChildren<Renderer>(true);
@@ -11087,14 +11396,14 @@ public class WitchPlayer : GamePlayer
         {
             GameManager.Instance?.ServerPlay3DAt("女巫变身", transform.position);
         }
-        
+
 
         // 确保这段代码在 UpdateCollider 之后执行
-        
+
         if (isLocalPlayer)
         {
             // 强制刷新一次目标位置
-            UpdateCameraView(); 
+            UpdateCameraView();
         }
     }
 
@@ -11362,7 +11671,7 @@ public class WitchPlayer : GamePlayer
 
         // 1. 获取一个安全弹开的方向
         // 如果是刚从古树变回来，我们往后方和上方弹得更远一些
-        Vector3 escapeDir = -transform.forward; 
+        Vector3 escapeDir = -transform.forward;
         if (possessedTreeNetId != 0)
         {
             // 如果是古树，弹开距离要大于树的半径（假设树半径1.5米，我们弹开2米）
@@ -11388,7 +11697,8 @@ public class WitchPlayer : GamePlayer
         // 如果是从很矮的物体恢复，这个位移是必须的
         transform.position += Vector3.up * (originalCCHeight * 0.5f);
         // 3. 检查头顶是否有东西，如果有，尝试向后退一点
-        if (Physics.Raycast(transform.position, Vector3.up, out RaycastHit headHit, originalCCHeight)) {
+        if (Physics.Raycast(transform.position, Vector3.up, out RaycastHit headHit, originalCCHeight))
+        {
             // 如果头顶有树枝等碰撞体，将人稍微推离
             transform.position -= transform.forward * 0.5f;
         }
@@ -11407,7 +11717,7 @@ public class WitchPlayer : GamePlayer
             humanModelGroup.SetActive(true);
             Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
             foreach (var r in humanRenderers) r.enabled = true;
-            
+
             // 【核心修复】：重新从人类模型组里提取主渲染器
             // 巫师模型通常由 SkinnedMeshRenderer 组成
             foreach (var r in humanRenderers)
@@ -11452,14 +11762,16 @@ public class WitchPlayer : GamePlayer
         if (outline != null && myRenderer != null)
         {
             // 确保 outline 脚本指向新的（恢复的）人类渲染器
-            outline.RefreshRenderer(myRenderer); 
+            outline.RefreshRenderer(myRenderer);
         }
 
         // 强制刷新本地所有玩家的视觉状态
-        if (isLocalPlayer) {
+        if (isLocalPlayer)
+        {
             GetComponent<TeamVision>()?.ForceUpdateVisuals();
         }
-        else {
+        else
+        {
             // 如果是远程玩家，本地控制权在 NetworkClient.localPlayer 身上
             NetworkClient.localPlayer?.GetComponent<TeamVision>()?.ForceUpdateVisuals();
         }
@@ -11693,7 +12005,7 @@ public class WitchPlayer : GamePlayer
 
         // 稍微收缩半径，防止变身后变成“推土机”
         // 【修改】如果是古树（通过 possessedTreeNetId 判断），允许更大的半径
-        float maxR = (possessedTreeNetId != 0) ? 2.5f : 0.6f; 
+        float maxR = (possessedTreeNetId != 0) ? 2.5f : 0.6f;
         float newRadius = Mathf.Clamp(meshWidth * 0.35f, 0.15f, maxR);
         float newHeight = meshHeight;
 
@@ -11710,7 +12022,7 @@ public class WitchPlayer : GamePlayer
         cc.enabled = true;
 
         // 强制刷新物理状态
-        cc.Move(Vector3.down * 0.01f); 
+        cc.Move(Vector3.down * 0.01f);
     }
 
     /// 检测变身后是否与环境重叠，并将其强制弹开
@@ -11727,7 +12039,7 @@ public class WitchPlayer : GamePlayer
             // 方案：直接向玩家当前的后方弹开 0.8米，并向上微调 0.2米防止陷入地表
             // 这样可以有效跳出树叶的覆盖范围
             Vector3 escapeVector = (-transform.forward * 0.8f) + (Vector3.up * 0.2f);
-            
+
             // 检查后方是否有空间，如果后方也是死路（比如背靠墙），则只往上弹
             if (Physics.Raycast(transform.position + Vector3.up * 0.5f, -transform.forward, 1.0f, propLayer | groundLayer))
             {
@@ -11953,10 +12265,10 @@ public class WitchPlayer : GamePlayer
         if (myRenderer != null) myRenderer.enabled = false;
         // 隐藏名字
         // 只有在非结算状态下才隐藏名字，结算时（VictoryZone）名字必须留着
-        if (nameText != null) 
+        if (nameText != null)
         {
             bool isVictorySequence = GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver;
-            nameText.gameObject.SetActive(isVictorySequence); 
+            nameText.gameObject.SetActive(isVictorySequence);
         }
 
         // 2. 禁用交互：修改物理层级
@@ -12006,15 +12318,15 @@ public class WitchPlayer : GamePlayer
                 float targetY = controller.height * 0.9f;
                 // Z轴：半径距离（设为负数即在身后）。
                 // 建议 * 2.5f 以防相机卡在模型内部，如果你严格想要 "radius" 距离，去掉 "* 2.5f" 即可
-                float targetZ = controller.radius * 2.5f; 
-                targetCamPos = new Vector3(0, targetY, targetZ);   
+                float targetZ = controller.radius * 2.5f;
+                targetCamPos = new Vector3(0, targetY, targetZ);
             }
             else
             {
                 float targetY = controller.height * 1.3f;
-                float targetZ = -controller.radius * 6f; 
-                targetCamPos = new Vector3(0, targetY, targetZ);   
-            } 
+                float targetZ = -controller.radius * 6f;
+                targetCamPos = new Vector3(0, targetY, targetZ);
+            }
         }
         else
         {
@@ -12042,11 +12354,11 @@ public class WitchPlayer : GamePlayer
             {
                 prop.isScouted = true;
                 scoutedCount++;
-                
+
                 if (scoutedCount % treesPerReward == 0)
                 {
                     pendingRewards++;
-                    
+
                     // --- 【核心修改：在服务器生成奖励】 ---
                     serverRewardPool.Clear();
                     serverRewardPool.Add(CreateAttributeReward());
@@ -12069,7 +12381,7 @@ public class WitchPlayer : GamePlayer
         AudioManager.Instance?.Play2D("叮");
         // 客户端存一份，用于 UI 显示
         currentRewardPool = new List<RewardOption>(options);
-        
+
         // 显示 UI
         RewardUI.Instance.Show(options);
     }
@@ -12080,12 +12392,13 @@ public class WitchPlayer : GamePlayer
         string[] titles = { "Healing", "Vitality", "Mana Soul", "Arcane Flow", "Celerity" };
         string[] keys = { "AddHP", "MaxHP", "AddMana", "MaxMana", "MoveSpeed" };
         float[] values = { 30f, 50f, 40f, 50f, 1.5f };
-        
-        return new RewardOption { 
-            title = titles[rand], 
-            description = $"Permanent {keys[rand]} +{values[rand]}", 
-            category = RewardCategory.Attribute, 
-            rewardKey = keys[rand], 
+
+        return new RewardOption
+        {
+            title = titles[rand],
+            description = $"Permanent {keys[rand]} +{values[rand]}",
+            category = RewardCategory.Attribute,
+            rewardKey = keys[rand],
             value = values[rand],
             id = 0 // UI索引
         };
@@ -12096,67 +12409,73 @@ public class WitchPlayer : GamePlayer
         List<RewardOption> validOptions = new List<RewardOption>();
 
         // 辅助函数：检查某个类名是否在玩家选中的两个技能之中
-        System.Func<string, bool> isSkillEquipped = (className) => {
+        System.Func<string, bool> isSkillEquipped = (className) =>
+        {
             return syncedSkill1Name == className || syncedSkill2Name == className;
         };
 
         // 1. 检查迷雾 (Mist)
         if (isSkillEquipped("WitchSkill_Mist"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Abyssal Fog", 
-                description = "Mist radius doubled (2x size)", 
-                category = RewardCategory.Skill, 
-                rewardKey = "MistRadius", 
-                value = 2.0f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Abyssal Fog",
+                description = "Mist radius doubled (2x size)",
+                category = RewardCategory.Skill,
+                rewardKey = "MistRadius",
+                value = 2.0f
             });
         }
 
         // 2. 检查诅咒 (Curse)
         if (isSkillEquipped("WitchSkill_Curse"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Extended Hex", 
-                description = "Curse casting range +10m", 
-                category = RewardCategory.Skill, 
-                rewardKey = "CurseRange", 
-                value = 10f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Extended Hex",
+                description = "Curse casting range +10m",
+                category = RewardCategory.Skill,
+                rewardKey = "CurseRange",
+                value = 10f
             });
         }
 
         // 3. 检查分身 (Decoy)
         if (isSkillEquipped("WitchSkill_Decoy"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Triple Illusion", 
-                description = "Decoy spawns 3 clones per use", 
-                category = RewardCategory.Skill, 
-                rewardKey = "DecoyCount", 
-                value = 3f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Triple Illusion",
+                description = "Decoy spawns 3 clones per use",
+                category = RewardCategory.Skill,
+                rewardKey = "DecoyCount",
+                value = 3f
             });
         }
 
         // 4. 检查混沌 (Chaos)
         if (isSkillEquipped("WitchSkill_Chaos"))
         {
-            validOptions.Add(new RewardOption { 
-                title = "Chaos Mastery", 
-                description = "Chaos disturbance radius +5m", 
-                category = RewardCategory.Skill, 
-                rewardKey = "ChaosRadius", 
-                value = 5f 
+            validOptions.Add(new RewardOption
+            {
+                title = "Chaos Mastery",
+                description = "Chaos disturbance radius +5m",
+                category = RewardCategory.Skill,
+                rewardKey = "ChaosRadius",
+                value = 5f
             });
         }
 
         // 兜底逻辑：如果什么都没带（或是同步还没完成），给一个法力值相关的奖励
         if (validOptions.Count == 0)
         {
-            return new RewardOption { 
-                title = "Arcane Surge", 
-                description = "Recover 50 Mana immediately", 
-                category = RewardCategory.Attribute, 
-                rewardKey = "AddMana", 
-                value = 50f 
+            return new RewardOption
+            {
+                title = "Arcane Surge",
+                description = "Recover 50 Mana immediately",
+                category = RewardCategory.Attribute,
+                rewardKey = "AddMana",
+                value = 50f
             };
         }
 
@@ -12177,14 +12496,14 @@ public class WitchPlayer : GamePlayer
     {
         // 使用服务器自己的 serverRewardPool 进行校验
         if (pendingRewards <= 0 || index >= serverRewardPool.Count) return;
-        
+
         pendingRewards--;
-        
+
         var choice = serverRewardPool[index];
         ApplyRewardEffect(choice.rewardKey, choice.value);
-        
+
         // 选完后清空服务器缓存
-        serverRewardPool.Clear(); 
+        serverRewardPool.Clear();
     }
 
     [Server]
@@ -12212,7 +12531,7 @@ public class WitchPlayer : GamePlayer
                 if (!isMorphed) moveSpeed = originalHumanSpeed;
                 break;
 
-        // ======= 迷雾增强 =======
+            // ======= 迷雾增强 =======
             case "MistRadius":
                 var mistSkill = GetComponent<WitchSkill_Mist>();
                 if (mistSkill) mistSkill.mistScale = val; // 将倍率设为 2.0
@@ -12220,9 +12539,9 @@ public class WitchPlayer : GamePlayer
 
             // ======= 诅咒增强 =======
             case "CurseRange":
-                // var curseSkill = GetComponent<WitchSkill_Curse>();
-                // if (curseSkill) curseSkill.range += val; // 增加射程
-                // break;
+            // var curseSkill = GetComponent<WitchSkill_Curse>();
+            // if (curseSkill) curseSkill.range += val; // 增加射程
+            // break;
 
             // ======= 原有的技能增强 =======
             case "DecoyCount":
@@ -12258,7 +12577,7 @@ public class WitchPlayer : GamePlayer
         // 获取场景中所有的 PropTarget
         PropTarget[] all = Object.FindObjectsOfType<PropTarget>();
         List<PropTarget> ancients = new List<PropTarget>();
-        
+
         foreach (var p in all)
         {
             // 找到古树且当前没被发现的
@@ -12268,18 +12587,18 @@ public class WitchPlayer : GamePlayer
                 p.isLocalTempRevealed = true; // 修改本地临时变量
             }
         }
-        
+
         // 【关键】手动通知本地的 TeamVision 刷新一次视觉
         GetComponent<TeamVision>()?.ForceUpdateVisuals();
-        
+
         yield return new WaitForSeconds(duration);
-        
+
         // 恢复
-        foreach (var p in ancients) 
+        foreach (var p in ancients)
         {
             if (p != null) p.isLocalTempRevealed = false;
         }
-        
+
         // 【关键】再次刷新视觉
         GetComponent<TeamVision>()?.ForceUpdateVisuals();
     }
@@ -12318,12 +12637,12 @@ public class WitchPlayer : GamePlayer
     public void ServerForceRevert()
     {
         if (!isMorphed) return;
-        
+
         // 强制种下手中的古树（如果有的话）
         ServerReleaseTreeAtCurrentPosition();
         // 踢下所有的乘客
         ServerKickAllPassengers();
-        
+
         isMorphed = false;
         morphedPropID = -1;
         // 服务器端也执行物理恢复
@@ -12340,7 +12659,7 @@ public class WitchPlayer : GamePlayer
         activeSlowRoutine = StartCoroutine(SafeSlowRoutine(multiplier, duration));
     }
 
-     [Server]
+    [Server]
     private IEnumerator SafeSlowRoutine(float multiplier, float duration)
     {
         isSlowed = true; // 锁死客户端的速度申请
@@ -12381,7 +12700,7 @@ public class WitchPlayer : GamePlayer
     }
 
 
-   
+
 }
 ```
 
@@ -15018,7 +15337,7 @@ using TMPro;
 using Mirror;
 using System.Collections;
 using kcp2k;
-
+using System.Collections.Generic; // <--- 添加这一行
 public class ConnectUIManager : MonoBehaviour
 {
     [Header("主界面")]
@@ -15061,6 +15380,10 @@ public class ConnectUIManager : MonoBehaviour
     public bool autoRefresh = true;
     public float refreshInterval = 2f; // 每2秒更新一次
     private Coroutine autoRefreshCoroutine;
+    private Dictionary<int, RoomItemUI> spawnedRoomUI = new Dictionary<int, RoomItemUI>();
+    private RoomItemUI currentSelectedUI = null; // 记录当前选中的 UI 脚本实例
+    [Header("Background Reference")]
+    public Button backgroundClickBtn; // 在 Inspector 中拖入列表背景的大按钮
 
     void Start()
     {
@@ -15144,6 +15467,10 @@ public class ConnectUIManager : MonoBehaviour
             // 或者简单地依靠 StartMenu 里的 OnButtonJoin。
         }
         CheckForPendingErrors();
+        if (backgroundClickBtn != null)
+        {
+            backgroundClickBtn.onClick.AddListener(DeselectRoom);
+        }
     }
     private void CheckForPendingErrors()
     {
@@ -15347,43 +15674,125 @@ public class ConnectUIManager : MonoBehaviour
         }
     }
 
-    // --- 网络回调：刷新列表 UI ---
+    // --- 修改：增量更新房间列表 ---
     void OnRoomListRes(RoomListRes msg)
     {
-        // 1. 清空 Content 下的所有旧条目
-        foreach (Transform child in listContent) Destroy(child.gameObject);
+        // 1. 创建一个集合，记录本次从服务器传过来的所有房间 ID
+        HashSet<int> incomingRoomIds = new HashSet<int>();
 
-        // 2. 生成新条目
+        // 2. 遍历服务器发来的房间列表
         foreach (var info in msg.rooms)
         {
-            GameObject item = Instantiate(roomItemPrefab, listContent);
-            Debug.Log($"[RoomList] RoomId={info.roomId}, Name='{info.roomName}', HasPwd={info.hasPassword}, Players={info.currentPlayers}/{info.maxPlayers}");
-            // 获取并初始化 RoomItemUI 脚本
-            var script = item.GetComponent<RoomItemUI>();
-            if (script != null)
-            {
-                script.Setup(info, this);
-            }
-        }  
-    }
+            incomingRoomIds.Add(info.roomId);
 
+            // 情况 A：如果该房间已经在显示了，只更新它的数据（如人数）
+            if (spawnedRoomUI.TryGetValue(info.roomId, out RoomItemUI existingUI))
+            {
+                existingUI.Setup(info, this);
+                // 如果该房间刚好是玩家当前选中的那个，可能需要刷新 Manager 里的缓存信息
+                if (selectedRoomId == info.roomId)
+                {
+                    selectedRoomCurrentPlayers = info.currentPlayers;
+                    selectedRoomMaxPlayers = info.maxPlayers;
+                }
+            }
+            // 情况 B：如果是新房间，实例化它
+            else
+            {
+                GameObject itemObj = Instantiate(roomItemPrefab, listContent);
+                RoomItemUI script = itemObj.GetComponent<RoomItemUI>();
+                if (script != null)
+                {
+                    script.Setup(info, this);
+                    spawnedRoomUI.Add(info.roomId, script);
+                }
+            }
+        }
+
+        // 3. 处理“消失”的房间：遍历字典，如果 ID 不在本次传来的列表中，则删除该 UI
+        List<int> idsToRemove = new List<int>();
+        foreach (var kvp in spawnedRoomUI)
+        {
+            if (!incomingRoomIds.Contains(kvp.Key))
+            {
+                idsToRemove.Add(kvp.Key);
+            }
+        }
+
+        foreach (int id in idsToRemove)
+        {
+            // 如果被销毁的房间正是当前选中的房间，重置选中状态
+            if (selectedRoomId == id)
+            {
+                selectedRoomId = -1;
+                if (joinButton) joinButton.interactable = false;
+            }
+
+            // 销毁物体并从字典移除
+            if (spawnedRoomUI.TryGetValue(id, out RoomItemUI uiToDestroy))
+            {
+                Destroy(uiToDestroy.gameObject);
+                spawnedRoomUI.Remove(id);
+            }
+        }
+
+        // 4. (可选) 排序：如果需要严格按照服务器传回的顺序排列
+        for (int i = 0; i < msg.rooms.Length; i++)
+        {
+            int roomId = msg.rooms[i].roomId;
+            if (spawnedRoomUI.TryGetValue(roomId, out RoomItemUI uiScript))
+            {
+                // SetSiblingIndex 可以强制控制 UI 在布局组中的位置
+                uiScript.transform.SetSiblingIndex(i);
+            }
+        }
+        // 刷新结束后，检查之前选中的 ID 是否还在列表中
+        bool stillExists = false;
+        foreach(var info in msg.rooms) {
+            if(info.roomId == selectedRoomId) { stillExists = true; break; }
+        }
+        
+        if (!stillExists) {
+            DeselectRoom(); // 房间没了，自动取消选择
+        }
+    }
     // 1. 修改 SelectRoom 方法，增加人数参数
-    public void SelectRoom(int id, bool hasPwd, int current, int max)
+    public void SelectRoom(RoomItemUI itemUI, int id, bool hasPwd, int current, int max)
     {
-        // 记录数据
+        // 1. 取消上一个选择的高亮
+        if (currentSelectedUI != null)
+        {
+            currentSelectedUI.SetHighlight(false);
+        }
+
+        // 2. 更新当前选择
+        currentSelectedUI = itemUI;
         selectedRoomId = id;
         selectedRoomHasPwd = hasPwd;
         selectedRoomCurrentPlayers = current;
         selectedRoomMaxPlayers = max;
-        // 选中新房间时，隐藏之前的警告文字
+
+        // 3. 开启新的高亮
+        if (currentSelectedUI != null)
+        {
+            currentSelectedUI.SetHighlight(true);
+        }
+
         if (joinWarningText != null) joinWarningText.gameObject.SetActive(false);
-
-        // 激活 Join 按钮
         if (joinButton) joinButton.interactable = true;
-
-        Debug.Log($"已选中房间: {id}, 有密码: {hasPwd}");
     }
-
+    // 【新增】取消选择的方法
+    public void DeselectRoom()
+    {
+        if (currentSelectedUI != null)
+        {
+            currentSelectedUI.SetHighlight(false);
+        }
+        currentSelectedUI = null;
+        selectedRoomId = -1;
+        if (joinButton) joinButton.interactable = false;
+        Debug.Log("[UI] Selection Cleared.");
+    }
     // --- UI 逻辑: 点击 Join 按钮 ---
     void OnClickJoin()
     {
@@ -17887,7 +18296,10 @@ public class RoomItemUI : MonoBehaviour
     public TextMeshProUGUI roomNameText;
     public GameObject lockIcon;
     public TextMeshProUGUI roomIdText;
-
+    [Header("Visual Selection")]
+    public Image backgroundImage; // 拖入条目的背景图组件
+    public Color normalColor = new Color(1,1,1,0); // 透明或默认色
+    public Color selectedColor = new Color(1, 0.9f, 0, 0.5f); // 选中的颜色（如淡金色）
     private int myRoomId;
     private bool hasPassword;
     private ConnectUIManager manager;
@@ -17913,11 +18325,21 @@ public class RoomItemUI : MonoBehaviour
 
         myButton.onClick.RemoveAllListeners();
         myButton.onClick.AddListener(OnItemClicked);
+        // 初始化视觉状态
+        SetHighlight(false);
     }
-
+    public void SetHighlight(bool active)
+    {
+        if (backgroundImage != null)
+        {
+            backgroundImage.color = active ? selectedColor : normalColor;
+        }
+    }
     void OnItemClicked()
     {
-        manager.SelectRoom(myRoomId, hasPassword, cachedInfo.currentPlayers, cachedInfo.maxPlayers); // 点击时传递人数信息
+        // 播放音效
+        AudioManager.Instance?.Play2D("UI选择");
+        manager.SelectRoom(this, myRoomId, hasPassword, cachedInfo.currentPlayers, cachedInfo.maxPlayers);
     }
 }
 ```
@@ -17973,6 +18395,11 @@ public class SceneScript : MonoBehaviour
     public VideoPlayer victoryVideoPlayer; // 在 Inspector 中拖入 VideoPlayer 组件
     public RawImage videoDisplay;         // 拖入用于显示视频的 RawImage
     public float videoFadeSpeed = 1.5f;    // 音频淡入淡出速度
+    [Header("Help Panel Animation")]
+    public GameObject helpPanel;          // 拖入 InGameCanvas 下的 HelpPanel
+    public float helpAnimDuration = 0.2f; // 动画时长
+    private Coroutine helpAnimCoroutine;
+    public float targetScale = 1.3f; // 新增：设置目标缩放值
     private void Awake()
     {
         // 1. 单例赋值
@@ -18027,7 +18454,54 @@ public class SceneScript : MonoBehaviour
             // 假设变身对应左键或右键，这里写 "LMB" 或 "Morph"
             morphSlot.Setup(morphIcon, "LMB"); 
         }
+        if (helpPanel != null)
+        {
+            helpPanel.transform.localScale = Vector3.zero;
+            helpPanel.SetActive(false);
+        }
+    }
+    // --- 新增方法供按钮调用 ---
 
+    public void ButtonOpenHelp()
+    {
+        if (helpAnimCoroutine != null) StopCoroutine(helpAnimCoroutine);
+        AudioManager.Instance?.Play2D("UI选择");
+        helpAnimCoroutine = StartCoroutine(AnimateHelpPanel(true));
+    }
+
+    public void ButtonCloseHelp()
+    {
+        if (helpAnimCoroutine != null) StopCoroutine(helpAnimCoroutine);
+        AudioManager.Instance?.Play2D("UI点击（木头）");
+        helpAnimCoroutine = StartCoroutine(AnimateHelpPanel(false));
+    }
+
+    private IEnumerator AnimateHelpPanel(bool show)
+    {
+        if (show) helpPanel.SetActive(true);
+
+        // 修改这里：将 Vector3.one 替换为目标缩放值
+        Vector3 fullScale = new Vector3(targetScale, targetScale, targetScale);
+        Vector3 startScale = show ? Vector3.zero : fullScale;
+        Vector3 endScale = show ? fullScale : Vector3.zero;
+        float elapsed = 0f;
+
+        while (elapsed < helpAnimDuration)
+        {
+            elapsed += Time.deltaTime;
+            float percent = elapsed / helpAnimDuration;
+            
+            // 使用 SmoothStep 让缩放更有弹性感
+            float curvePercent = Mathf.SmoothStep(0, 1, percent);
+            
+            helpPanel.transform.localScale = Vector3.Lerp(startScale, endScale, curvePercent);
+            yield return null;
+        }
+
+        helpPanel.transform.localScale = endScale;
+        if (!show) helpPanel.SetActive(false);
+        
+        helpAnimCoroutine = null;
     }
     public void HideHUDForVictory()
     {
@@ -18546,6 +19020,11 @@ public class StartMenu : MonoBehaviour
     public GameObject reconnectPanel;      // 对应你截图里的 ReconnectImage
     public TextMeshProUGUI errorText;      // 对应面板里的 Text (TMP)
     public Button okButton;                // 对应面板里的 Button
+    [Header("Help Panel Animation")]
+    public GameObject helpPanel;       // 拖入 HelpPanel
+    public float animDuration = 0.2f;  // 动画持续时间
+    private Coroutine activeAnim;      // 记录当前正在运行的动画
+    public float helpTargetScale = 1.3f; // 新增：设置目标缩放值
     private void Start()
     {
         if (manager == null)
@@ -18598,6 +19077,59 @@ public class StartMenu : MonoBehaviour
 
         // 【核心逻辑】检查是否有待显示的断线错误
         CheckForPendingDisconnect();
+        // --- 【新增代码】 ---
+        // 如果不在编辑器中运行（即打包出来的游戏），隐藏切换选项
+        #if !UNITY_EDITOR
+        if (networkDropdown != null)
+        {
+            networkDropdown.gameObject.SetActive(false);
+        }
+        #endif
+        // -------------------
+        if (helpPanel != null) {
+            helpPanel.transform.localScale = Vector3.zero;
+            helpPanel.SetActive(false);
+        }
+    }
+    // 供 Keyboard 按钮调用
+    public void OnButtonKeyboardOpen()
+    {
+        if (activeAnim != null) StopCoroutine(activeAnim);
+        AudioManager.Instance?.Play2D("UI选择"); // 播放你现有的音效
+        activeAnim = StartCoroutine(AnimatePanel(true));
+    }
+    // 供右上角 X 按钮调用
+    public void OnButtonKeyboardClose()
+    {
+        if (activeAnim != null) StopCoroutine(activeAnim);
+        AudioManager.Instance?.Play2D("UI点击（木头）"); 
+        activeAnim = StartCoroutine(AnimatePanel(false));
+    }
+    private IEnumerator AnimatePanel(bool show)
+    {
+        if (show) helpPanel.SetActive(true);
+
+        Vector3 fullScale = new Vector3(helpTargetScale, helpTargetScale, helpTargetScale);
+        Vector3 startScale = show ? Vector3.zero : fullScale;
+        Vector3 endScale = show ? fullScale : Vector3.zero;
+        float elapsed = 0f;
+
+        while (elapsed < animDuration)
+        {
+            elapsed += Time.deltaTime;
+            float percent = elapsed / animDuration;
+            
+            // 使用 SmoothStep 让动画有加速减速感，比线性更平滑
+            float curvePercent = Mathf.SmoothStep(0, 1, percent);
+            
+            helpPanel.transform.localScale = Vector3.Lerp(startScale, endScale, curvePercent);
+            yield return null;
+        }
+
+        helpPanel.transform.localScale = endScale;
+        if (!show) helpPanel.SetActive(false);
+        
+        activeAnim = null;
     }
     private void CheckForPendingDisconnect()
     {
@@ -18768,18 +19300,25 @@ public class StartMenu : MonoBehaviour
         // }
         // --- 2. 设置 IP 地址 ---
         // 0: Localhost, 1: Server (根据你在 Inspector 里 Dropdown 选项的顺序)
-        if (networkDropdown.value == 0)
-        {
-            // 选项 0: Localhost
-            manager.networkAddress = "localhost";
-            Debug.Log($"[Connect] Mode: Localhost ({manager.networkAddress})");
-        }
-        else
-        {
-            // 选项 1: Server
+        // --- 【修改这部分逻辑】 ---
+        #if UNITY_EDITOR
+            // 如果在编辑器中，根据 Dropdown 选择
+            if (networkDropdown.value == 0)
+            {
+                manager.networkAddress = "localhost";
+                Debug.Log($"[Connect] Editor Mode: Localhost");
+            }
+            else
+            {
+                manager.networkAddress = REMOTE_SERVER_IP;
+                Debug.Log($"[Connect] Editor Mode: Remote Server ({REMOTE_SERVER_IP})");
+            }
+        #else
+            // 如果是打包后的游戏，强制固定为服务器 IP
             manager.networkAddress = REMOTE_SERVER_IP;
-            Debug.Log($"[Connect] Mode: Remote Server ({manager.networkAddress})");
-        }
+            Debug.Log($"[Connect] Build Mode: Fixed Remote Server");
+        #endif
+        // ------------------------
 
         Debug.Log($"嘗試連線到 {manager.networkAddress}，名字：{name}");
 
