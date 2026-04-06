@@ -108,7 +108,12 @@ public abstract class GamePlayer : NetworkBehaviour
 
     // 新增一个变量缓存 ChatUI
     private GameChatUI gameChatUI;
+    [SyncVar(hook = nameof(OnObserverStatusChanged))]
+    public bool isDebugObserver = false; // 是否处于调试观察者模式
 
+    [Header("Observer Settings")]
+    public float observerSlowSpeed = 5f; // 初始慢速
+    public float observerFastSpeed = 15f; // Shift加速后的速度
     // 【抽象方法】强制子类必须实现 Attack
     protected abstract void Attack();
     [SyncVar] protected float syncedSpeed;// 让速度在全网同步
@@ -238,6 +243,25 @@ public abstract class GamePlayer : NetworkBehaviour
         // 只有本地玩家能控制移动
         if (isLocalPlayer)
         {
+            // ================== 【观察者模式按键 U】 ==================
+            // 判断是否拥有权限：在编辑器/调试模式，或者玩家名为 OBSERVER
+            bool canUseObserver = false;
+            
+            #if UNITY_EDITOR || DEVELOPMENT_BUILD
+            canUseObserver = true;
+            #endif
+
+            if (!string.IsNullOrEmpty(playerName) && playerName.Equals("OBSERVER", System.StringComparison.OrdinalIgnoreCase))
+            {
+                canUseObserver = true;
+            }
+
+            // 拥有权限且按下 U 键时，切换观察者模式
+            if (canUseObserver && Input.GetKeyDown(KeyCode.U))
+            {
+                CmdToggleDebugObserver();
+            }
+            // =======================================================
             // ================== 【调试按键接口】 ==================
             // 允许 Client 玩家通过 Command 请求服务器结束游戏
             if (Application.isEditor || Debug.isDebugBuild)
@@ -284,7 +308,11 @@ public abstract class GamePlayer : NetworkBehaviour
                 isFirstPerson = !isFirstPerson;
                 UpdateCameraView();
             }
-
+            if (isDebugObserver)
+            {
+                HandleObserverMovement(); // 执行飞行移动
+                return; // 观察者模式下不执行原有的 HandleMovementOverride 和边界约束
+            }
             // 【修改】始终调用 HandleMovement，在方法内部判断是否处理输入
             // 这样即使 Cursor 解锁了，重力代码依然会运行
             // --- 处理输入向量 ---
@@ -316,6 +344,83 @@ public abstract class GamePlayer : NetworkBehaviour
         if (isServer)
         {
             ServerRegenerateMana();
+        }
+    }
+    // --- 添加观察者飞行移动逻辑 ---
+    protected virtual void HandleObserverMovement()
+    {
+        // --- 速度切换逻辑 ---
+        // 初始为慢速，按住 Shift 变为快速
+        float currentSpeed = Input.GetKey(KeyCode.LeftShift) ? observerFastSpeed : observerSlowSpeed;
+
+        // 获取基础输入
+        float x = Input.GetAxis("Horizontal");
+        float z = Input.GetAxis("Vertical");
+        float y = 0;
+
+        if (Input.GetKey(KeyCode.Space)) y = 1f;       // 空格上升
+        if (Input.GetKey(KeyCode.LeftControl)) y = -1f; // 左Ctrl下降
+
+        // 计算飞行方向 (相对于相机朝向)
+        Vector3 moveDir = Camera.main.transform.right * x + Camera.main.transform.forward * z + Vector3.up * y;
+        
+        // 直接修改坐标，使用动态切换的速度
+        transform.position += moveDir * currentSpeed * Time.deltaTime;
+
+        // 旋转视角逻辑保持不变
+        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * 100f * Time.deltaTime;
+        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * 100f * Time.deltaTime;
+        xRotation -= mouseY;
+        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
+        Camera.main.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        transform.Rotate(Vector3.up * mouseX);
+    }
+
+    // --- 添加服务器切换命令 ---
+    [Command]
+    void CmdToggleDebugObserver()
+    {
+        isDebugObserver = !isDebugObserver;
+        // 如果开启观察者，设置为无敌防止被误杀
+        isInvulnerable = isDebugObserver; 
+        
+        // 如果是女巫且在古树里，强制踢出
+        if (this is WitchPlayer witch && isDebugObserver)
+        {
+            witch.ServerForceRevert();
+        }
+        
+        UnityEngine.Debug.Log($"[Observer] Player {playerName} toggled Observer Mode: {isDebugObserver}");
+    }
+
+    // --- 添加状态改变的回调 (处理视觉隐藏) ---
+    void OnObserverStatusChanged(bool oldVal, bool newVal)
+    {
+        // 1. 处理碰撞
+        if (controller != null) controller.enabled = !newVal;
+
+        // 2. 处理层级
+        gameObject.layer = newVal ? LayerMask.NameToLayer("Ignore Raycast") : (playerRole == PlayerRole.Hunter ? LayerMask.NameToLayer("Player") : LayerMask.NameToLayer("Witch"));
+
+        // 3. 隐藏/显示渲染器
+        Renderer[] rs = GetComponentsInChildren<Renderer>(true);
+        foreach (var r in rs) r.enabled = !newVal;
+
+        // 4. 隐藏名字和 UI
+        if (nameText != null) nameText.gameObject.SetActive(!newVal);
+        
+        if (isLocalPlayer)
+        {
+            if (crosshairUI != null) crosshairUI.SetActive(!newVal);
+            if (sceneScript != null)
+            {
+                if (sceneScript.RunText != null)
+                {
+                    sceneScript.RunText.gameObject.SetActive(newVal);
+                    // --- 修改后的提示文字 ---
+                    sceneScript.RunText.text = newVal ? "<color=orange>OBSERVER MODE: [WASD] Fly | [Shift] Boost | [U] Exit</color>" : "";
+                }
+            }
         }
     }
     // 必须通过 Command 让服务器去修改 SyncVar

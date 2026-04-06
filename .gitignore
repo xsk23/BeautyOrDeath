@@ -107,7 +107,9 @@ InitTestScene*.unity*
 *.gz
 
 .docs/
-
+# 忽略所有 Python 脚本
+*.py
+*.py.meta
 # 忽略特定的脚本文件
-Assets/Scripts/unity_code.md
-Assets/Scripts/unity_code.md.meta
+unity_code.md
+unity_code.md.meta

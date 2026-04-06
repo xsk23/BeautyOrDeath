@@ -4,10 +4,11 @@ using System.Collections.Generic;
 public class PlayerOutline : MonoBehaviour
 {
     [SerializeField] private Renderer targetRenderer; 
-    [SerializeField] private Material outlineMaterialSource; 
-    // 新增：需要排除的对象（比如名字文本物体）
+    [SerializeField] private Material outlineMaterialSource; // 你的 Mat_TeamOutline
     [SerializeField] private GameObject nameTextObject; 
-    private Material outlineInstance;
+    
+    private Material outlineInstance; // 描边材质
+    private Material maskInstance;    // 遮罩材质 (代码自动生成)
     private bool isVisible = false;
 
     void Awake()
@@ -15,116 +16,137 @@ public class PlayerOutline : MonoBehaviour
         // 自动查找逻辑增强
         if (targetRenderer == null) 
         {
-            // 尝试获取模型上的 Renderer，而不是随便找一个
-            // 假设你的模型在名为 "Model" 或 "Visual" 的子物体下
-            var allRenderers = GetComponentsInChildren<Renderer>();
-            foreach (var r in allRenderers)
+            // 【核心修改 1】：优先查找 SkinnedMeshRenderer (人物身体几乎都是这个组件，而武器通常是普通的 MeshRenderer)
+            var skinnedRenderers = GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            foreach (var r in skinnedRenderers)
             {
-                // 排除名字文本的 Renderer
+                // 排除 UI 或不需要的对象
                 if (nameTextObject != null && r.transform.IsChildOf(nameTextObject.transform)) continue;
-                // 排除 UI 或 TextMeshPro 的 Renderer
-                if (r.gameObject.name.Contains("Name") || r.gameObject.name.Contains("Text")) continue;
-
+                
                 targetRenderer = r;
-                break;
+                break; // 找到第一个身体蒙皮就停止
+            }
+
+            // 【核心修改 2】：如果万一没找到身体，再使用兜底逻辑找普通 Renderer，并严格排除武器
+            if (targetRenderer == null)
+            {
+                var allRenderers = GetComponentsInChildren<Renderer>(true);
+                foreach (var r in allRenderers)
+                {
+                    if (nameTextObject != null && r.transform.IsChildOf(nameTextObject.transform)) continue;
+                    if (r.gameObject.name.Contains("Name") || r.gameObject.name.Contains("Text")) continue;
+                    
+                    // 强制排除名字里带有 weapon 的物体（忽略大小写）
+                    if (r.gameObject.name.ToLower().Contains("weapon")) continue;
+
+                    targetRenderer = r;
+                    break;
+                }
             }
         }
 
         if (outlineMaterialSource != null)
         {
+            // 1. 实例化描边材质
             outlineInstance = new Material(outlineMaterialSource);
+            outlineInstance.SetFloat("_ZTestMode", 8f);
+
+            // 2. 动态创建遮罩材质 (解决 URP 无法多 Pass 的痛点)
+            Shader maskShader = Shader.Find("Custom/URP_Outline_Mask");
+            if (maskShader != null)
+            {
+                maskInstance = new Material(maskShader);
+                maskInstance.SetFloat("_ZTestMode", 8f);
+            }
+            else
+            {
+                Debug.LogError("找不到 Custom/URP_Outline_Mask Shader！");
+            }
         }
     }
 
     public void SetOutline(bool active, Color color)
     {
-        // --- 【新增：游戏结束强制关闭】 ---
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
             active = false;
         }
-        // ---------------------------------
+        
         if (targetRenderer == null || outlineInstance == null) return;
 
-        // 检查材质是否丢失
         bool materialLost = active && !System.Array.Exists(targetRenderer.sharedMaterials, m => m == outlineInstance);
 
-        // --- 修改这里：即使isVisible没变，但只要是激活状态，就应该更新颜色 ---
         if (active)
         {
-            // 总是更新颜色，防止状态切换（如：队友状态 -> 被抓状态）时颜色不刷新
+            // 更新颜色和宽度
             outlineInstance.SetColor("_OutlineColor", color);
-            
-            // 如果状态变了或者是材质丢了，才去操作材质列表
+            outlineInstance.SetFloat("_ZTestMode", 8f); // 8 = Always 穿墙透视
+            outlineInstance.SetFloat("_OutlineWidth", 0.02f); 
+
+            if (maskInstance != null) maskInstance.SetFloat("_ZTestMode", 8f);
+
             if (!isVisible || materialLost)
             {
                 isVisible = true;
-                AddMaterial(outlineInstance);
+                AddMaterials();
             }
         }
         else
         {
-            // 如果当前是可见的，现在要关闭，才执行移除
             if (isVisible)
             {
                 isVisible = false;
-                RemoveMaterial(outlineInstance);
+                RemoveMaterials();
             }
         }
     }
 
-    private void AddMaterial(Material mat)
-    {
-        if (targetRenderer == null || mat == null) return;
-        
-        // 使用 sharedMaterials 避开 Prefab 访问限制
-        Material[] currentShared = targetRenderer.sharedMaterials;
-        List<Material> matsList = new List<Material>(currentShared);
-
-        if (!matsList.Contains(mat))
-        {
-            matsList.Add(mat);
-            targetRenderer.materials = matsList.ToArray(); // 赋值给 .materials 会处理实例化
-        }
-    }
-
-    private void RemoveMaterial(Material mat)
+    private void AddMaterials()
     {
         if (targetRenderer == null) return;
-        Material[] currentShared = targetRenderer.sharedMaterials;
-        List<Material> matsList = new List<Material>(currentShared);
+        
+        List<Material> matsList = new List<Material>(targetRenderer.sharedMaterials);
 
-        if (matsList.Contains(mat))
-        {
-            matsList.Remove(mat);
-            targetRenderer.materials = matsList.ToArray();
-        }
+        // 核心逻辑：必须先添加 Mask，再添加 Outline！顺序决定了 URP 的渲染顺序。
+        if (maskInstance != null && !matsList.Contains(maskInstance)) matsList.Add(maskInstance);
+        if (outlineInstance != null && !matsList.Contains(outlineInstance)) matsList.Add(outlineInstance);
+
+        targetRenderer.sharedMaterials = matsList.ToArray(); 
+    }
+
+    private void RemoveMaterials()
+    {
+        if (targetRenderer == null) return;
+        
+        List<Material> matsList = new List<Material>(targetRenderer.sharedMaterials);
+
+        if (maskInstance != null && matsList.Contains(maskInstance)) matsList.Remove(maskInstance);
+        if (outlineInstance != null && matsList.Contains(outlineInstance)) matsList.Remove(outlineInstance);
+
+        targetRenderer.sharedMaterials = matsList.ToArray();
     }
 
     public void RefreshRenderer(Renderer newRenderer)
     {
         if (newRenderer == null) return;
-        
-        // 增加一个安全检查：确保新传入的不是名字物体
         if (nameTextObject != null && newRenderer.transform.IsChildOf(nameTextObject.transform)) return;
 
-        // 如果当前正在显示高亮，先移除旧的引用（如果旧的没被销毁）
-        // 使用 try-catch 或 null 检查防止因物体已 Destroy 导致的报错
         if (isVisible && targetRenderer != null)
         {
-            try { RemoveMaterial(outlineInstance); } catch { }
+            try { RemoveMaterials(); } catch { }
         }
 
         targetRenderer = newRenderer;
 
         if (isVisible)
         {
-            AddMaterial(outlineInstance);
+            AddMaterials();
         }
     }
 
     void OnDestroy()
     {
         if (outlineInstance != null) Destroy(outlineInstance);
+        if (maskInstance != null) Destroy(maskInstance);
     }
 }

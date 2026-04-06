@@ -1,114 +1,120 @@
-Shader "Custom/SimpleOutline"
+Shader "Custom/URP_Outline_Hollow"
 {
     Properties
     {
-        _OutlineColor ("Outline Color", Color) = (0, 1, 0, 1)
-        _OutlineWidth ("Outline Width", Range(0, 0.1)) = 0.03
-        // 定义 ZTest 变量：4 代表 LEqual (正常透视), 8 代表 Always (穿墙显示)
+        _OutlineColor ("Outline Color", Color) = (1, 0, 1, 1)
+        _OutlineWidth ("Outline Width", Range(0, 0.1)) = 0.02
         [Enum(UnityEngine.Rendering.CompareFunction)] _ZTestMode ("ZTest Mode", Float) = 8 
     }
     
     SubShader
     {
-        // 渲染队列设为 Transparent+1，确保在普通半透明物体之后渲染
-        Tags { "Queue" = "Transparent+1" "RenderType" = "Transparent" "IgnoreProjector" = "True" }
-
-        // ========================================================
-        // Pass 1: 制作遮罩 (Mask)
-        // 这一步不画颜色，只在 Stencil Buffer 里标记 "这里有角色"
-        // ========================================================
-        Pass
-        {
-            Name "Mask"
-            ZTest [_ZTestMode]     // 动态控制 (透视效果关键)
-            ZWrite on      // 不写入深度
-            ColorMask 0     // 【关键】不输出任何颜色 (隐形)
-            Cull Off        // 双面都进行标记
-
-            Stencil
-            {
-                Ref 1       // 标记值为 1
-                Comp Always // 总是通过比较
-                Pass Replace// 写入标记值
-            }
-
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include "UnityCG.cginc"
-
-            struct appdata { float4 vertex : POSITION; };
-            struct v2f { float4 pos : SV_POSITION; };
-
-            v2f vert (appdata v)
-            {
-                v2f o;
-                // 这里只渲染原始模型位置，不进行扩充
-                o.pos = UnityObjectToClipPos(v.vertex);
-                return o;
-            }
-
-            fixed4 frag (v2f i) : SV_Target
-            {
-                return fixed4(0,0,0,0);
-            }
-            ENDCG
+        // 渲染队列设置为 Transparent+100，确保在所有不透明物体（包括墙壁）之后渲染
+        Tags 
+        { 
+            "RenderPipeline" = "UniversalPipeline"
+            "Queue" = "Transparent+100" 
+            "RenderType" = "Transparent" 
         }
 
         // ========================================================
-        // Pass 2: 绘制轮廓 (Outline)
-        // 这一步绘制扩充后的模型，但避开 Pass 1 标记过的区域
+        // Pass 1: 制作遮罩
+        // 使用 SRPDefaultUnlit 标签强制 URP 渲染这个 Pass
         // ========================================================
         Pass
         {
-            Name "Outline"
-            ZTest [_ZTestMode] // 动态控制
+            Name "OutlineMask"
+            Tags { "LightMode" = "SRPDefaultUnlit" }
+            
+            ZTest [_ZTestMode]
             ZWrite Off
-            Cull Front      // 剔除正面，只画背面
-            Blend SrcAlpha OneMinusSrcAlpha // 支持半透明
+            ColorMask 0
+            Cull Off
 
             Stencil
             {
                 Ref 1
-                Comp NotEqual // 【关键】只有当模板值 不等于 1 时才渲染
+                Comp Always
+                Pass Replace
             }
 
-            CGPROGRAM
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #include "UnityCG.cginc"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            struct appdata
+            struct Attributes { float4 positionOS : POSITION; };
+            struct Varyings { float4 positionCS : SV_POSITION; };
+
+            Varyings vert(Attributes input) {
+                Varyings output;
+                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                return output;
+            }
+
+            half4 frag(Varyings input) : SV_Target { return 0; }
+            ENDHLSL
+        }
+
+        // ========================================================
+        // Pass 2: 绘制轮廓
+        // 使用 UniversalForward 标签
+        // ========================================================
+        Pass
+        {
+            Name "OutlineDraw"
+            Tags { "LightMode" = "UniversalForward" }
+
+            ZTest [_ZTestMode]
+            ZWrite Off
+            Cull Front  // 剔除正面，只画背面，防止低多边形内部线条乱跳
+            
+            // 开启混合模式，防止黑边
+            Blend SrcAlpha OneMinusSrcAlpha
+
+            Stencil
             {
-                float4 vertex : POSITION;
-                float3 normal : NORMAL;
+                Ref 1
+                Comp NotEqual // 只有不等于1的地方（即模型边缘外）才渲染
+            }
+
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes {
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
             };
 
-            struct v2f
-            {
-                float4 pos : SV_POSITION;
-                float4 color : COLOR;
+            struct Varyings {
+                float4 positionCS : SV_POSITION;
+                half4 color : COLOR;
             };
 
             float _OutlineWidth;
             float4 _OutlineColor;
-    
-            v2f vert (appdata v)
-            {
-                v2f o;
-                float3 norm = normalize(v.normal);
-                // 沿法线扩充
-                float4 clipPos = UnityObjectToClipPos(v.vertex + norm * _OutlineWidth);
-                o.pos = clipPos;
-                o.color = _OutlineColor;
-                return o;
+
+            Varyings vert(Attributes input) {
+                Varyings output;
+                
+                // 沿着法线方向挤出
+                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
+                float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
+                
+                // 这里的挤出逻辑稍微偏移一点，解决穿墙时的碎裂感
+                positionWS += normalWS * _OutlineWidth;
+                
+                output.positionCS = TransformWorldToHClip(positionWS);
+                output.color = _OutlineColor;
+                return output;
             }
 
-            fixed4 frag (v2f i) : SV_Target
-            {
-                return i.color;
+            half4 frag(Varyings input) : SV_Target {
+                return input.color;
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }

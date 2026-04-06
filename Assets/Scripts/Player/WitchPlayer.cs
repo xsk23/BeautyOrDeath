@@ -1304,6 +1304,12 @@ public class WitchPlayer : GamePlayer
             isMorphed = false;
             ApplyRevert();
         }
+        // 如果在变身的瞬间正处于观察者模式，立即把变出来的模型也藏掉
+        if (isDebugObserver && currentVisualProp != null)
+        {
+            Renderer[] rs = currentVisualProp.GetComponentsInChildren<Renderer>();
+            foreach (var r in rs) r.enabled = false;
+        }
     }
 
 

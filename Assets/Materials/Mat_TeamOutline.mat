@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Mat_TeamOutline
-  m_Shader: {fileID: 4800000, guid: ca1d1b021f6d9814e8f85e4742779396, type: 3}
+  m_Shader: {fileID: 4800000, guid: da5cf360f2117f14c9eed47b5d6b31c6, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
