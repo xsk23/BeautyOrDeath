@@ -16,4 +16,4 @@ MonoBehaviour:
   scriptClassName: HunterSkill_Dog
   role: 2
   icon: {fileID: 21300000, guid: 0229e93fdc78f034a97f7b033b2fb8dc, type: 3}
-  description: BruceBruceBruceBruceBruce
+  description: Summons a dog to track and mark the nearest Witch.

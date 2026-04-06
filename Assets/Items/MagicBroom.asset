@@ -15,4 +15,4 @@ MonoBehaviour:
   itemName: MagicBroom
   scriptClassName: MagicBroom
   icon: {fileID: 21300000, guid: e87a1aba77bf7fc40aa064e1c64748bc, type: 3}
-  description: MagicBroomMagicBroomMagicBroomMagicBroom
+  description: '[Passive] Allows Double Jump with cooldown.'

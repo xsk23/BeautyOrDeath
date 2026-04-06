@@ -16,4 +16,6 @@ MonoBehaviour:
   scriptClassName: HunterSkill_Shockwave
   role: 2
   icon: {fileID: 21300000, guid: 20fc1a916bdaac547b6f6475b8a7afee, type: 3}
-  description: ShockShockShockShockShock
+  description: 'Shockwave that forces nearby Witches out of disguise and slows them.
+
+'

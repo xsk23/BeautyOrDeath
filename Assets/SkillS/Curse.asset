@@ -16,4 +16,4 @@ MonoBehaviour:
   scriptClassName: WitchSkill_Curse
   role: 1
   icon: {fileID: 21300000, guid: 23ffb80fdc898484b84de5cf7629e8da, type: 3}
-  description: CurseCurseCurseCurseCurse
+  description: 'Become a ghost for 4s to pass through walls. '

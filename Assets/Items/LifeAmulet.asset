@@ -15,4 +15,5 @@ MonoBehaviour:
   itemName: LifeAmulet
   scriptClassName: LifeAmulet
   icon: {fileID: 21300000, guid: 6aa6689224c8ec345bd9f709208382ed, type: 3}
-  description: LifeAmuletLifeAmuletLifeAmulet
+  description: '[Active] Blocks fatal damage once (30s buff). Gives 1 HP, 3s invincibility
+    & speed.'

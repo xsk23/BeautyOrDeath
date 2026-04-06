@@ -16,4 +16,4 @@ MonoBehaviour:
   scriptClassName: HunterSkill_Scan
   role: 2
   icon: {fileID: 21300000, guid: 3f0b694e69dd73840b350b30751cc01a, type: 3}
-  description: ScanScanScan
+  description: Scans 15m area to reveal recent Witch movement trails.

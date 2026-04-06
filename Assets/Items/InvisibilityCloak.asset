@@ -15,4 +15,4 @@ MonoBehaviour:
   itemName: Cloak
   scriptClassName: InvisibilityCloak
   icon: {fileID: 21300000, guid: b3eba9b00654a624dbc2b8fbbfb088fd, type: 3}
-  description: InvisibilityCloakInvisibilityCloakInvisibilityCloak
+  description: '[Active] Become invisible and gain +50% speed for 5s.'

@@ -16,6 +16,4 @@ MonoBehaviour:
   scriptClassName: WitchSkill_Mist
   role: 1
   icon: {fileID: 21300000, guid: 5c933ec71dd53a04e9b3ba0a3b3c7088, type: 3}
-  description: 'MistMistMistMistMist
-
-'
+  description: Leaves a fog trail that blinds and distorts Hunters' vision.
