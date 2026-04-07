@@ -65,4 +65,21 @@ public abstract class SkillBase : NetworkBehaviour
 
     // 子类实现具体的技能逻辑 (服务器端执行)
     protected abstract void OnCast();
+
+    [Server]
+    public void ServerReduceCooldown(float timeToReduce)
+    {
+        // 如果技能本身就已经冷却好了，直接跳过
+        if (IsReady) return;
+
+        // 把“上一次使用的时间”往更早的过去推移
+        lastUseTime -= (double)timeToReduce;
+
+        // 防溢出保护：如果推得太早，导致算出来的冷却时间大于基础冷却，直接把它设为刚好冷却完毕
+        if (NetworkTime.time - lastUseTime > cooldownTime)
+        {
+            lastUseTime = NetworkTime.time - cooldownTime;
+        }
+    }
+
 }

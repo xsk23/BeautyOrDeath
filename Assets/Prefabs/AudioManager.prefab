@@ -163,7 +163,7 @@ MonoBehaviour:
     randomPitch: 1
   - soundName: WitchTaunt_Male
     clips:
-    - {fileID: 8300000, guid: d45c697244e3ceb4d909c1fd2d4c0a7d, type: 3}
+    - {fileID: 8300000, guid: 959b373cfa070b7499ecd86b862aab43, type: 3}
     volume: 1
     randomPitch: 1
   - soundName: WitchTaunt_Female
@@ -189,11 +189,6 @@ MonoBehaviour:
   - soundName: TrapCaught_Female
     clips:
     - {fileID: 8300000, guid: 093c171029bda8047a059dbd2d30cb4c, type: 3}
-    volume: 1
-    randomPitch: 1
-  - soundName: HunterJump
-    clips:
-    - {fileID: 8300000, guid: 908d02a2541ae6641b40bbae36334558, type: 3}
     volume: 1
     randomPitch: 1
   source2D: {fileID: 8815305643914776443}

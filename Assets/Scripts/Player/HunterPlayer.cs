@@ -826,7 +826,7 @@ public class HunterPlayer : GamePlayer
     public void TargetBlindEffect(NetworkConnection t, float d)
     {
         if (sceneScript?.blindPanel != null && !sceneScript.blindPanel.activeSelf) AudioManager.Instance?.Play2D("致盲耳鸣音");
-        CameraDrunkEffect.Instance?.PlayDrunkEffect(d, 0.1f);
+        CameraDrunkEffect.Instance?.PlayDrunkEffect(d, 0.3f);
     }
 
     protected override void OnJumpTriggered()
@@ -843,7 +843,7 @@ public class HunterPlayer : GamePlayer
         {
             hunterAnimator.transform.localRotation = Quaternion.identity;
             hunterAnimator.SetInteger("JumpIndex", i); hunterAnimator.SetTrigger("isJump");
-            AudioManager.Instance?.Play2D("jump_sound");
+            AudioManager.Instance?.Play2D("HunterJump");
         }
     }
 

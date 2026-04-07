@@ -158,7 +158,7 @@ public class WitchSkill_Curse : SkillBase
         AudioManager.Instance?.Play3D("护符碎裂", pos); 
         if (isLocalPlayer && CameraDrunkEffect.Instance != null)
         {
-            CameraDrunkEffect.Instance.PlayDrunkEffect(stunDuration, 0.08f);
+            CameraDrunkEffect.Instance.PlayDrunkEffect(stunDuration, 0.1f);
         }
     }
 }

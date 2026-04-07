@@ -81,11 +81,15 @@ public class SceneScript : MonoBehaviour
     private void Start()
     {
         // 初始隐藏结算面板
-        if (gameResultPanel != null) gameResultPanel.SetActive(false);
+        if (gameResultPanel != null) {
+            gameResultPanel.SetActive(false);
+            
+        }
         // 游戏开始时隐藏暂停菜单
         if (pauseMenuPanel != null)
         {
             pauseMenuPanel.SetActive(false);
+    
         }
         if(revertProgressBar != null)
         {
@@ -94,10 +98,12 @@ public class SceneScript : MonoBehaviour
         if (RunText != null)
         {
             RunText.gameObject.SetActive(false);
+            
         }
         if (ExecutionText != null)
         {
             ExecutionText.gameObject.SetActive(false);
+        
         }
         // 初始化变身槽位显示
         if (morphSlot != null)

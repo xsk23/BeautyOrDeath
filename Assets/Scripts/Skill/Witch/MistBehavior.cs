@@ -6,8 +6,8 @@ public class MistBehavior : NetworkBehaviour
 {
     [Header("迷雾设置")]
     public float lifeTime = 5.0f;       // 迷雾存在时间
-    public float blindRefreshRate = 0.5f; // 致盲刷新频率
-    public float blindDuration = 1.0f;    // 单次致盲持续时间
+    public float blindRefreshRate = 1f; // 致盲刷新频率
+    public float blindDuration = 2f;    // 单次致盲持续时间
 
     // 【核心修复】：为每个进入迷雾的猎人独立记录上次被眩晕的时间
     // uint 是玩家的 Network ID，float 是上次被攻击的时间

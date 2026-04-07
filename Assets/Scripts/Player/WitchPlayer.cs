@@ -66,6 +66,30 @@ public class WitchPlayer : GamePlayer
     public float baseFootstepInterval = 0.5f; // 基础脚步间隔
     protected float footstepTimer = 0f;
 
+    [Header("Taunt Skill (嘲讽技能)")]
+    public float tauntCooldown = 5f;          // t1: 冷却时间
+    public float tauntManaRestore = 20f;       // n: 恢复法力值
+    public float tauntSpeedMultiplier = 1.5f;  // k: 加速倍率
+    public float tauntSpeedDuration = 2f;      // t2: 加速持续时间
+    public float tauntRevealDuration = 3f;     // t3: 暴露视野持续时间
+    public float tauntCooldownReduction = 2f;   // t4: 冷却缩减时间
+    private float nextTauntTime = 0f;
+    private float activeSpeedMultiplier = 1f; // 当前的额外加速倍率
+    private Coroutine activeSpeedRoutine;
+
+    // 同步变量：告诉猎人正在嘲讽
+    [SyncVar(hook = nameof(OnTauntRevealedChanged))]
+    public bool isTauntRevealed = false;
+
+    private void OnTauntRevealedChanged(bool oldVal, bool newVal)
+    {
+        // 状态改变时，强制刷新所有人的视觉扫描
+        if (NetworkClient.localPlayer != null)
+        {
+            NetworkClient.localPlayer.GetComponent<TeamVision>()?.ForceUpdateVisuals();
+        }
+    }
+
     // ========================================================================
     // 【新增】多人共乘（抢方向盘）核心变量
     // ========================================================================
@@ -333,7 +357,7 @@ public class WitchPlayer : GamePlayer
         if (isLocalPlayer && isMorphed && !isSlowed)
         {
             bool isRunning = Input.GetKey(KeyCode.LeftShift);
-            float targetSpeed = isRunning ? morphedRunSpeed : morphedWalkSpeed;
+            float targetSpeed = (isRunning ? morphedRunSpeed : morphedWalkSpeed) * activeSpeedMultiplier;
 
             // 只有当速度发生变化时才发送命令，节省带宽
             if (Mathf.Abs(moveSpeed - targetSpeed) > 0.01f)
@@ -428,7 +452,9 @@ public class WitchPlayer : GamePlayer
         HandleInteraction(); // 只有非乘客才进行射线检测
         HandleMorphInput();  // 处理变身/还原输入
         HandleItemActivation(); // 处理道具使用输入
+        HandleTauntInput(); //检测 V 键嘲讽
 
+        
         // --- 在 Update 的最后添加平滑移动逻辑 ---
         // 【核心修复】：增加 GameOver 判断，防止插值逻辑把相机拉回玩家身边
         if (isLocalPlayer && Camera.main != null && GameManager.Instance.CurrentState != GameManager.GameState.GameOver)
@@ -1415,7 +1441,7 @@ public class WitchPlayer : GamePlayer
         controller.enabled = true;
 
         // 8. 恢复速度逻辑
-        moveSpeed = originalHumanSpeed;
+        moveSpeed = originalHumanSpeed * activeSpeedMultiplier;
         if (isLocalPlayer) CmdUpdateMoveSpeed(originalHumanSpeed);
 
         // 刷新轮廓和层级
@@ -2339,7 +2365,7 @@ public class WitchPlayer : GamePlayer
 
         // 动态获取她当前该有的正常速度
         float normalSpeed = isMorphed ? morphedWalkSpeed : originalHumanSpeed;
-        moveSpeed = normalSpeed * multiplier;
+        moveSpeed = normalSpeed * multiplier * activeSpeedMultiplier; 
 
         yield return new WaitForSeconds(duration);
 
@@ -2372,6 +2398,77 @@ public class WitchPlayer : GamePlayer
         AudioManager.Instance?.Play2D("WitchJump");
     }
 
+    private void HandleTauntInput()
+    {
+        // 按下 V 键，且不是幽灵态、没死、不在复活赛
+        if (Input.GetKeyDown(KeyCode.V) && !isGhosted && !isPermanentDead && !isInSecondChance)
+        {
+            if (Time.time >= nextTauntTime)
+            {
+                nextTauntTime = Time.time + tauntCooldown;
+                CmdTaunt(); // 告诉服务器去放声音、加蓝、加透视
+                
+                // 本地直接触发加速，保证手感零延迟
+                if (activeSpeedRoutine != null) StopCoroutine(activeSpeedRoutine);
+                activeSpeedRoutine = StartCoroutine(LocalTauntSpeedRoutine());
+            }
+            else
+            {
+                UnityEngine.Debug.Log($"<color=yellow>嘲讽冷却中... 剩余 {nextTauntTime - Time.time:F1} 秒</color>");
+            }
+        }
+    }
 
+    [Command]
+    private void CmdTaunt()
+    {
+        // 1. 播放嘲讽笑声 (复用你现有的音频)
+        string tauntSound = (myGender == Gender.Male) ? "WitchTaunt_Male" : "WitchTaunt_Female";
+        GameManager.Instance?.ServerPlay3DAt(tauntSound, transform.position);
+
+        // 2. 瞬间恢复法力值
+        currentMana = Mathf.Min(maxMana, currentMana + tauntManaRestore);
+
+        // 3. 暴露自身视野给猎人
+        StartCoroutine(TauntRevealRoutine());
+        
+        // 4. 减少所有技能的冷却时间
+        SkillBase[] mySkills = GetComponents<SkillBase>();
+        foreach (var skill in mySkills)
+        {
+            // 调用 SkillBase 里的减 CD 方法
+            skill.ServerReduceCooldown(tauntCooldownReduction);
+        }
+    }
+
+    [Server]
+    private IEnumerator TauntRevealRoutine()
+    {
+        isTauntRevealed = true;
+        yield return new WaitForSeconds(tauntRevealDuration);
+        isTauntRevealed = false;
+    }
+
+    private IEnumerator LocalTauntSpeedRoutine()
+    {
+        activeSpeedMultiplier = tauntSpeedMultiplier;
+        
+        // 如果当前是人类形态，立刻修改速度；如果是变身形态，Update() 里的逻辑会自动算
+        if (!isMorphed)
+        {
+            moveSpeed = originalHumanSpeed * activeSpeedMultiplier;
+            CmdUpdateMoveSpeed(moveSpeed);
+        }
+
+        yield return new WaitForSeconds(tauntSpeedDuration);
+
+        // 恢复速度
+        activeSpeedMultiplier = 1.0f;
+        if (!isMorphed)
+        {
+            moveSpeed = originalHumanSpeed;
+            CmdUpdateMoveSpeed(moveSpeed);
+        }
+    }
 
 }
