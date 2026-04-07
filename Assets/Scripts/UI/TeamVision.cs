@@ -7,14 +7,13 @@ public class TeamVision : NetworkBehaviour
     [Header("阵营颜色")]
     public Color witchColor = Color.magenta;
     public Color hunterColor = Color.cyan;
-    public Color enemyColor = Color.red; // 可选：敌人的颜色
+    public Color enemyColor = Color.red; //敌人的颜色
 
     [Header("设置")]
-    public float checkInterval = 0.5f; // 每0.5秒刷新一次，节省性能
-
+    public float checkInterval = 0.5f; 
     private GamePlayer localPlayer;
 
-    // 【新增】标记当前是否正在强制显示猎人（防止逻辑竞争）
+    // 标记当前是否正在强制显示猎人
     private bool isEffectRevealingHunters = false;
     public override void OnStartLocalPlayer()
     {
@@ -168,6 +167,8 @@ public class TeamVision : NetworkBehaviour
             bool isTeammate = (targetPlayer.playerRole == localPlayer.playerRole);
             bool isTargetHunter = (targetPlayer.playerRole == PlayerRole.Hunter);
 
+            bool isTauntRevealed = (targetPlayer is WitchPlayer w && w.isTauntRevealed);
+
             // --- 优先级逻辑 ---
             if (isTrapped)
             {
@@ -178,12 +179,19 @@ public class TeamVision : NetworkBehaviour
             {
                 outline.SetOutline(true, Color.red);
             }
+            //如果女巫正在嘲讽，且本地玩家是猎人，强制红框透视！
+            else if (isTauntRevealed && localPlayer.playerRole == PlayerRole.Hunter)
+            {
+                outline.SetOutline(true, Color.red);
+                // 嘲讽时连名字也暴露给猎人
+                if (targetPlayer.nameText != null) targetPlayer.nameText.gameObject.SetActive(true);
+            }
             else if (isTeammate)
             {
                 // 队友：显示名字（如果是女巫且变身中则隐藏）
                 if (targetPlayer.nameText != null)
                 {
-                    bool shouldShowName = !(targetPlayer is WitchPlayer w && w.isMorphed);
+                    bool shouldShowName = !(targetPlayer is WitchPlayer witch && witch.isMorphed);
                     targetPlayer.nameText.gameObject.SetActive(shouldShowName);
                 }
                 Color c = (targetPlayer.playerRole == PlayerRole.Witch) ? witchColor : hunterColor;
