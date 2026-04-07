@@ -204,7 +204,10 @@ public class HunterPlayer : GamePlayer
     {
         base.Update();
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
-
+        // =========================================================
+        // 【核心修改】：如果是观察者，直接 return 终止后续所有的射击、切换武器、补给逻辑
+        // =========================================================
+        if (isDebugObserver) return;
         if (isLocalPlayer)
         {
             // --- 新增：同步仰角给服务器 ---

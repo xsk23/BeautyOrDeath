@@ -117,7 +117,58 @@ public class SceneScript : MonoBehaviour
             helpPanel.SetActive(false);
         }
     }
-    // --- 新增方法供按钮调用 ---
+    // ==========================================
+    // 【新增】专供观察者模式使用的 HUD 开关
+    // ==========================================
+    public void ToggleHUDForObserver(bool isObserver)
+    {
+        bool showNormal = !isObserver;
+        
+        // 1. 基础信息文本
+        if (RoleText != null) RoleText.gameObject.SetActive(showNormal);
+        if (NameText != null) NameText.gameObject.SetActive(showNormal);
+        if (WeaponText != null) WeaponText.gameObject.SetActive(showNormal);
+        if (PlayerCountText != null) PlayerCountText.gameObject.SetActive(showNormal);
+        if (GoalText != null) GoalText.gameObject.SetActive(showNormal);
+        if (Crosshair != null) Crosshair.SetActive(showNormal);
+        
+        if (GameTime != null)
+        {
+            GameTime.gameObject.SetActive(showNormal);
+            if (GameTime.transform.parent != null)
+                GameTime.transform.parent.gameObject.SetActive(showNormal);
+        }
+
+        // 2. 状态条与技能槽 
+        // 【核心技巧】：使用 localScale 缩放为 0 来隐藏，
+        // 这样可以完美保留它们原本的 gameObject.activeSelf 状态，退出观察者时不会错误地显示出未装备的空槽。
+        Vector3 targetScale = showNormal ? Vector3.one : Vector3.zero;
+
+        if (HealthSlider != null && HealthSlider.transform.parent != null) 
+            HealthSlider.transform.parent.localScale = targetScale;
+            
+        if (ManaSlider != null && ManaSlider.transform.parent != null) 
+            ManaSlider.transform.parent.localScale = targetScale;
+
+        if (skillSlots != null)
+        {
+            foreach (var slot in skillSlots)
+            {
+                if (slot != null) slot.transform.localScale = targetScale;
+            }
+        }
+        
+        if (itemSlot != null) itemSlot.transform.localScale = targetScale;
+        if (morphSlot != null) morphSlot.transform.localScale = targetScale;
+
+        // 3. 强制关闭部分临时提示面板
+        if (isObserver)
+        {
+            if (ExecutionText != null) ExecutionText.gameObject.SetActive(false);
+            if (blindPanel != null) blindPanel.SetActive(false);
+            if (revertProgressBar != null) revertProgressBar.SetActive(false);
+        }
+    }
 
     public void ButtonOpenHelp()
     {

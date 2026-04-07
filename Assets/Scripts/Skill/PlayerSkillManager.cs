@@ -118,7 +118,8 @@ public class PlayerSkillManager : NetworkBehaviour
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver) return;
             
         // 处理技能按键触发
-        if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned && !player.isInSecondChance && !player.isPermanentDead)
+        if (Cursor.lockState == CursorLockMode.Locked && !player.isChatting && !player.isStunned && !player.isInSecondChance 
+        && !player.isPermanentDead && !player.isDebugObserver)
         {
             // 如果是女巫且处于幽灵穿墙态，禁止释放任何其他技能
             if (player is WitchPlayer witchPlayer && witchPlayer.isGhosted) return;

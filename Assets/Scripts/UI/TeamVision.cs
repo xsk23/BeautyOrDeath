@@ -131,8 +131,9 @@ public class TeamVision : NetworkBehaviour
     private void UpdateAllOutlines()
     {
         if (localPlayer == null) return;
-        // --- 【新增：胜利区域清理逻辑】 ---
-        if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
+        // --- 【修改：胜利区域 或 观察者模式 清理逻辑】 ---
+        bool isGameOver = GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver;
+        if (isGameOver || localPlayer.isDebugObserver)
         {
             // 1. 清理所有玩家的描边
             foreach (var p in GamePlayer.AllPlayers)

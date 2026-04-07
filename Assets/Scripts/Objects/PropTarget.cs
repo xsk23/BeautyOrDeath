@@ -185,26 +185,38 @@ public class PropTarget : NetworkBehaviour
 
     }
 
-    public void SetHighlight(bool active)
+public void SetHighlight(bool active)
     {
         if (allLODRenderers == null) return;
-        // --- 【新增：游戏结束强制关闭】 ---
+        
+        // 获取本地玩家身份
+        var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
+        bool isWitch = localPlayer != null && localPlayer.playerRole == PlayerRole.Witch;
+
+        // --- 【修改：游戏结束 或 观察者模式 强制关闭高亮】 ---
+        bool forceHide = false;
+        
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
             active = false;
             isScouted = false; // 确保侦察状态不干扰
             isLocalTempRevealed = false; // 确保临时透视不干扰
+            forceHide = true;
+        }
+
+        if (localPlayer != null && localPlayer.isDebugObserver)
+        {
+            active = false;
+            forceHide = true;
         }
         // ---------------------------------
-        // 获取本地玩家身份
-        var localPlayer = NetworkClient.localPlayer?.GetComponent<GamePlayer>();
-        bool isWitch = localPlayer != null && localPlayer.playerRole == PlayerRole.Witch;
 
-        // 判定逻辑：
-        // 女巫看到高亮的情况：准星正指着 (active) OR 已经被发现 (isScouted)
-        // 猎人看到高亮的情况：仅准星正指着 (active)
-        // 修改判定逻辑：增加 isLocalTempRevealed
-        bool shouldShow = active || (isWitch && (isScouted || isLocalTempRevealed));
+        // 判定逻辑：只有没被强制隐藏的情况下才计算
+        bool shouldShow = false;
+        if (!forceHide)
+        {
+            shouldShow = active || (isWitch && (isScouted || isLocalTempRevealed));
+        }
 
         if (isHighlighted == shouldShow) 
         {

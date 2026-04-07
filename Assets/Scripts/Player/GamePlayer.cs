@@ -112,7 +112,7 @@ public abstract class GamePlayer : NetworkBehaviour
     public bool isDebugObserver = false; // 是否处于调试观察者模式
 
     [Header("Observer Settings")]
-    public float observerSlowSpeed = 5f; // 初始慢速
+    public float observerSlowSpeed = 2f; // 初始慢速
     public float observerFastSpeed = 15f; // Shift加速后的速度
     // 【抽象方法】强制子类必须实现 Attack
     protected abstract void Attack();
@@ -210,6 +210,22 @@ public abstract class GamePlayer : NetworkBehaviour
                 sceneScript.GoalText.text = goalText;
             }
             crosshairUI = sceneScript.Crosshair;
+            // ==========================================
+            // 【新增】：根据阵营隐藏不属于自己的技能槽 UI
+            // ==========================================
+            if (this is HunterPlayer)
+            {
+                // 猎人不需要变身槽和道具槽，直接将其禁用
+                if (sceneScript.morphSlot != null) sceneScript.morphSlot.gameObject.SetActive(false);
+                if (sceneScript.itemSlot != null) sceneScript.itemSlot.gameObject.SetActive(false);
+            }
+            else if (this is WitchPlayer)
+            {
+                // 女巫需要变身槽，默认开启
+                if (sceneScript.morphSlot != null) sceneScript.morphSlot.gameObject.SetActive(true);
+                // 道具槽暂时保持关闭，等 PlayerItemManager 获取到所选道具后再动态开启
+                if (sceneScript.itemSlot != null) sceneScript.itemSlot.gameObject.SetActive(false);
+            }
         }
         xRotation = 0f;
         UpdateCameraView(); // 初始化相机位置
@@ -411,16 +427,17 @@ public abstract class GamePlayer : NetworkBehaviour
         
         if (isLocalPlayer)
         {
-            if (crosshairUI != null) crosshairUI.SetActive(!newVal);
-            if (sceneScript != null)
-            {
-                if (sceneScript.RunText != null)
-                {
-                    sceneScript.RunText.gameObject.SetActive(newVal);
-                    // --- 修改后的提示文字 ---
-                    sceneScript.RunText.text = newVal ? "<color=orange>OBSERVER MODE: [WASD] Fly | [Shift] Boost | [U] Exit</color>" : "";
-                }
-            }
+            // 【核心修改】：通知 SceneScript 隐藏/显示所有战斗 UI
+            sceneScript.ToggleHUDForObserver(newVal);
+            // if (sceneScript != null)
+            // {
+            //     if (sceneScript.RunText != null)
+            //     {
+            //         sceneScript.RunText.gameObject.SetActive(newVal);
+            //         // --- 修改后的提示文字 ---
+            //         sceneScript.RunText.text = newVal ? "<color=orange>OBSERVER MODE: [WASD] Fly | [Shift] Boost | [U] Exit</color>" : "";
+            //     }
+            // }
         }
     }
     // 必须通过 Command 让服务器去修改 SyncVar

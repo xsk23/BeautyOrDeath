@@ -405,6 +405,9 @@ MonoBehaviour:
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
   sphereRadius: 20
+  isDebugObserver: 0
+  observerSlowSpeed: 2
+  observerFastSpeed: 15
   refillTime: 2
   maxRefillDistance: 2.5
   supplyLayer:
@@ -421,6 +424,9 @@ MonoBehaviour:
   hunterAnimator: {fileID: 4888312349454447175}
   attackBufferTime: 0.2
   fistAttackLockDuration: 1
+  fpWeaponRotationOffset: {x: -92.22, y: 0, z: -180}
+  weaponMoveHoldPos: {x: -0.116, y: -0.031, z: 0.142}
+  rotationSmoothSpeed: 15
 --- !u!114 &2353516808386118448
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -727,7 +733,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.21636772, y: 0.41532466, z: 0.753955, w: 0.4606976}
   m_LocalPosition: {x: -0.0587, y: -0.0245, z: 0.0822}
-  m_LocalScale: {x: 0.87284255, y: 0.7583999, z: 0.7584001}
+  m_LocalScale: {x: 1.1, y: 1.1843711, z: 1.1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7277631966617473494}
@@ -1150,15 +1156,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.47886336
+      value: 0.99999994
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.65150285
+      value: 1.3605193
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.47886375
+      value: 0.99999994
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 4d9c68fe6ca0e804d8257130d7fa7f79, type: 3}
       propertyPath: m_LocalPosition.x
