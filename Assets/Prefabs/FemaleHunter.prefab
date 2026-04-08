@@ -442,6 +442,7 @@ MonoBehaviour:
   targetRenderer: {fileID: 0}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
   nameTextObject: {fileID: 8273956418131515984}
+  maskShaderSource: {fileID: 4800000, guid: 50ffd3de53bcf544bbba8c03477fa0f6, type: 3}
 --- !u!114 &4556006175349872115
 MonoBehaviour:
   m_ObjectHideFlags: 0

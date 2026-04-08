@@ -56,7 +56,13 @@ public class HunterPlayer : GamePlayer
     [Tooltip("调整此偏移量直到第一人称下枪口朝前 (通常 Y 或 Z 选一个设为 90 或 180)")]
     public Vector3 fpWeaponRotationOffset = new Vector3(-92.22f, 0, -180);
     // 【新增】移动持枪时的目标局部坐标
-    public Vector3 weaponMoveHoldPos = new Vector3(-0.116f, -0.031f, 0.142f);
+    // public Vector3 weaponMoveHoldPos = new Vector3(-0.116f, -0.031f, 0.142f);
+    // Vector3(-0.0500000007,-0.0309999995,0.100000001)
+    // 【修改】这里保留作为变量声明，初始值在 OnStartClient 中根据性别赋值
+    [Header("FPS Move Hold Position")]
+    public Vector3 weaponMoveHoldPos; 
+    // 【新增】站立开火时的位置偏移
+    private Vector3 weaponStandHoldPos;
     // 【新增】用于存储每把武器初始的局部旋转（相对于手部的坐标）
     private Quaternion[] originalLocalRotations;
     // 【新增】用于存储每把武器初始的局部坐标
@@ -140,6 +146,22 @@ public class HunterPlayer : GamePlayer
     {
         base.OnStartClient();
         lastPosition = transform.position;
+        // ==========================================
+        // 【核心修改】根据性别初始化持枪位置偏移
+        // ==========================================
+        if (myGender == Gender.Female)
+        {
+            // 女猎人移动开火坐标
+            weaponMoveHoldPos = new Vector3(-0.05f, -0.031f, 0.1f);
+            // 女猎人站立开火坐标（在 Y 轴上再下降 0.015，即 -0.046）
+            weaponStandHoldPos = new Vector3(-0.05f, 0, 0.1f);
+        }
+        else
+        {
+            // 男猎人（通常站立和移动使用同一套，或差别不大）
+            weaponMoveHoldPos = new Vector3(-0.116f, -0.031f, 0.142f);
+            weaponStandHoldPos = new Vector3(-0.116f, -0.031f, 0.142f);
+        }
         // 客户端启动时记录一次初始旋转
         CaptureWeaponRotations();
         RefreshWeaponVisibility(currentWeaponIndex);
@@ -313,7 +335,9 @@ public class HunterPlayer : GamePlayer
         }
 
         // 全局同步 Animator speed
-        if (hunterAnimator != null) hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
+        // if (hunterAnimator != null) hunterAnimator.SetFloat("speed", syncedSpeed, 0.05f, Time.deltaTime);
+        hunterAnimator.SetFloat("speed", syncedSpeed);
+
     }
     private void UpdateHoneyGunUI()
     {
@@ -498,12 +522,24 @@ public class HunterPlayer : GamePlayer
         // 只有 移动 + 开火 时才位移坐标
         // bool shouldOffset = isShooting && isMoving;
         bool shouldOffset = isShooting;
-        weaponOffsetWeight = Mathf.Lerp(weaponOffsetWeight, shouldOffset ? 1f : 0f, Time.deltaTime * 30f);
+        // 2. 核心：计算当前的目标坐标
+        Vector3 targetLocalPos;
+        if (isShooting)
+        {
+            // 如果速度很低（站立），使用 stand 坐标；否则使用 move 坐标
+            targetLocalPos = (syncedSpeed < 0.1f) ? weaponStandHoldPos : weaponMoveHoldPos;
+            weaponOffsetWeight = Mathf.Lerp(weaponOffsetWeight, 1f, Time.deltaTime * 30f);
+        }
+        else
+        {
+            targetLocalPos = originalLocalPositions[currentWeaponIndex];
+            weaponOffsetWeight = Mathf.Lerp(weaponOffsetWeight, 0f, Time.deltaTime * 30f);
+        }
 
         // 3. 应用位置位移 (所有客户端都会为该猎人执行 Lerp)
         weaponObj.transform.localPosition = Vector3.Lerp(
             originalLocalPositions[currentWeaponIndex],
-            weaponMoveHoldPos,
+            targetLocalPos,
             weaponOffsetWeight
         );
 
@@ -545,6 +581,14 @@ public class HunterPlayer : GamePlayer
     // ==========================================
     private void HandleStandardGunAnimations()
     {
+        // ==========================================
+        // 【核心修复】：增加武器判定
+        // 只允许普通猎枪（Gun）进入此逻辑，蜂蜜枪（HoneyGun）直接跳过
+        // ==========================================
+        if (hunterWeapon == null || currentWeaponIndex >= hunterWeapon.Length) return;
+        WeaponBase currentWp = hunterWeapon[currentWeaponIndex].GetComponent<WeaponBase>();
+        if (currentWp == null || currentWp.weaponName != "Gun") return; 
+        // ==========================================
         AnimatorStateInfo stateInfo = hunterAnimator.GetCurrentAnimatorStateInfo(1);
 
         // 1. 清理收枪状态：只要回到默认或保持，就标志结束完毕

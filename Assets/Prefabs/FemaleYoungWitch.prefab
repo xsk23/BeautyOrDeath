@@ -798,6 +798,9 @@ MonoBehaviour:
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
   sphereRadius: 20
+  isDebugObserver: 0
+  observerSlowSpeed: 2
+  observerFastSpeed: 15
   isStealthed: 0
   isProtectedByAmulet: 0
   amuletSpeedMultiplier: 1.5
@@ -816,6 +819,14 @@ MonoBehaviour:
   propContainer: {fileID: 7293749197133612697}
   frogPropID: 1
   frogHealth: 20
+  baseFootstepInterval: 0.5
+  tauntCooldown: 5
+  tauntManaRestore: 20
+  tauntSpeedMultiplier: 1.5
+  tauntSpeedDuration: 2
+  tauntRevealDuration: 3
+  tauntCooldownReduction: 2
+  isTauntRevealed: 0
   hostNetId: 0
   possessLongPressTime: 1
   possessedTreeNetId: 0
@@ -842,6 +853,7 @@ MonoBehaviour:
   targetRenderer: {fileID: 0}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
   nameTextObject: {fileID: 1515058495162728281}
+  maskShaderSource: {fileID: 4800000, guid: 50ffd3de53bcf544bbba8c03477fa0f6, type: 3}
 --- !u!114 &1498090036183238577
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -923,8 +935,9 @@ MonoBehaviour:
   manaCost: 20
   triggerKey: 101
   ghostDuration: 4
-  stuckDamagePerSec: 10
-  damageTickRate: 0.5
+  gracePeriod: 1
+  stunDuration: 2
+  searchRadius: 5
   obstacleLayers:
     serializedVersion: 2
     m_Bits: 0

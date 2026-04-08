@@ -286,6 +286,14 @@ MonoBehaviour:
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
   sphereRadius: 20
+  isDebugObserver: 0
+  observerSlowSpeed: 2
+  observerFastSpeed: 15
+  refillTime: 2
+  maxRefillDistance: 2.5
+  supplyLayer:
+    serializedVersion: 2
+    m_Bits: 0
   executionRange: 3
   executionDamage: 40
   executionRecoveryTime: 2
@@ -297,6 +305,9 @@ MonoBehaviour:
   hunterAnimator: {fileID: 4827501028009106721}
   attackBufferTime: 0.2
   fistAttackLockDuration: 0.6
+  fpWeaponRotationOffset: {x: -92.22, y: 0, z: -180}
+  weaponMoveHoldPos: {x: -0.116, y: -0.031, z: 0.142}
+  rotationSmoothSpeed: 15
 --- !u!114 &2353516808386118448
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -312,6 +323,7 @@ MonoBehaviour:
   targetRenderer: {fileID: 0}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
   nameTextObject: {fileID: 8273956418131515984}
+  maskShaderSource: {fileID: 4800000, guid: 50ffd3de53bcf544bbba8c03477fa0f6, type: 3}
 --- !u!114 &4556006175349872115
 MonoBehaviour:
   m_ObjectHideFlags: 0

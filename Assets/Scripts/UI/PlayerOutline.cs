@@ -6,7 +6,7 @@ public class PlayerOutline : MonoBehaviour
     [SerializeField] private Renderer targetRenderer; 
     [SerializeField] private Material outlineMaterialSource; // 你的 Mat_TeamOutline
     [SerializeField] private GameObject nameTextObject; 
-    
+    [SerializeField] private Shader maskShaderSource; 
     private Material outlineInstance; // 描边材质
     private Material maskInstance;    // 遮罩材质 (代码自动生成)
     private bool isVisible = false;
@@ -52,15 +52,15 @@ public class PlayerOutline : MonoBehaviour
             outlineInstance.SetFloat("_ZTestMode", 8f);
 
             // 2. 动态创建遮罩材质 (解决 URP 无法多 Pass 的痛点)
-            Shader maskShader = Shader.Find("Custom/URP_Outline_Mask");
-            if (maskShader != null)
+            // 修改这里：不再使用 Shader.Find
+            if (maskShaderSource != null)
             {
-                maskInstance = new Material(maskShader);
+                maskInstance = new Material(maskShaderSource);
                 maskInstance.SetFloat("_ZTestMode", 8f);
             }
             else
             {
-                Debug.LogError("找不到 Custom/URP_Outline_Mask Shader！");
+                Debug.LogError("PlayerOutline: Mask Shader 未在 Inspector 中赋值！");
             }
         }
     }

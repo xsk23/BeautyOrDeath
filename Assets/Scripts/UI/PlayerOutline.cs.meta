@@ -3,7 +3,11 @@ guid: db296b91de1d68b4ca659f8cd0b2bbe8
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - targetRenderer: {instanceID: 0}
+  - outlineMaterialSource: {instanceID: 0}
+  - nameTextObject: {instanceID: 0}
+  - maskShaderSource: {fileID: 4800000, guid: 50ffd3de53bcf544bbba8c03477fa0f6, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

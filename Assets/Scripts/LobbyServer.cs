@@ -18,7 +18,7 @@ public class LobbyServer : MonoBehaviour
     public int endPort = 7780; // 最多允许 10 个房间同时运行
     // 【新增】用于接收子进程汇报的 UDP 监听器
     private UdpClient statusListener;
-    private const int LOBBY_STATUS_PORT = 7770; // 大厅监听子进程汇报的固定端口
+    private const int LOBBY_STATUS_PORT = 7769; // 大厅监听子进程汇报的固定端口
     // --- 内部数据结构 ---
     class ServerRoomData
     {

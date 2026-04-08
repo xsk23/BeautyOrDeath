@@ -484,6 +484,9 @@ MonoBehaviour:
   useSphereBoundary: 1
   sphereCenter: {x: 0, y: 0, z: 0}
   sphereRadius: 20
+  isDebugObserver: 0
+  observerSlowSpeed: 2
+  observerFastSpeed: 15
   refillTime: 2
   maxRefillDistance: 2.5
   supplyLayer:
@@ -501,8 +504,8 @@ MonoBehaviour:
   attackBufferTime: 0.2
   fistAttackLockDuration: 0.6
   fpWeaponRotationOffset: {x: -92.22, y: 0, z: -180}
-  rForearmBone: {fileID: 798770345609875838}
-  forearmRotateOffset: {x: 0, y: 15, z: 0}
+  weaponMoveHoldPos: {x: -0.116, y: -0.031, z: 0.142}
+  rotationSmoothSpeed: 15
 --- !u!114 &2353516808386118448
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -518,6 +521,7 @@ MonoBehaviour:
   targetRenderer: {fileID: 0}
   outlineMaterialSource: {fileID: 2100000, guid: 8f07037d65a49b54689a5b4f56ef31ff, type: 2}
   nameTextObject: {fileID: 8273956418131515984}
+  maskShaderSource: {fileID: 4800000, guid: 50ffd3de53bcf544bbba8c03477fa0f6, type: 3}
 --- !u!114 &4556006175349872115
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1396,11 +1400,6 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 3204358501041126956}
   m_SourcePrefab: {fileID: 100100000, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
---- !u!4 &798770345609875838 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 6976052342319732797, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}
-  m_PrefabInstance: {fileID: 7771567815610239299}
-  m_PrefabAsset: {fileID: 0}
 --- !u!95 &4229076215460148434 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 2ff530d46cc1710469a5201bbef6045d, type: 3}

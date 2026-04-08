@@ -119,7 +119,9 @@ public class MyNetworkManager : NetworkManager
                 byte[] data = Encoding.UTF8.GetBytes(msg);
                 
                 // 使用 UDP 直接扔给大厅，不需要建立长连接
-                statusSender.SendAsync(data, data.Length, "127.0.0.1", 7770);
+                // 这意味着数据包是在这台 Linux 服务器内部流转的（从子进程流向大厅进程），
+                // 数据包根本不会经过公网，也就不会触发腾讯云的“安全组”拦截。
+                statusSender.SendAsync(data, data.Length, "127.0.0.1", 7769);
             }
         }
     }
