@@ -112,7 +112,12 @@
 
 ### 🐧 Linux 独立服务器部署 (Dedicated Server)
 游戏采用 Room-Instanced（一房一进程）架构，需在 Linux 上开放一段端口范围（例如 7771-7780）供子进程使用。
-
+#### 快速部署Dedicated Server可使用一键部署脚本start_server.sh
+```bash
+chmod +x start_server.sh
+./start_server.sh
+```
+#### start_server.sh的逻辑为以下内容：
 ```bash
 记得在inspector中修改LobbyServer的public string publicIP = "你的公网IP";(本机测试用 127.0.0.1)
 # 1. 开放所需端口 (根据实际 LobbyServer 配置修改范围)
