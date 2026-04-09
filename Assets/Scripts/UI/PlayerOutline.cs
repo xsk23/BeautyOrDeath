@@ -136,7 +136,20 @@ public class PlayerOutline : MonoBehaviour
             try { RemoveMaterials(); } catch { }
         }
 
-        targetRenderer = newRenderer;
+        // 【核心修改】：如果传入的是普通 MeshRenderer，尝试在同级或子级看有没有 SkinnedMeshRenderer
+        // 这能防止 WitchPlayer 传入道具模型时，我们依然能找到旁边的身体模型
+        Renderer finalRenderer = newRenderer;
+        
+        // 如果传入的是个小东西（比如扫帚），尝试在它的父物体（通常是模型根节点）下找皮肤
+        SkinnedMeshRenderer smr = newRenderer.GetComponentInParent<SkinnedMeshRenderer>() 
+                            ?? newRenderer.transform.parent?.GetComponentInChildren<SkinnedMeshRenderer>();
+
+        if (smr != null)
+        {
+            finalRenderer = smr;
+        }
+
+        targetRenderer = finalRenderer;
 
         if (isVisible)
         {

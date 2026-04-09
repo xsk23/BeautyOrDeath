@@ -712,7 +712,7 @@ MonoBehaviour:
   manaCost: 20
   triggerKey: 114
   radius: 8
-  vfxPrefab: {fileID: 178152044478350897, guid: 0406ac7feb4695842b6f8f41616cf86e, type: 3}
+  vfxPrefab: {fileID: 1025285306637258, guid: d8f0099df63275647a8bcf646df1ca00, type: 3}
   hitAnyWitch: 0
 --- !u!114 &-7488479657767331540
 MonoBehaviour:

@@ -42594,6 +42594,9 @@ MonoBehaviour:
   victoryVideoPlayer: {fileID: 0}
   videoDisplay: {fileID: 0}
   videoFadeSpeed: 1.5
+  helpPanel: {fileID: 0}
+  helpAnimDuration: 0.2
+  targetScale: 1.3
 --- !u!114 &4791299561130794168
 MonoBehaviour:
   m_ObjectHideFlags: 0

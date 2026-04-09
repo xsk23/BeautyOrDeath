@@ -1044,27 +1044,22 @@ public class WitchPlayer : GamePlayer
             var outline = GetComponent<PlayerOutline>();
             if (outline != null && currentVisualProp != null)
             {
-                // 【核心修复】：健壮的 Renderer 查找逻辑
-                Renderer[] allRenderers = currentVisualProp.GetComponentsInChildren<Renderer>();
-                Renderer targetR = null;
+                // 优先找动物的 SkinnedMeshRenderer (动物通常有动作，必有 Skin)
+                Renderer targetR = currentVisualProp.GetComponentInChildren<SkinnedMeshRenderer>();
 
-                // 优先级 1：寻找名字里带 LOD0 的（针对分层级模型）
-                foreach (var r in allRenderers)
-                {
-                    if (r is ParticleSystemRenderer) continue;
-                    if (r.name.Contains("LOD0")) { targetR = r; break; }
-                }
-
-                // 优先级 2：如果没有 LOD0，找第一个非粒子的渲染器（针对单模型物体）
                 if (targetR == null)
                 {
+                    // 如果是石头、桌子等静态物体，找 LOD0
+                    Renderer[] allRenderers = currentVisualProp.GetComponentsInChildren<Renderer>();
                     foreach (var r in allRenderers)
                     {
                         if (r is ParticleSystemRenderer) continue;
-                        targetR = r;
-                        break;
+                        if (r.name.Contains("LOD0")) { targetR = r; break; }
                     }
                 }
+                
+                // 如果还没找到，就取第一个
+                if (targetR == null) targetR = currentVisualProp.GetComponentInChildren<Renderer>();
 
                 if (targetR != null)
                 {
@@ -1422,16 +1417,24 @@ public class WitchPlayer : GamePlayer
         if (humanModelGroup != null)
         {
             humanModelGroup.SetActive(true);
-            Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
-            foreach (var r in humanRenderers) r.enabled = true;
+            
+            // 【核心修改】：优先在人类模型组中寻找 SkinnedMeshRenderer (身体蒙皮)
+            myRenderer = humanModelGroup.GetComponentInChildren<SkinnedMeshRenderer>();
 
-            // 【核心修复】：重新从人类模型组里提取主渲染器
-            // 巫师模型通常由 SkinnedMeshRenderer 组成
-            foreach (var r in humanRenderers)
+            // 兜底逻辑：如果没找到蒙皮网格（极少数情况），再找普通的 Renderer，但排除掉道具
+            if (myRenderer == null)
             {
-                if (r is ParticleSystemRenderer) continue;
-                myRenderer = r; // 重新给 myRenderer 赋值，确保它是活的
-                break;
+                Renderer[] humanRenderers = humanModelGroup.GetComponentsInChildren<Renderer>(true);
+                foreach (var r in humanRenderers)
+                {
+                    if (r is ParticleSystemRenderer) continue;
+                    // 排除名字中包含武器或道具特征的物体
+                    string n = r.gameObject.name.ToLower();
+                    if (n.Contains("weapon") || n.Contains("item") || n.Contains("broom") || n.Contains("cloak")) continue;
+                    
+                    myRenderer = r;
+                    break;
+                }
             }
         }
 

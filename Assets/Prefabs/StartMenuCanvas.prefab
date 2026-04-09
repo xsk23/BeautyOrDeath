@@ -1096,6 +1096,7 @@ MonoBehaviour:
   okButton: {fileID: 2504886542324205511}
   helpPanel: {fileID: 9062246179828817523}
   animDuration: 0.2
+  helpTargetScale: 1.3
 --- !u!1 &2882550325798198964
 GameObject:
   m_ObjectHideFlags: 0

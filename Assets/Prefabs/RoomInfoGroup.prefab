@@ -408,6 +408,9 @@ MonoBehaviour:
   roomNameText: {fileID: 263642794251965557}
   lockIcon: {fileID: 8043521403543101531}
   roomIdText: {fileID: 2719158294039330997}
+  backgroundImage: {fileID: 0}
+  normalColor: {r: 1, g: 1, b: 1, a: 0}
+  selectedColor: {r: 1, g: 0.9, b: 0, a: 0.5}
 --- !u!1 &8043521403543101531
 GameObject:
   m_ObjectHideFlags: 0
