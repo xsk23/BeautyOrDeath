@@ -41,6 +41,13 @@ public class OnFireEffect : MonoBehaviour
             // PlayOneShot 允许声音重叠，适合高射速
             audioSource.PlayOneShot(currentWeapon.fireSound);
         }
+        
+        if (currentWeapon.weaponName == "HoneyGun")
+        {
+            // 建议音效名：honey_fire
+            // 因为蜂蜜枪射速快，Play3D 会在位置生成一个临时的 AudioSource 播放
+            AudioManager.Instance?.Play3D("honey_fire", transform.position);
+        }
 
         if (currentWeapon.weaponName == "Gun")
         {
