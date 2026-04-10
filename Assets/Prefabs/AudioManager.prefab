@@ -191,6 +191,16 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 093c171029bda8047a059dbd2d30cb4c, type: 3}
     volume: 1
     randomPitch: 1
+  - soundName: honey_fire
+    clips:
+    - {fileID: 8300000, guid: 461a4b01dea7b81438725ff3f25df939, type: 3}
+    volume: 1
+    randomPitch: 1
+  - soundName: honey_impact
+    clips:
+    - {fileID: 8300000, guid: 073225356a6399745ba2951ad5679259, type: 3}
+    volume: 1
+    randomPitch: 1
   source2D: {fileID: 8815305643914776443}
   audioSourcePrefab: {fileID: 7512640438773938583, guid: 8db3e1d4d17a5dc4880956b224857f86, type: 3}
   poolSize: 10

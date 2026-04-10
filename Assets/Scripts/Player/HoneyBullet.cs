@@ -35,7 +35,7 @@ public class HoneyBullet : MonoBehaviour
                     {
                         bool canSpawn = !acc.hasVisibleDecal;
                         acc.ServerAddHoney(12f, decalDuration);
-
+                        GameManager.Instance?.ServerPlay3DAt("honey_impact", transform.position);
                         if (canSpawn) SpawnDecalAttachedToPlayer(witch);
                     }
                 }
@@ -48,6 +48,7 @@ public class HoneyBullet : MonoBehaviour
         if (!other.isTrigger)
         {
             hasHit = true;
+            GameManager.Instance?.ServerPlay3DAt("honey_impact", transform.position);
             SpawnDecalOnEnvironment();
             Destroy(gameObject);
         }
