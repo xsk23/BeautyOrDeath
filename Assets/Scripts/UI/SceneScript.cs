@@ -264,11 +264,9 @@ public class SceneScript : MonoBehaviour
 
     private void Update()
     {
-        // 【新增】更新倒计时显示
+        // 更新倒计时显示
         UpdateGameTimer();
-        // 每一帧或每隔几帧更新人数（简单粗暴但有效）
-        UpdateAlivePlayerCount(); 
-        UpdateGoalProgressText(); // 【新增】更新目标文本
+
         // 如果处于 GameOver 状态，更新重启倒计时文字
         if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameManager.GameState.GameOver)
         {
